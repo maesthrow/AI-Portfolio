@@ -1,0 +1,303 @@
+/* =========================================================
+   БАЗОВЫЕ СТИЛИ ПРИЛОЖЕНИЯ
+   ========================================================= */
+:root {
+    color-scheme: dark light;
+    --project-title-color: #9ec5ff;
+    --project-title-hover: #a9cdff;
+
+    /* второй акцент для личных проектов */
+    --accent-alt: #9ef1c6;                 /* мятный; можно заменить на #a58bff (фиолет) */
+    --chip-alt-bg: rgba(158, 241, 198, 0.08);
+    --chip-alt-brd: rgba(158, 241, 198, 0.25);
+}
+
+
+/* Вариант “скромно/бело” — просто раскомментируй и перекроешь цвета
+:root{
+  --project-title-color: #e6e6e6;
+  --project-title-hover: #ffffff;
+}
+*/
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, "Inter", "Segoe UI", Roboto, Arial,
+               "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  background: #0b0d11;   /* общий тёмный фон */
+  color: #e6e6e6;        /* базовый цвет текста */
+}
+
+/* ссылки */
+a { color: #a3e635; text-decoration: none; }
+
+/* контейнер, карточки, моно-шрифт, подсказки, hr */
+.container { max-width: 980px; margin: 0 auto; padding: 32px 20px; }
+
+.card {
+  background: #11141a;
+  border: 1px solid #1f2430;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+}
+
+.project-title{
+  color: var(--project-title-color);
+  font-weight: 700;
+}
+
+a.card:hover .project-title,
+.card[role="link"]:hover .project-title{
+  color: var(--project-title-hover);
+}
+
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+.hint { color: #94a3b8; font-size: 13px; }
+hr { border: 0; border-top: 1px solid #202635; margin: 18px 0; }
+
+/* reset-мелочи */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+a { color: #93c5fd; text-decoration: none; }
+
+/* =========================================================
+   ЧИПСЫ-ФИЛЬТРЫ (badges)
+   Состояния:
+   - .badge        — базовая «пилюля»
+   - .badge.ghost  — не выбрана (прозрачный фон, серый текст)
+   - .badge.active — выбрана (синяя «пилюля», белый текст)
+   - .badge.danger — кнопка «Сброс» (нейтральный серый)
+   ========================================================= */
+
+/* База: форма «пилюли», тёмный фон, плавные переходы */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 4px 10px;
+  border-radius: 9999px;       /* максимально скруглённая форма */
+  font-size: 12px;
+  line-height: 1;
+
+  border: 1px solid #2a3140;   /* тонкая тёмная рамка */
+  background: #121822;         /* тёмный фон по умолчанию */
+  color: #e6eefc;              /* светлый текст */
+
+  transition:
+    transform .02s ease-in,    /* эффект нажатия/hover */
+    background .12s,
+    color .12s,
+    border-color .12s;
+}
+
+/* Hover для любого бейджа: лёгкое затемнение, без «подпрыгивания» */
+.badge:hover {
+  transform: none;
+  background: #0f141d;
+}
+
+/* НЕ ВЫБРАНО: прозрачная «пилюля», более спокойный серый текст */
+.badge.ghost {
+  background: transparent;
+  color: #b9c7e6;
+  border-color: #2a3140;
+}
+
+/* ВЫБРАНО: синяя «пилюля» с белым текстом
+   (самый читаемый и понятный контраст для выделения) */
+.badge.active {
+  background: #2b6cff;
+  border-color: #2b6cff;
+  color: #fff;
+  /* лёгкая внутренняя подсветка по краю, чтобы выделение было объёмным */
+  box-shadow: 0 0 0 2px rgba(43,108,255,.15) inset;
+}
+
+/* Кнопка «Сброс» — нейтральная серо-синяя, без «красной тревоги» */
+.badge.danger {
+  background: #2a2f3a;
+  border-color: #3a4458;
+  color: #cbd5e1;
+}
+.badge.danger:hover {
+  background: #242a33;         /* слегка темнее при наведении */
+}
+
+/* Доступность и указатель: чипсы — это кнопки */
+button.badge { cursor: pointer; }
+button.badge:focus-visible {
+  outline: 2px solid #2b6cff;  /* видимый фокус для клавиатуры */
+  outline-offset: 2px;
+}
+
+/* Текст краткого описания проекта на карточке */
+.project-description{
+  margin-top: 6px;
+  color: #f1f6ff;      /* мягкий серый (видно на тёмном фоне) */
+  line-height: 1.55;   /* читаемость абзаца */
+}
+
+/* (необязательно) можно подчеркнуть заголовок контрастом */
+/*
+.card .title, .project-title{
+  color: #eaf2ff;
+  font-weight: 700;
+}
+*/
+
+.badge.company{
+  background:#0f1623;
+  border-color:#2a3b57;
+  color:#bcd7ff;
+}
+.badge.company:hover{
+  background:#0e1a2a;
+  border-color:#35507c;
+  color:#d7e7ff;
+}
+
+
+/* === Bio strip ===================================================== */
+.bio {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 24px;            /* отступ до следующего блока */
+}
+
+/* можно использовать как .card.bio — чтобы фон/бордер совпадали со стилистикой */
+.card.bio {
+  padding: 16px;
+}
+
+/* аватар с инициалами */
+.bio .avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+  display: grid;
+  place-items: center;
+  color: rgba(255,255,255,0.90);
+  font-weight: 600;
+  letter-spacing: .02em;
+  outline: 1px solid rgba(255,255,255,0.15);
+  outline-offset: 0; /* имитация ring */
+  flex-shrink: 0;
+}
+
+/* заголовок + бейджи ролей в строку */
+.bio .head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bio .head h2 {
+  margin: 0;
+  color: rgba(255,255,255,0.90);
+  font-weight: 600;
+}
+
+/* Bio: бейджи ролей — как теги технологий */
+.bio .role {
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: inherit; /* берём цвет от .hint, если он применится */
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+}
+
+/* ЯВНО задаём такой же цвет, как у "FastAPI · PostgreSQL · …" */
+.bio .role.hint {
+  color: var(--project-title-color) !important;
+}
+
+/* абзац */
+.bio p {
+  margin: 8px 0 0;
+  color: rgba(255,255,255,0.70);
+  line-height: 1.6;
+  max-width: 70ch;                /* комфортная длина строки */
+}
+
+/* ссылки */
+.bio .links {
+  margin-top: 10px;
+  line-height: 1.8;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Голубые ссылки в блоке Bio */
+.bio .links a {
+  font-size: 12px;
+  color: var(--project-title-color);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--project-title-color) 55%, transparent);
+}
+.bio .links a:hover {
+  color: var(--project-title-hover);
+  text-decoration-color: var(--project-title-hover);
+}
+.bio .links .dot { color: rgba(255,255,255,0.63); }
+
+
+/* более светлый, но не «ослепляющий» */
+.bio .lead {
+  color: rgba(255,255,255,0.92);
+  /* опционально: чуть крупнее/контрастнее типографика */
+  font-weight: 500;          /* можно убрать, если не нужно */
+}
+
+/* если хочешь прям белый — раскомментируй: */
+/* .bio .lead { color: #fff; } */
+
+/* === Альтернативный чип для «Личных проектов» === */
+.chip-alt{
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.6;
+  background: var(--chip-alt-bg);
+  border: 1px solid var(--chip-alt-brd);
+  color: var(--accent-alt);
+}
+
+/* Разделитель секции перед личными проектами */
+.section-sep{
+  margin: 14px 0 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.66);
+  border-top: 1px dashed rgba(255,255,255,0.08);
+  padding-top: 8px;
+}
+
+/* (необязательно) мини-футер ссылок в карточке */
+.card .links{
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.card .links a{
+  font-size: 12px;
+  color: var(--project-title-color);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--project-title-color) 55%, transparent);
+}
+.card .links a:hover{
+  color: var(--project-title-hover);
+  text-decoration-color: var(--project-title-hover);
+}
+.card .links .dot{ color: rgba(255,255,255,0.55); }

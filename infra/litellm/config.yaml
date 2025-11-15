@@ -1,0 +1,19 @@
+model_list:
+  - model_name: Qwen2.5
+    litellm_params:
+      custom_llm_provider: openai
+      model: qwen2.5-7b-instruct
+      api_base: http://vllm:8000/v1
+      api_key: sk-local-any
+      timeout: 60
+
+  - model_name: embedding-default
+    litellm_params:
+      custom_llm_provider: openai
+      api_base: http://tei:80/v1
+      api_key: dummy
+      model: text-embedding-3-large
+      timeout: 60
+
+general_settings:
+  default_model: Qwen2.5

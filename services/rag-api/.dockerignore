@@ -1,0 +1,8 @@
+.git
+**/__pycache__/
+venv
+.env*
+node_modules
+*.ipynb
+data
+uv.lock        # можно игнорить, раз используем requirements.txt

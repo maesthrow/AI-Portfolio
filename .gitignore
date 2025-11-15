@@ -1,0 +1,66 @@
+# --- OS / IDE ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints
+.python-version
+
+# --- Node / Next.js (root и /frontend) ---
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+frontend/out/
+dist/
+frontend/dist/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# --- Next.js misc ---
+.vercel/
+.netlify/
+.turbo/
+frontend/.vercel/
+frontend/.netlify/
+frontend/.turbo/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Docker ---
+docker-compose.override.yml
+*.pid
+
+# --- Данные/артефакты ML ---
+data/
+output/
+runs/
+
+# --- Secrets/env ---
+.env
+.env.*
+infra/*.env
+infra/.env*
+infra/env.dev
+
+# --- Alembic noise ---
+alembic/versions/__pycache__/
