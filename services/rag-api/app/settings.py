@@ -30,13 +30,16 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # === LiteLLM (единая точка для Chat/Embeddings) ===
-    litellm_base_url: str | AnyUrl = "http://localhost:8005/v1"   # PROXY_URL/v1
-    litellm_api_key: str = "sk-local-any"                         # любой токен (или реальный в проде)
+    # === LiteLLM (Qwen + embeddings) ===
+    litellm_base_url: str | AnyUrl = "http://localhost:8005/v1"
+    litellm_api_key: str = "sk-local-any"
 
-    # Модели, зарегистрированные в LiteLLM (model_name из config.yaml)
-    chat_model: str = "Qwen2.5"                 # алиас чата (локально идёт в vLLM)
-    embedding_model: str = "embedding-default"  # алиас эмбеддингов (идёт в TEI/OpenAI — как настроишь)
+    # GigaChat
+    giga_auth_data: str | None = None
+
+    # Модели (алиасы, как в конфиге прокси)
+    chat_model: str
+    embedding_model: str = "embedding-default"
 
     # Reranker
     reranker_model: str = "BAAI/bge-reranker-base"

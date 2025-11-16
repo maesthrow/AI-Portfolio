@@ -7,6 +7,14 @@ from .api_ingest import router as ingest_router
 from .api_ingest_batch import router as ingest_batch_router
 from .api_ask import router as ask_router
 
+import logging
+
+logging.basicConfig(
+    level=getattr(logging, settings().log_level.upper(), logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
+
 app = FastAPI(title="RAG API", docs_url="/api/swagger")
 
 app.add_middleware(

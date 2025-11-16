@@ -38,6 +38,8 @@ services:
       --max-num-batched-tokens 8192
       --served-model-name qwen2.5-7b-instruct
       --trust-remote-code
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
     volumes:
       - hf_cache:/root/.cache/hf
 
@@ -53,8 +55,7 @@ services:
     ports:
       - "${TEI_PORT:-8006}:80"
     volumes:
-      - ../models/intfloat/multilingual-e5-base:/data/model:ro
-
+      - ./models/intfloat/multilingual-e5-base:/data/model:ro
 
   # ЕДИНЫЙ ПРОКСИ — LiteLLM
   litellm:
@@ -103,6 +104,7 @@ services:
       litellm_api_key: ${LITELLM_MASTER_KEY}
       chat_model: ${CHAT_MODEL}
       embedding_model: ${EMBEDDING_MODEL}
+      giga_auth_data: ${GIGA_AUTH_DATA}
 
       # Chroma внутри сети Docker: порт ВСЕГДА 8000
       CHROMA_HOST: chroma

@@ -62,5 +62,8 @@ infra/*.env
 infra/.env*
 infra/env.dev
 
+# models
+infra/models/
+
 # --- Alembic noise ---
 alembic/versions/__pycache__/
