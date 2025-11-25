@@ -38,6 +38,14 @@ def healthz():
         "embedding_model": s.embedding_model,
     }
 
+@app.get("/meta")
+def meta():
+    s = settings()
+    return {
+        "chat_model": s.chat_model,
+        "embedding_model": s.embedding_model
+    }
+
 
 app.include_router(admin_router)
 app.include_router(ingest_router)

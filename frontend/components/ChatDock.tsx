@@ -27,6 +27,9 @@ export default function ChatDock({
   const [collapsed, setCollapsed] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [showIntro, setShowIntro] = useState(true); // стартовые подсказки
+  const [modelName, setModelName] = useState<string>(
+    process.env.NEXT_PUBLIC_CHAT_MODEL || "модель не определена"
+  );
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -34,6 +37,22 @@ export default function ChatDock({
   const boxWidth = width ?? 360;
   const boxHeight = height ?? 420;
   const BAR_H = 46;
+
+  // --- получить имя модели заранее из /meta ---
+  useEffect(() => {
+    const RAG = process.env.NEXT_PUBLIC_RAG_API_URL || "http://localhost:8004";
+    (async () => {
+      try {
+        const r = await fetch(`${RAG}/meta`, { cache: "no-store" });
+        if (r.ok) {
+          const data = await r.json();
+          if (data?.chat_model) setModelName(String(data.chat_model));
+        }
+      } catch {
+        // тихо игнорим: останется имя из env или дефолт
+      }
+    })();
+  }, []);
 
   // автопрокрутка вниз
   const scrollToBottom = (smooth = true) => {
@@ -116,6 +135,12 @@ export default function ChatDock({
         throw new Error(text || `HTTP ${resp.status}`);
       }
       const data = await resp.json();
+
+      // если API прислал фактическое имя модели — обновим заголовок
+      if (data?.model && typeof data.model === "string") {
+        setModelName(data.model);
+      }
+
       stopTypingBubbleAndReplace(typingId, {
         role: "agent",
         text: data.answer || "(нет ответа)",
@@ -174,7 +199,8 @@ export default function ChatDock({
       >
         <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           <b style={{ color: "#cdd6f4" }}>AI-Portfolio Agent</b>
-          {collection ? ` · RAG: ${collection}` : " · Qwen2.5"}
+          {/* Всегда показываем название модели */}
+          {` · ${modelName}`}
         </div>
 
         <button
