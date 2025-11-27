@@ -13,11 +13,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
-    logging:
-      driver: json-file
-      options: { max-size: "10m", max-file: "3" }
 
-  # ЛОКАЛЬНЫЙ vLLM (опционально: если есть CUDA/GPU)
   vllm:
     image: vllm/vllm-openai:latest
     restart: unless-stopped
@@ -26,7 +22,7 @@ services:
       VLLM_WORKER_USE_STDOUT: "1"
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
     ports: [ "${VLLM_PORT:-8002}:8000" ]
-    runtime: nvidia        # <- используйте вместо gpus:all, если нужно в WSL/старом докере
+    runtime: nvidia
     command: >
       --model Qwen/Qwen2.5-7B-Instruct-AWQ
       --host 0.0.0.0 --port 8000
@@ -43,7 +39,6 @@ services:
     volumes:
       - hf_cache:/root/.cache/hf
 
-  # Embeddings сервер (OpenAI-совместимый endpoint /v1/embeddings)
   tei:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
     restart: unless-stopped
@@ -57,14 +52,12 @@ services:
     volumes:
       - ./models/intfloat/multilingual-e5-base:/data/model:ro
 
-  # ЕДИНЫЙ ПРОКСИ — LiteLLM
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     restart: unless-stopped
     ports: ["${LITELLM_PORT:-8005}:4000"]
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-      # сюда при необходимости добавишь ключи внешних провайдеров (OpenAI, GigaChat и т.п.)
     volumes:
       - ./litellm/config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000"]
@@ -72,64 +65,39 @@ services:
       - vllm
       - tei
 
-  # content-api:
-  #   build:
-  #     context: ../services/content-api
-  #     dockerfile: Dockerfile
-  #   restart: unless-stopped
-  #   environment:
-  #     # подключаемся к postgres из другого compose-стека
-  #     DATABASE_URL: postgresql+psycopg://ai_portfolio_user:ai-portfolio123@host.docker.internal:5433/ai_portfolio
-  #     FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
-  #     LOG_LEVEL: INFO
-  #   command: >
-  #     sh -lc "alembic upgrade head &&
-  #             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-  #   ports: [ "${CONTENT_PORT:-8003}:8000" ]
-  #   healthcheck:
-  #     test: [ "CMD", "curl", "-fsS", "http://localhost:8000/healthz" ]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 30
-
-  content-api:
+  content-api-new:
     build:
       context: ../services/content-api-new
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:${POSTGRES_PORT}/${POSTGRES_DB}
+      DATABASE_URL: postgresql+psycopg://ai_portfolio_user:ai-portfolio123@host.docker.internal:5433/ai_portfolio_new
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: INFO
       APP_ENV: dev
     command: >
       sh -lc "alembic upgrade head &&
               uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-    ports: [ "${CONTENT_PORT:-8003}:8000" ]
+    ports: [ "${CONTENT_NEW_PORT:-8013}:8000" ]
     healthcheck:
       test: [ "CMD", "curl", "-fsS", "http://localhost:8000/healthz" ]
       interval: 5s
       timeout: 3s
       retries: 30
 
-  # RAG backend — смотрит на LiteLLM
   rag-api:
     build:
       context: ../services/rag-api
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      # === важно: тут переменные под твой текущий Settings ===
       litellm_base_url: http://litellm:4000/v1
       litellm_api_key: ${LITELLM_MASTER_KEY}
       chat_model: ${CHAT_MODEL}
       embedding_model: ${EMBEDDING_MODEL}
       giga_auth_data: ${GIGA_AUTH_DATA}
-
-      # Chroma внутри сети Docker: порт ВСЕГДА 8000
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
-
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       LOG_LEVEL: INFO
     depends_on:
