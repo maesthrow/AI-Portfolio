@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  @apply bg-bg-base text-text-dim antialiased;
+  background: radial-gradient(circle at 20% 20%, rgba(34, 240, 192, 0.08), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(139, 92, 246, 0.1), transparent 30%),
+    #050712;
+}
+
+a {
+  @apply text-accent-soft underline-offset-4 transition-colors duration-150;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(34, 240, 192, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
