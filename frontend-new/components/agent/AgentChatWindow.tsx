@@ -10,6 +10,37 @@ type AgentChatWindowProps = {
   loading: boolean;
 };
 
+const LoadingDots = () => (
+  <div className="flex items-center justify-end gap-1">
+    {[0, 1, 2].map((i) => (
+      <span
+        key={i}
+        className="h-2 w-2 rounded-full bg-accent-soft"
+        style={{
+          animation: "pulse 1s ease-in-out infinite",
+          animationDelay: `${i * 0.15}s`
+        }}
+      />
+    ))}
+    <style jsx>{`
+      @keyframes pulse {
+        0% {
+          transform: translateY(0);
+          opacity: 0.6;
+        }
+        50% {
+          transform: translateY(-4px);
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(0);
+          opacity: 0.6;
+        }
+      }
+    `}</style>
+  </div>
+);
+
 export default function AgentChatWindow({
   messages,
   value,
@@ -36,7 +67,7 @@ export default function AgentChatWindow({
         disabled={loading}
         suggestions={["Проекты ML", "Где применялся RAG?", "Технологии Python", "Как устроен агент?"]}
       />
-      {loading ? <p className="text-right text-[11px] text-accent-soft">Думаю…</p> : null}
+      {loading ? <LoadingDots /> : null}
     </div>
   );
 }

@@ -39,7 +39,7 @@ export default function AgentInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
-          placeholder="Напиши вопрос..."
+          placeholder={disabled ? "Ожидание ответа..." : "Напиши вопрос..."}
           className="flex-1 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-sm text-slate-100 outline-none ring-accent/30 transition focus:border-accent focus:ring-2 disabled:opacity-50"
         />
         <button
