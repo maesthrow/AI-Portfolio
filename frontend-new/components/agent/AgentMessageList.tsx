@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { AgentMessage } from "@/lib/types";
 import clsx from "clsx";
 
@@ -6,10 +7,21 @@ type AgentMessageListProps = {
 };
 
 export default function AgentMessageList({ messages }: AgentMessageListProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   return (
-    <div className="flex flex-1 flex-col gap-3 overflow-y-auto rounded-xl bg-black/40 p-3 text-sm">
+    <div
+      ref={scrollRef}
+      className="flex flex-1 flex-col gap-3 overflow-y-auto rounded-xl bg-black/40 p-3 text-sm"
+    >
       {messages.length === 0 ? (
-        <div className="text-center text-xs text-slate-500">
+        <div className="flex flex-1 items-center justify-center text-center text-sm text-slate-400">
           Спроси агента о проектах, опыте или технологиях.
         </div>
       ) : (

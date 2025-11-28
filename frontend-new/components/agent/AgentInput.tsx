@@ -39,13 +39,15 @@ export default function AgentInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
-          placeholder="Спросите про проекты или опыт..."
+          placeholder="Напиши вопрос..."
           className="flex-1 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-sm text-slate-100 outline-none ring-accent/30 transition focus:border-accent focus:ring-2 disabled:opacity-50"
         />
         <button
           type="submit"
           disabled={disabled}
-          className="rounded-xl border border-accent/60 bg-accent/20 px-3 py-2 text-sm font-semibold text-slate-900 shadow-neon transition enabled:hover:-translate-y-0.5 enabled:hover:shadow-neon-strong disabled:opacity-50"
+          className={`rounded-xl border border-accent/60 bg-accent/20 px-3 py-2 text-sm font-semibold shadow-neon transition enabled:hover:-translate-y-0.5 enabled:hover:shadow-neon-strong disabled:opacity-50 ${
+            value.trim() ? "text-slate-100" : "text-slate-900"
+          }`}
         >
           Отправить
         </button>
