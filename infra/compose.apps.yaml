@@ -131,6 +131,7 @@ services:
       CHROMA_PORT: 8000
 
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      FRONTEND_LOCAL_IP: ${FRONTEND_LOCAL_IP}
       LOG_LEVEL: INFO
     depends_on:
       - chroma

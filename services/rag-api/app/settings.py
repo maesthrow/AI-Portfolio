@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     chroma_collection: str = "portfolio"
 
     # CORS
-    frontend_origin: str | AnyUrl = "http://localhost:3000"
+    frontend_origin: str | AnyUrl = "http://localhost:3001"
     frontend_local_ip: str | AnyUrl = "http://localhost:3001"
 
     # logging
