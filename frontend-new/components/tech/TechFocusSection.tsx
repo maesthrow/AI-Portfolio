@@ -5,6 +5,13 @@ type TechFocusSectionProps = {
   items: TechFocusItem[];
 };
 
+function normalizeTag(tag: TechFocusItem["tags"][number]) {
+  if (typeof tag === "string") return tag;
+  if (tag?.name) return tag.name;
+  if (tag?.id !== undefined) return String(tag.id);
+  return "tag";
+}
+
 export default function TechFocusSection({ items }: TechFocusSectionProps) {
   return (
     <Section
@@ -27,10 +34,10 @@ export default function TechFocusSection({ items }: TechFocusSectionProps) {
             <div className="mt-5 flex flex-wrap gap-3">
               {item.tags.map((tag) => (
                 <span
-                  key={tag}
+                  key={normalizeTag(tag)}
                   className="rounded-full border border-[#00ffc3]/40 bg-accent/10 px-3 py-1 text-xs text-slate-100 shadow-[0_0_8px_rgba(0,255,200,0.25)]"
                 >
-                  {tag}
+                  {normalizeTag(tag)}
                 </span>
               ))}
             </div>

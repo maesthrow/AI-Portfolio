@@ -15,6 +15,13 @@ type ProjectCardProps = {
   project: Project;
 };
 
+function normalizeTech(value: string | { id?: string | number; name?: string }): string {
+  if (typeof value === "string") return value;
+  if (value?.name) return value.name;
+  if (value?.id !== undefined) return String(value.id);
+  return "tech";
+}
+
 export default function ProjectCard({ project }: ProjectCardProps) {
   const domain = project.domain ? domainLabels[project.domain] : null;
 
@@ -40,10 +47,10 @@ export default function ProjectCard({ project }: ProjectCardProps) {
         <div className="flex flex-wrap gap-3 pt-1">
           {project.technologies.map((tech) => (
             <span
-              key={tech}
+              key={normalizeTech(tech as any)}
               className="rounded-full border border-[#00ffc3]/30 bg-black/50 px-3 py-1 text-xs text-slate-200 shadow-[0_0_8px_rgba(0,255,200,0.2)]"
             >
-              {tech}
+              {normalizeTech(tech as any)}
             </span>
           ))}
         </div>

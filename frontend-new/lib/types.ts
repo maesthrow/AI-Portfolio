@@ -27,7 +27,7 @@ export type StatItem = {
 export type TechFocusItem = {
   id: string;
   label: string;
-  tags: string[];
+  tags: (string | { id?: string | number; name?: string; order_index?: number })[];
 };
 
 export type Project = {
@@ -37,7 +37,7 @@ export type Project = {
   period?: string | null;
   company_name?: string | null;
   company_website?: string | null;
-  technologies?: string[];
+  technologies?: (string | { id?: string | number; name?: string })[];
   domain?: "cv" | "rag" | "backend" | "mlops" | "other";
   featured?: boolean;
   repo_url?: string | null;
