@@ -32,6 +32,11 @@ export default function AgentDock() {
   const charQueueRef = useRef<string[]>([]);
   const frameRef = useRef<number | null>(null);
   const activeAgentIdRef = useRef<string | null>(null);
+  const lastTickRef = useRef<number>(performance.now());
+
+  // Настраиваемая скорость печати
+  const CHARS_PER_SECOND = 50;
+  const MAX_CHARS_PER_TICK = 4;
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -62,8 +67,25 @@ export default function AgentDock() {
       frameRef.current = null;
       return;
     }
-    const nextChar = charQueueRef.current.shift() as string;
-    updateAgentMessage(targetId, (m) => ({ ...m, content: (m.content || "") + nextChar }));
+
+    const now = performance.now();
+    const intervalMs = 1000 / CHARS_PER_SECOND;
+
+    if (now - lastTickRef.current < intervalMs) {
+      frameRef.current = requestAnimationFrame(() => pumpChars(targetId));
+      return;
+    }
+
+    const elapsed = now - lastTickRef.current;
+    lastTickRef.current = now;
+    const budget = Math.max(1, Math.floor(elapsed / intervalMs));
+    const take = Math.min(MAX_CHARS_PER_TICK, budget, charQueueRef.current.length);
+    const chunk = charQueueRef.current.splice(0, take).join("");
+
+    if (chunk) {
+      updateAgentMessage(targetId, (m) => ({ ...m, content: (m.content || "") + chunk }));
+    }
+
     frameRef.current = requestAnimationFrame(() => pumpChars(targetId));
   };
 
