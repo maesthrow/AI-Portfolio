@@ -29,6 +29,9 @@ export default function AgentDock() {
   const [loading, setLoading] = useState(false);
   const sessionIdRef = useRef<string>(generateSessionId());
   const streamControllerRef = useRef<AbortController | null>(null);
+  const charQueueRef = useRef<string[]>([]);
+  const frameRef = useRef<number | null>(null);
+  const activeAgentIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -45,6 +48,31 @@ export default function AgentDock() {
     setMessages((prev) =>
       prev.map((m) => (m.tempId === tempId || m.id === tempId ? updater(m) : m))
     );
+  };
+
+  const stopCharPump = () => {
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+  };
+
+  const pumpChars = (targetId: string) => {
+    if (!charQueueRef.current.length) {
+      frameRef.current = null;
+      return;
+    }
+    const nextChar = charQueueRef.current.shift() as string;
+    updateAgentMessage(targetId, (m) => ({ ...m, content: (m.content || "") + nextChar }));
+    frameRef.current = requestAnimationFrame(() => pumpChars(targetId));
+  };
+
+  const enqueueChars = (targetId: string, text: string) => {
+    if (!text) return;
+    charQueueRef.current.push(...text);
+    if (!frameRef.current) {
+      pumpChars(targetId);
+    }
   };
 
   const handleSend = async () => {
@@ -75,6 +103,10 @@ export default function AgentDock() {
     const controller = new AbortController();
     streamControllerRef.current = controller;
 
+    activeAgentIdRef.current = tempId;
+    charQueueRef.current = [];
+    stopCharPump();
+
     const applyError = (message: string) => {
       updateAgentMessage(tempId, (m) => ({
         ...m,
@@ -93,9 +125,9 @@ export default function AgentDock() {
         if (event.type === "start" && event.message_id) {
           updateAgentMessage(tempId, (m) => ({ ...m, id: event.message_id }));
         } else if (event.type === "delta") {
+          enqueueChars(tempId, event.content);
           updateAgentMessage(tempId, (m) => ({
             ...m,
-            content: (m.content || "") + event.content,
             status: "streaming"
           }));
         } else if (event.type === "error") {
@@ -109,6 +141,8 @@ export default function AgentDock() {
       }));
     } catch (err: any) {
       if (err?.name === "AbortError") {
+        stopCharPump();
+        charQueueRef.current = [];
         updateAgentMessage(tempId, (m) => ({
           ...m,
           content: m.content || "Ответ остановлен.",
@@ -118,6 +152,8 @@ export default function AgentDock() {
         console.error("Streaming agent failed, falling back to sync", err);
         try {
           const fallback = await askAgent(question, sessionId);
+          stopCharPump();
+          charQueueRef.current = [];
           updateAgentMessage(tempId, (m) => ({
             ...m,
             content: fallback.answer,
@@ -131,6 +167,10 @@ export default function AgentDock() {
     } finally {
       setLoading(false);
       streamControllerRef.current = null;
+      activeAgentIdRef.current = null;
+      if (!charQueueRef.current.length) {
+        stopCharPump();
+      }
     }
   };
 
