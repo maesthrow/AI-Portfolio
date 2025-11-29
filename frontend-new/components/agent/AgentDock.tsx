@@ -32,7 +32,10 @@ export default function AgentDock() {
   const charQueueRef = useRef<string[]>([]);
   const frameRef = useRef<number | null>(null);
   const activeAgentIdRef = useRef<string | null>(null);
+  const currentOutputIdRef = useRef<string | null>(null);
   const lastTickRef = useRef<number>(performance.now());
+  const releasePendingRef = useRef<boolean>(false);
+  const [streamingStarted, setStreamingStarted] = useState(false);
 
   // Настраиваемая скорость печати
   const CHARS_PER_SECOND = Number(process.env.NEXT_PUBLIC_CHARS_PER_SECOND) || 60;
@@ -62,9 +65,19 @@ export default function AgentDock() {
     }
   };
 
+  const tryReleaseLoading = () => {
+    if (releasePendingRef.current && charQueueRef.current.length === 0) {
+      setLoading(false);
+      releasePendingRef.current = false;
+      currentOutputIdRef.current = null;
+      setStreamingStarted(false);
+    }
+  };
+
   const pumpChars = (targetId: string) => {
     if (!charQueueRef.current.length) {
       frameRef.current = null;
+      tryReleaseLoading();
       return;
     }
 
@@ -121,11 +134,14 @@ export default function AgentDock() {
     setMessages((prev) => [...prev, userMessage, agentPlaceholder]);
     setInputValue("");
     setLoading(true);
+    setStreamingStarted(false);
+    releasePendingRef.current = false;
 
     const controller = new AbortController();
     streamControllerRef.current = controller;
 
     activeAgentIdRef.current = tempId;
+    currentOutputIdRef.current = tempId;
     charQueueRef.current = [];
     stopCharPump();
 
@@ -145,8 +161,12 @@ export default function AgentDock() {
 
       for await (const event of stream as AsyncIterable<ChatStreamEvent>) {
         if (event.type === "start" && event.message_id) {
+          currentOutputIdRef.current = event.message_id;
           updateAgentMessage(tempId, (m) => ({ ...m, id: event.message_id }));
         } else if (event.type === "delta") {
+          if (!streamingStarted) {
+            setStreamingStarted(true);
+          }
           enqueueChars(tempId, event.content);
           updateAgentMessage(tempId, (m) => ({
             ...m,
@@ -161,6 +181,8 @@ export default function AgentDock() {
         ...m,
         status: m.status === "error" ? m.status : "done"
       }));
+      releasePendingRef.current = true;
+      tryReleaseLoading();
     } catch (err: any) {
       if (err?.name === "AbortError") {
         stopCharPump();
@@ -170,6 +192,8 @@ export default function AgentDock() {
           content: m.content || "Ответ остановлен.",
           status: "stopped"
         }));
+        releasePendingRef.current = true;
+        tryReleaseLoading();
       } else {
         console.error("Streaming agent failed, falling back to sync", err);
         try {
@@ -181,24 +205,46 @@ export default function AgentDock() {
             content: fallback.answer,
             status: "done"
           }));
+          releasePendingRef.current = true;
+          tryReleaseLoading();
         } catch (fallbackErr) {
           console.error("Fallback agent failed", fallbackErr);
           applyError("Не получилось связаться с агентом. Попробуйте позже.");
+          releasePendingRef.current = true;
+          tryReleaseLoading();
         }
       }
     } finally {
-      setLoading(false);
       streamControllerRef.current = null;
       activeAgentIdRef.current = null;
       if (!charQueueRef.current.length) {
         stopCharPump();
+        tryReleaseLoading();
       }
     }
   };
 
   const handleStop = () => {
+    const targetId = currentOutputIdRef.current || activeAgentIdRef.current;
     if (streamControllerRef.current) {
       streamControllerRef.current.abort();
+      stopCharPump();
+      charQueueRef.current = [];
+      releasePendingRef.current = true;
+      setStreamingStarted(false);
+      tryReleaseLoading();
+    } else if (targetId) {
+      stopCharPump();
+      charQueueRef.current = [];
+      updateAgentMessage(targetId, (m) => ({
+        ...m,
+        content: m.content || "Ответ остановлен.",
+        status: "stopped"
+      }));
+      setLoading(false);
+      releasePendingRef.current = false;
+      currentOutputIdRef.current = null;
+      setStreamingStarted(false);
     }
   };
 
@@ -231,6 +277,9 @@ export default function AgentDock() {
             onValueChange={setInputValue}
             onSubmit={handleSend}
             loading={loading}
+            inputDisabled={loading && !streamingStarted}
+            sendDisabled={loading}
+            streaming={loading}
             onStop={handleStop}
           />
         </div>

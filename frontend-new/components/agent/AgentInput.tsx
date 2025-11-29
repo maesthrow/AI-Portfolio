@@ -5,6 +5,8 @@ type AgentInputProps = {
   onChange: (v: string) => void;
   onSubmit: () => void;
   disabled?: boolean;
+  inputDisabled?: boolean;
+  sendDisabled?: boolean;
   suggestions?: string[];
   streaming?: boolean;
   onStop?: () => void;
@@ -15,6 +17,8 @@ export default function AgentInput({
   onChange,
   onSubmit,
   disabled,
+  inputDisabled = false,
+  sendDisabled = false,
   suggestions = [],
   streaming = false,
   onStop
@@ -25,7 +29,8 @@ export default function AgentInput({
     onSubmit();
   };
 
-  const inputDisabled = disabled || streaming;
+  const inputIsDisabled = inputDisabled || disabled;
+  const sendIsDisabled = sendDisabled || disabled || streaming;
 
   return (
     <div className="space-y-3">
@@ -45,8 +50,8 @@ export default function AgentInput({
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          disabled={inputDisabled}
-          placeholder={inputDisabled ? "Ожидание ответа..." : "Напишите вопрос..."}
+          disabled={inputIsDisabled}
+          placeholder={inputIsDisabled ? "Ожидание ответа..." : "Напишите вопрос..."}
           className="flex-1 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-sm text-slate-100 outline-none ring-accent/30 transition focus:border-accent focus:ring-2 disabled:opacity-50"
         />
         {streaming ? (
@@ -61,7 +66,7 @@ export default function AgentInput({
         ) : (
           <button
             type="submit"
-            disabled={disabled || !value.trim()}
+            disabled={sendIsDisabled || !value.trim()}
             className={`rounded-xl border border-accent/60 bg-accent/20 px-3 py-2 text-sm font-semibold shadow-neon transition enabled:hover:-translate-y-0.5 enabled:hover:shadow-neon-strong disabled:opacity-50 ${
               value.trim() ? "text-slate-100" : "text-slate-900"
             }`}

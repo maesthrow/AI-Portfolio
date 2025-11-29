@@ -8,6 +8,9 @@ type AgentChatWindowProps = {
   onValueChange: (v: string) => void;
   onSubmit: () => void;
   loading: boolean;
+  inputDisabled?: boolean;
+  sendDisabled?: boolean;
+  streaming?: boolean;
   onStop?: () => void;
 };
 
@@ -48,6 +51,9 @@ export default function AgentChatWindow({
   onValueChange,
   onSubmit,
   loading,
+  inputDisabled = false,
+  sendDisabled = false,
+  streaming = false,
   onStop
 }: AgentChatWindowProps) {
   return (
@@ -66,10 +72,12 @@ export default function AgentChatWindow({
         value={value}
         onChange={onValueChange}
         onSubmit={onSubmit}
-        disabled={loading}
-        streaming={loading}
+        disabled={false}
+        inputDisabled={inputDisabled}
+        sendDisabled={sendDisabled}
+        streaming={streaming}
         onStop={onStop}
-        suggestions={["Проекты ML", "Где применялся RAG?", "Технологии Python", "Как устроен агент?"]}
+        suggestions={["Проекты ML", "Где применяется RAG?", "Технологии Python", "Как устроен агент?"]}
       />
       {loading ? <LoadingDots /> : null}
     </div>
