@@ -1,0 +1,596 @@
+# services/content-api-new/app/seed/seed_ai_portfolio_new.py
+from __future__ import annotations
+
+from datetime import date
+from typing import Iterable
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+
+from app.settings import settings
+
+from app.models.profile import Profile
+from app.models.contact import Contact
+from app.models.experience import Experience
+from app.models.project import Project
+from app.models.publication import Publication
+from app.models.stats import Stat
+from app.models.tech_focus import TechFocus, TechFocusTag
+from app.models.technology import Technology
+
+# автономная сессия, как в старых сидерах
+engine = create_engine(settings.database_url, future=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+
+# ---------- утилиты ----------
+
+def get_one(session, model, **filters):
+    return session.execute(select(model).filter_by(**filters)).scalar_one_or_none()
+
+
+def upsert_one(session, model, identity: dict, payload: dict):
+    obj = get_one(session, model, **identity)
+    if obj is None:
+        obj = model(**identity, **payload)
+        session.add(obj)
+    else:
+        changed = False
+        for field, val in payload.items():
+            if getattr(obj, field) != val:
+                setattr(obj, field, val)
+                changed = True
+        if changed:
+            session.flush()
+    return obj
+
+
+# ---------- данные ----------
+
+PROFILE_DATA = {
+    "id": 1,
+    "full_name": "Dmitriy Kargin",
+    "title": "Python / ML Engineer",
+    "subtitle": "CV, LLM, RAG, backend",
+    "location": "Samara, Russia",
+    "status": "open_to_opportunities",
+    # аватар подставишь свой, если нужно
+    "avatar_url": "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
+    "summary_md": (
+        "ML/LLM инженер с бэкенд-фоном Python/.NET. "
+        "Фокус на CV и RAG-системах, надёжных backend-API и интеграциях. "
+        "От подготовки данных и обучения моделей до продакшена и MLOps."
+    ),
+}
+
+CONTACTS_DATA = [
+    {
+        "kind": "telegram",
+        "label": "Telegram",
+        "value": "@kargindmitriy",
+        "url": "https://t.me/kargindmitriy",
+        "order_index": 10,
+        "is_primary": True,
+    },
+    {
+        "kind": "email",
+        "label": "Email",
+        "value": "dmitriy3kargin@gmail.com",
+        "url": "mailto:dmitriy3kargin@gmail.com",
+        "order_index": 20,
+        "is_primary": False,
+    },
+    {
+        "kind": "github",
+        "label": "GitHub",
+        "value": "maesthrow",
+        "url": "https://github.com/maesthrow",
+        "order_index": 30,
+        "is_primary": False,
+    },
+    {
+        "kind": "linkedin",
+        "label": "LinkedIn",
+        "value": "Dmitriy Kargin",
+        "url": "https://www.linkedin.com/in/dmitriy-kargin",
+        "order_index": 40,
+        "is_primary": False,
+    },
+]
+
+EXPERIENCE_DATA = [
+    # Aston / t2 – Нейросети
+    {
+        "role": "Python / ML Engineer",
+        "company_name": "Aston (проект t2 – Нейросети)",
+        "company_url": "https://astondevs.ru",
+        "start_date": date(2024, 10, 28),
+        "end_date": None,
+        "is_current": True,
+        "kind": "commercial",
+        "description_md": (
+            "- Проект t2 по разработке сервисов на базе ML-решений (LLM и CV).\n"
+            "- Сервис компьютерного зрения для ребрендинга t2/Tele2: обучение YOLOv8, "
+            "отчёты по торговым точкам.\n"
+            "- Telegram-бот с LLM + RAG для расчёта штрафов по договорам.\n"
+            "- MVP бэкенда авто-обучения и инференса CV-моделей (FastAPI, MLflow, Celery).\n"
+        ),
+        "order_index": 10,
+    },
+    # АЛОР
+    {
+        "role": "Python backend developer",
+        "company_name": "ООО «АЛОР +» / АЛОР БРОКЕР",
+        "company_url": "https://www.alorbroker.ru",
+        "start_date": date(2024, 5, 13),
+        "end_date": date(2024, 10, 27),
+        "is_current": False,
+        "kind": "commercial",
+        "description_md": (
+            "- Сервис нотификаций для бэк-офиса и клиентов.\n"
+            "- Интеграция сервиса отправки отчётов в ФНС с Контур.Экстерн.\n"
+            "- Доработка сервиса регистрации клиентов: валидация данных перед отправкой на биржу.\n"
+        ),
+        "order_index": 20,
+    },
+    # Spargo / F3 TAIL
+    {
+        "role": "Python backend developer",
+        "company_name": "АО «Спарго Технологии» / F3 TAIL",
+        "company_url": "https://www.spargo.ru",
+        "start_date": date(2023, 9, 4),
+        "end_date": date(2024, 5, 10),
+        "is_current": False,
+        "kind": "commercial",
+        "description_md": (
+            "- Сервисы для автоматизации аптек и розничной торговли.\n"
+            "- Оптимизация обмена с Единым Справочником (ускорение >3x).\n"
+            "- Сервис мониторинга и логирования сбоев.\n"
+            "- Telegram-бот службы поддержки (aiogram, aiogram-dialog).\n"
+        ),
+        "order_index": 30,
+    },
+    # РКЦ «Прогресс» / СКИО
+    {
+        "role": "Python developer",
+        "company_name": "АО «РКЦ «Прогресс» / СКИО",
+        "company_url": "https://samspace.ru",
+        "start_date": date(2022, 8, 1),
+        "end_date": date(2023, 9, 1),
+        "is_current": False,
+        "kind": "commercial",
+        "description_md": (
+            "- Серверная часть и БД системы контроля испытательного оборудования (СКИО).\n"
+            "- Проектирование БД (таблицы, индексы, представления).\n"
+            "- Серверные скрипты на Python (SQLAlchemy + psycopg), отчёты CSV/COPY, pytest.\n"
+        ),
+        "order_index": 40,
+    },
+    # HyperKeeper как личный проект
+    {
+        "role": "Indie developer",
+        "company_name": "HyperKeeper (личный проект)",
+        "company_url": "https://github.com/maesthrow/HyperKeeperBot",
+        "start_date": date(2023, 12, 28),
+        "end_date": None,
+        "is_current": True,
+        "kind": "personal",
+        "description_md": (
+            "- Telegram-бот-хранилище: папки, файлы, медиа и заметки.\n"
+            "- Быстрая навигация и управление контентом.\n"
+            "- Интеграция с LLM (GigaChat), несколько чатов с сохранением истории.\n"
+        ),
+        "order_index": 50,
+    },
+]
+
+PROJECTS_DATA = [
+    {
+        "name": "t2 – Нейросети",
+        "slug": "t2-ml",
+        "description_md": (
+            "ML-платформа для проектов компании t2: CV-сервисы для ребрендинга, "
+            "LLM + RAG-системы, бэкенд авто-обучения и инференса CV-моделей."
+        ),
+        "period": "2024 — н.в.",
+        "company_name": "t2 (проект в Aston)",
+        "company_website": "https://t2.ru",
+        "domain": "ml_platform",
+        "featured": True,
+        "repo_url": None,
+        "demo_url": None,
+        "technologies": [
+            "Python 3.12",
+            "FastAPI",
+            "PostgreSQL",
+            "Redis",
+            "Celery",
+            "RabbitMQ",
+            "YOLO (Ultralytics)",
+            "Detectron2",
+            "vLLM",
+            "LiteLLM",
+            "LangChain",
+            "LangGraph",
+            "ChromaDB",
+            "MLflow",
+            "Docker",
+        ],
+    },
+    {
+        "name": "HyperKeeper",
+        "slug": "hyperkeeper",
+        "description_md": (
+            "Личный Telegram-бот-хранилище: структура папок, файлы, медиа, текстовые заметки. "
+            "Интеграция с LLM (GigaChat), история диалогов и быстрый поиск по контенту."
+        ),
+        "period": "2023 — н.в.",
+        "company_name": None,
+        "company_website": None,
+        "domain": "personal_product",
+        "featured": True,
+        "repo_url": "https://github.com/maesthrow/HyperKeeperBot",
+        "demo_url": "https://t.me/HyperKeeperBot",
+        "technologies": [
+            "Python 3.12",
+            "aiogram",
+            "aiogram-dialog",
+            "MongoDB",
+            "LangChain",
+            "GigaChain",
+            "Docker",
+        ],
+    },
+    {
+        "name": "АЛОР БРОКЕР",
+        "slug": "alor-broker",
+        "description_md": (
+            "Python-бэкенд для брокерских сервисов: нотификации, регистрация клиентов, "
+            "интеграция с ФНС через Контур.Экстерн."
+        ),
+        "period": "2024",
+        "company_name": "ООО «АЛОР +»",
+        "company_website": "https://www.alorbroker.ru",
+        "domain": "fintech",
+        "featured": False,
+        "repo_url": None,
+        "demo_url": None,
+        "technologies": [
+            "Python 3.9",
+            "FastAPI",
+            "PostgreSQL",
+            "RabbitMQ",
+            "Celery",
+            "Docker",
+        ],
+    },
+    {
+        "name": "F3 TAIL",
+        "slug": "f3-tail",
+        "description_md": (
+            "Сервисы для автоматизации аптек и розничной торговли: интеграции, мониторинг, "
+            "бот службы поддержки на aiogram-dialog."
+        ),
+        "period": "2023–2024",
+        "company_name": "АО «Спарго Технологии»",
+        "company_website": "https://www.spargo.ru",
+        "domain": "retail",
+        "featured": False,
+        "repo_url": None,
+        "demo_url": None,
+        "technologies": [
+            "Python 3.9",
+            "FastAPI",
+            "PostgreSQL",
+            "SQLAlchemy",
+            "APScheduler",
+            "aiogram",
+            "aiogram-dialog",
+            "Docker",
+        ],
+    },
+    {
+        "name": "СКИО",
+        "slug": "skio",
+        "description_md": (
+            "Серверная часть и БД системы контроля испытательного оборудования (СКИО): "
+            "проектирование схемы БД, отчёты CSV/COPY, автоматизация выгрузок."
+        ),
+        "period": "2022–2023",
+        "company_name": "АО «РКЦ «Прогресс»",
+        "company_website": "https://samspace.ru",
+        "domain": "industrial",
+        "featured": False,
+        "repo_url": None,
+        "demo_url": None,
+        "technologies": [
+            "Python 3.9",
+            "SQLAlchemy",
+            "psycopg",
+            "PostgreSQL",
+            "pytest",
+        ],
+    },
+]
+
+PUBLICATIONS_DATA = [
+    {
+        "title": "Гайд: AI-агент на GigaChat и LangGraph (от архитектуры до валидации)",
+        "year": 2025,
+        "source": "Habr",
+        "url": "https://habr.com/ru/articles/xxxxx/",
+        "badge": None,
+        "description_md": (
+            "Пошаговый разбор архитектуры AI-агента на базе GigaChat и LangGraph "
+            "на примере Lean Canvas."
+        ),
+        "order_index": 10,
+    },
+    {
+        "title": "Какой плащ был у Понтия Пилата? Отвечает GigaChat",
+        "year": 2024,
+        "source": "Habr",
+        "url": "https://habr.com/ru/articles/yyyyy/",
+        "badge": None,
+        "description_md": "Развлекательный кейс с использованием GigaChat и RAG-подхода.",
+        "order_index": 20,
+    },
+]
+
+STATS_DATA = [
+    # цифры примерные — легко поправишь в БД
+    {
+        "key": "repos",
+        "label": "GitHub репозитории",
+        "value": "30+",
+        "hint": "",
+        "group_name": "about",
+        "order_index": 10,
+    },
+    {
+        "key": "experience_years",
+        "label": "Опыт в разработке",
+        "value": "3+ года",
+        "hint": "Python + .NET, backend и ML",
+        "group_name": "about",
+        "order_index": 20,
+    },
+    {
+        "key": "ml_projects",
+        "label": "ML / CV / RAG проекты",
+        "value": "5+",
+        "hint": "",
+        "group_name": "about",
+        "order_index": 30,
+    },
+]
+
+TECH_FOCUS_DATA = [
+    {
+        "label": "RAG, агенты и LLM",
+        "description": "RAG-системы, агентные пайплайны, работа с векторными хранилищами.",
+        "order_index": 10,
+        "tags": [
+            "LangChain",
+            "LangGraph",
+            "RAG",
+            "Vector stores",
+            "GigaChat / Qwen",
+        ],
+    },
+    {
+        "label": "CV и детекция объектов",
+        "description": "Компьютерное зрение для реальных бизнес-процессов.",
+        "order_index": 20,
+        "tags": [
+            "YOLO",
+            "Detectron2",
+            "Logo detection",
+            "Image pipelines",
+        ],
+    },
+    {
+        "label": "Backend и интеграции",
+        "description": "Python/.NET backend, API, брокеры сообщений, интеграции.",
+        "order_index": 30,
+        "tags": [
+            "FastAPI",
+            "ASP.NET Core",
+            "PostgreSQL",
+            "RabbitMQ",
+            "Redis",
+        ],
+    },
+    {
+        "label": "MLOps и инфраструктура",
+        "description": "Инференс, мониторинг, развертывание моделей.",
+        "order_index": 40,
+        "tags": [
+            "Docker",
+            "MLflow",
+            "vLLM",
+            "GitLab CI",
+        ],
+    },
+]
+
+# плоский список технологий для таблицы Technology (без строгих категорий)
+TECHNOLOGIES_DATA = sorted(
+    {
+        "Python 3.9",
+        "Python 3.12",
+        "FastAPI",
+        "Pydantic",
+        "SQLAlchemy",
+        "Alembic",
+        "PostgreSQL",
+        "Redis",
+        "RabbitMQ",
+        "Celery",
+        "psycopg",
+        "APScheduler",
+        "aiogram",
+        "aiogram-dialog",
+        "Docker",
+        "GitLab",
+        "Azure DevOps",
+        "YOLO (Ultralytics)",
+        "Detectron2",
+        "LangChain",
+        "LangGraph",
+        "ChromaDB",
+        "GigaChain",
+        "vLLM",
+        "LiteLLM",
+        "MLflow",
+        "MongoDB",
+        "pytest",
+        "ASP.NET Core",
+        ".NET 8",
+    }
+)
+
+RAG_DOCUMENTS_DATA = [
+    # переносим из старых сидеров «documents» в более общий RagDocument
+    {
+        "type": "project_doc",
+        "title": "Архитектура сервиса LLM + RAG (t2)",
+        "body": "Схема архитектуры сервиса LLM + RAG для проектов t2.",
+        "url": "https://example.org/aston-llm-rag-arch.pdf",
+        "tags": ["t2", "RAG", "architecture"],
+        "metadata": {"project_slug": "t2-ml"},
+    },
+    {
+        "type": "project_doc",
+        "title": "Схема CV-пайплайна t2",
+        "body": "Диаграмма пайплайна CV-обработки для ребрендинга t2/Tele2.",
+        "url": "https://example.org/aston-cv-pipeline-diagram.pdf",
+        "tags": ["t2", "cv", "pipeline"],
+        "metadata": {"project_slug": "t2-ml"},
+    },
+    {
+        "type": "project_doc",
+        "title": "Архитектура HyperKeeper",
+        "body": "Схема архитектуры Telegram-бота HyperKeeper.",
+        "url": "https://example.org/hyperkeeper-arch.pdf",
+        "tags": ["hyperkeeper", "architecture"],
+        "metadata": {"project_slug": "hyperkeeper"},
+    },
+]
+
+
+# ---------- функции-сидеры ----------
+
+def seed_profile(session):
+    identity = {"id": PROFILE_DATA["id"]}
+    payload = {k: v for k, v in PROFILE_DATA.items() if k != "id"}
+    upsert_one(session, Profile, identity, payload)
+
+
+def seed_contacts(session):
+    for idx, data in enumerate(CONTACTS_DATA, start=1):
+        identity = {"id": idx}
+        payload = {**data, "order_index": data.get("order_index", idx * 10)}
+        upsert_one(session, Contact, identity, payload)
+
+
+def seed_experience(session):
+    for idx, data in enumerate(EXPERIENCE_DATA, start=1):
+        identity = {"id": idx}
+        payload = {**data, "order_index": data.get("order_index", idx * 10)}
+        upsert_one(session, Experience, identity, payload)
+
+
+def seed_projects(session):
+    for idx, data in enumerate(PROJECTS_DATA, start=1):
+        identity = {"id": idx}
+        tech_names = data.get("technologies", [])
+        payload = data.copy()
+        payload.pop("technologies", None)
+        proj = upsert_one(session, Project, identity, payload)
+
+        # связь many-to-many «project ↔ technologies» в новой схеме уже реализована
+        # предположим, есть вспомогательный метод или отдельная таблица project_technology.
+        # Здесь только гарантируем наличие Technology; связку настроишь в API или
+        # отдельным скриптом, если нужно.
+
+
+def seed_publications(session):
+    for idx, data in enumerate(PUBLICATIONS_DATA, start=1):
+        identity = {"id": idx}
+        payload = {**data, "order_index": data.get("order_index", idx * 10)}
+        upsert_one(session, Publication, identity, payload)
+
+
+def seed_stats(session):
+    for idx, data in enumerate(STATS_DATA, start=1):
+        identity = {"id": idx}
+        payload = {**data, "order_index": data.get("order_index", idx * 10)}
+        upsert_one(session, Stat, identity, payload)
+
+
+def seed_tech_focus(session):
+    for idx, block in enumerate(TECH_FOCUS_DATA, start=1):
+        tags = block.get("tags", [])
+        identity = {"id": idx}
+        payload = {
+            "label": block["label"],
+            "description": block.get("description"),
+            "order_index": block.get("order_index", idx * 10),
+        }
+        focus: TechFocus = upsert_one(session, TechFocus, identity, payload)
+
+        # теги привяжем по имени + tech_focus_id
+        for t_idx, name in enumerate(tags, start=1):
+            identity_tag = {
+                "name": name,
+                "order_index": t_idx * 10,
+                "tech_focus_id": focus.id,
+            }
+            # здесь удобнее использовать get_one напрямую
+            tag = session.execute(
+                select(TechFocusTag).filter_by(
+                    tech_focus_id=focus.id,
+                    name=name,
+                )
+            ).scalar_one_or_none()
+            if tag is None:
+                tag = TechFocusTag(
+                    tech_focus_id=focus.id,
+                    name=name,
+                    order_index=t_idx * 10,
+                )
+                session.add(tag)
+
+
+def seed_technologies(session):
+    for idx, name in enumerate(TECHNOLOGIES_DATA, start=1):
+        slug = (
+            name.lower()
+            .replace(" ", "-")
+            .replace("(", "")
+            .replace(")", "")
+            .replace("/", "-")
+        )
+        identity = {"slug": slug}
+        payload = {"name": name, "category": None, "order_index": idx * 10}
+        upsert_one(session, Technology, identity, payload)
+
+
+def run():
+    with SessionLocal() as db:
+        seed_profile(db)
+        seed_contacts(db)
+        seed_experience(db)
+        seed_projects(db)
+        seed_publications(db)
+        seed_stats(db)
+        seed_tech_focus(db)
+        seed_technologies(db)
+
+        db.commit()
+        print("✅ Seed completed: ai_portfolio_new")
+
+
+if __name__ == "__main__":
+    run()
