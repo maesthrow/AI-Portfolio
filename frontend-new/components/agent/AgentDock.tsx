@@ -334,6 +334,7 @@ export default function AgentDock() {
             onValueChange={setInputValue}
             onSubmit={handleSend}
             loading={loading}
+            streamingStarted={streamingStarted}
             inputDisabled={loading && !streamingStarted}
             sendDisabled={loading}
             streaming={loading}

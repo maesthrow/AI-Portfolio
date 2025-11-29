@@ -11,39 +11,9 @@ type AgentChatWindowProps = {
   inputDisabled?: boolean;
   sendDisabled?: boolean;
   streaming?: boolean;
+  streamingStarted?: boolean;
   onStop?: () => void;
 };
-
-const LoadingDots = () => (
-  <div className="flex items-center justify-end gap-1">
-    {[0, 1, 2].map((i) => (
-      <span
-        key={i}
-        className="h-2 w-2 rounded-full bg-accent-soft"
-        style={{
-          animation: "pulse 1s ease-in-out infinite",
-          animationDelay: `${i * 0.15}s`
-        }}
-      />
-    ))}
-    <style jsx>{`
-      @keyframes pulse {
-        0% {
-          transform: translateY(0);
-          opacity: 0.6;
-        }
-        50% {
-          transform: translateY(-4px);
-          opacity: 1;
-        }
-        100% {
-          transform: translateY(0);
-          opacity: 0.6;
-        }
-      }
-    `}</style>
-  </div>
-);
 
 export default function AgentChatWindow({
   messages,
@@ -54,8 +24,11 @@ export default function AgentChatWindow({
   inputDisabled = false,
   sendDisabled = false,
   streaming = false,
+  streamingStarted = false,
   onStop
 }: AgentChatWindowProps) {
+  const typing = loading && !streamingStarted;
+
   return (
     <div className="flex h-full flex-col gap-3 rounded-2xl border border-accent/40 bg-slate-950/90 p-4 shadow-neon-strong backdrop-blur">
       <div className="flex items-center justify-between">
@@ -67,7 +40,7 @@ export default function AgentChatWindow({
           ● online
         </div>
       </div>
-      <AgentMessageList messages={messages} />
+      <AgentMessageList messages={messages} typing={typing} />
       <AgentInput
         value={value}
         onChange={onValueChange}
@@ -79,7 +52,6 @@ export default function AgentChatWindow({
         onStop={onStop}
         suggestions={["Расскажи об ML-проектах", "Опыт с Python", "Где применял RAG?", "Как устроен агент?"]}
       />
-      {loading ? <LoadingDots /> : null}
     </div>
   );
 }
