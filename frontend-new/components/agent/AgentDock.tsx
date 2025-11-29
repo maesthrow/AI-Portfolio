@@ -35,8 +35,8 @@ export default function AgentDock() {
   const lastTickRef = useRef<number>(performance.now());
 
   // Настраиваемая скорость печати
-  const CHARS_PER_SECOND = 50;
-  const MAX_CHARS_PER_TICK = 4;
+  const CHARS_PER_SECOND = Number(process.env.NEXT_PUBLIC_CHARS_PER_SECOND) || 60;
+  const MAX_CHARS_PER_TICK = Number(process.env.NEXT_PUBLIC_MAX_CHARS_PER_TICK) || 4;
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
