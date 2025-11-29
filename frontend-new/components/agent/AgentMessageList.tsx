@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
-import { AgentMessage } from "@/lib/types";
+import ReactMarkdown from "react-markdown";
 import clsx from "clsx";
+
+import { AgentMessage } from "@/lib/types";
 
 type AgentMessageListProps = {
   messages: AgentMessage[];
@@ -38,7 +40,30 @@ export default function AgentMessageList({ messages }: AgentMessageListProps) {
             <p className="font-mono text-[10px] uppercase tracking-wider text-accent-soft/80">
               {m.role === "user" ? "вы" : "агент"}
             </p>
-            <p className="mt-1 whitespace-pre-wrap leading-relaxed">{m.content}</p>
+            <div className="mt-1 text-sm leading-relaxed">
+              <ReactMarkdown
+                components={{
+                  p: ({ node, ...props }) => (
+                    <p className="whitespace-pre-wrap leading-relaxed" {...props} />
+                  ),
+                  strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
+                  ul: ({ node, ...props }) => <ul className="ml-4 list-disc space-y-1" {...props} />,
+                  ol: ({ node, ...props }) => <ol className="ml-4 list-decimal space-y-1" {...props} />,
+                  li: ({ node, ...props }) => <li className="whitespace-pre-wrap" {...props} />,
+                  code: ({ node, inline, ...props }) =>
+                    inline ? (
+                      <code className="rounded bg-slate-800 px-1 py-0.5 text-xs" {...props} />
+                    ) : (
+                      <code
+                        className="block whitespace-pre-wrap rounded bg-slate-900 px-3 py-2 text-xs"
+                        {...props}
+                      />
+                    )
+                }}
+              >
+                {m.content}
+              </ReactMarkdown>
+            </div>
           </div>
         ))
       )}

@@ -77,7 +77,7 @@ export default function AgentChatWindow({
         sendDisabled={sendDisabled}
         streaming={streaming}
         onStop={onStop}
-        suggestions={["Проекты ML", "Где применяется RAG?", "Технологии Python", "Как устроен агент?"]}
+        suggestions={["Проекты ML", "Где применялся RAG?", "Технологии Python", "Как устроен агент?"]}
       />
       {loading ? <LoadingDots /> : null}
     </div>
