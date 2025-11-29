@@ -51,6 +51,7 @@ class Settings(BaseSettings):
 
     # CORS
     frontend_origin: str | AnyUrl = "http://localhost:3000"
+    frontend_local_ip: str | AnyUrl = "http://localhost:3001"
 
     # logging
     log_level: str = "INFO"

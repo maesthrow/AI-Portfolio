@@ -19,7 +19,7 @@ app = FastAPI(title="RAG API", docs_url="/api/swagger")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(settings().frontend_origin)],
+    allow_origins=[str(settings().frontend_origin), str(settings().frontend_local_ip)],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
