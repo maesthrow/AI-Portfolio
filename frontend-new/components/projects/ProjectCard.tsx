@@ -1,84 +1,100 @@
 import { Project } from "@/lib/types";
 
-const domainLabels: Record<
-  NonNullable<Project["domain"]>,
-  { label: string; tone: string }
-> = {
-  cv: { label: "CV", tone: "bg-accent/15 text-accent" },
-  rag: { label: "RAG", tone: "bg-accent-alt/20 text-accent-soft" },
-  backend: { label: "Backend", tone: "bg-slate-800 text-slate-200" },
-  mlops: { label: "MLOps", tone: "bg-amber-200/10 text-amber-200" },
-  other: { label: "Other", tone: "bg-slate-700/60 text-slate-100" }
+const domainLabels: Record<string, { label: string; tone: string }> = {
+  cv: { label: "CV", tone: "border-accent/40 bg-accent/10 text-accent" },
+  rag: { label: "RAG", tone: "border-accent-alt/50 bg-accent-alt/15 text-accent-soft" },
+  backend: { label: "Backend", tone: "border-slate-700 bg-slate-900/70 text-slate-100" },
+  mlops: { label: "MLOps", tone: "border-amber-200/50 bg-amber-200/10 text-amber-200" },
+  other: { label: "Other", tone: "border-slate-700/80 bg-slate-800/70 text-slate-100" }
 };
 
 type ProjectCardProps = {
   project: Project;
 };
 
-function normalizeTech(value: string | { id?: string | number; name?: string }): string {
+function normalizeTech(value: string | { id?: string | number; name?: string }) {
   if (typeof value === "string") return value;
   if (value?.name) return value.name;
   if (value?.id !== undefined) return String(value.id);
-  return "tech";
+  return null;
+}
+
+function shortDescription(md?: string | null) {
+  if (!md) return null;
+  const lines = md
+    .split("\n")
+    .map((line) => line.replace(/^[*-]\s*/, "").trim())
+    .filter(Boolean);
+  if (!lines.length) return null;
+  return lines.slice(0, 2).join(" ");
 }
 
 export default function ProjectCard({ project }: ProjectCardProps) {
-  const domain = project.domain ? domainLabels[project.domain] : null;
+  const domainKey = project.domain?.toString().toLowerCase();
+  const domain = domainKey ? domainLabels[domainKey] : null;
+  const techTags = (project.technologies || [])
+    .map((tech) => normalizeTech(tech as any))
+    .filter(Boolean)
+    .slice(0, 4) as string[];
+  const description = shortDescription(project.description_md || (project as any).description);
 
   return (
-    <div className="group flex flex-col gap-4 rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-black/60 via-bg-panel/80 to-black/50 p-8 shadow-[0_0_25px_rgba(0,255,200,0.2)] transition-transform duration-300 hover:-translate-y-1 hover:scale-105 hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-xl font-semibold text-slate-50">{project.name}</p>
-          {project.period ? (
-            <p className="text-xs uppercase tracking-wide text-slate-400">{project.period}</p>
-          ) : null}
-        </div>
+    <div className="group relative flex flex-col gap-5 rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-black/60 via-bg-panel/80 to-black/50 p-8 shadow-[0_0_25px_rgba(0,255,200,0.2)] transition-transform duration-300 hover:-translate-y-1.5 hover:scale-[1.02] hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]">
+      <div className="absolute inset-px rounded-[22px] bg-gradient-to-r from-accent/10 via-transparent to-accent-alt/10 opacity-0 transition-opacity duration-500 group-hover:opacity-70" />
+      <div className="relative flex flex-wrap items-center gap-2">
         {domain ? (
-          <span className={`rounded-full border border-[#00ffc3]/40 px-3 py-1 text-xs font-semibold shadow-[0_0_10px_rgba(0,255,200,0.25)] ${domain.tone}`}>
+          <span
+            className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide shadow-[0_0_12px_rgba(0,255,200,0.25)] ${domain.tone}`}
+          >
             {domain.label}
           </span>
         ) : null}
+        {techTags.map((tech) => (
+          <span
+            key={tech}
+            className="rounded-full border border-[#00ffc3]/30 bg-black/60 px-3 py-1 text-[11px] text-slate-200 shadow-[0_0_8px_rgba(0,255,200,0.2)]"
+          >
+            {tech}
+          </span>
+        ))}
       </div>
-      {project.description ? (
-        <p className="text-[1.05rem] leading-relaxed text-gray-300">{project.description}</p>
-      ) : null}
-      {project.technologies?.length ? (
-        <div className="flex flex-wrap gap-3 pt-1">
-          {project.technologies.map((tech) => (
-            <span
-              key={normalizeTech(tech as any)}
-              className="rounded-full border border-[#00ffc3]/30 bg-black/50 px-3 py-1 text-xs text-slate-200 shadow-[0_0_8px_rgba(0,255,200,0.2)]"
-            >
-              {normalizeTech(tech as any)}
-            </span>
-          ))}
-        </div>
-      ) : null}
-      {(project.repo_url || project.demo_url) && (
-        <div className="flex flex-wrap gap-4 pt-2 text-sm">
+
+      <div className="relative space-y-2">
+        <p className="text-2xl font-semibold leading-tight text-slate-50">{project.name}</p>
+        {description ? (
+          <p className="text-sm leading-relaxed text-slate-300">{description}</p>
+        ) : null}
+      </div>
+
+      <div className="relative mt-auto flex flex-wrap items-center justify-between gap-3 text-sm text-slate-300">
+        {project.period ? (
+          <span className="text-slate-400">{project.period}</span>
+        ) : (
+          <span className="text-transparent">—</span>
+        )}
+        <div className="flex flex-wrap gap-3">
           {project.repo_url ? (
             <a
               href={project.repo_url}
-              className="font-semibold text-accent hover:text-accent-soft"
               target="_blank"
               rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 bg-black/50 px-4 py-1.5 font-semibold text-accent shadow-[0_0_18px_rgba(0,255,200,0.25)] transition-transform duration-200 hover:-translate-y-0.5 hover:text-accent-soft"
             >
-              GitHub ��'
+              GitHub
             </a>
           ) : null}
           {project.demo_url ? (
             <a
               href={project.demo_url}
-              className="font-semibold text-accent hover:text-accent-soft"
               target="_blank"
               rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-accent-alt/60 bg-accent-alt/10 px-4 py-1.5 font-semibold text-accent-soft shadow-[0_0_18px_rgba(139,92,246,0.3)] transition-transform duration-200 hover:-translate-y-0.5"
             >
-              Demo ��'
+              Demo
             </a>
           ) : null}
         </div>
-      )}
+      </div>
     </div>
   );
 }

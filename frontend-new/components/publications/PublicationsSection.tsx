@@ -11,8 +11,9 @@ export default function PublicationsSection({ items }: PublicationsSectionProps)
   return (
     <Section
       id="publications"
+      label="ПУБЛИКАЦИИ"
       title="Публикации и выступления"
-      subtitle="Подборка статей и публичных материалов по ML/LLM."
+      subtitle="Выжимки опыта и заметки по ML/LLM."
     >
       <div className="grid gap-8 md:grid-cols-2">
         {items.map((pub) => (

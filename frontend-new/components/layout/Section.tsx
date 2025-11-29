@@ -5,13 +5,23 @@ import clsx from "clsx";
 
 type SectionProps = {
   id?: string;
+  label?: string;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
   className?: string;
 };
 
-export default function Section({ id, title, subtitle, children, className }: SectionProps) {
+export default function Section({
+  id,
+  label,
+  title,
+  subtitle,
+  children,
+  className
+}: SectionProps) {
+  const eyebrow = label || title;
+
   return (
     <motion.section
       id={id}
@@ -21,15 +31,17 @@ export default function Section({ id, title, subtitle, children, className }: Se
       transition={{ duration: 0.65, ease: "easeOut", delay: 0.05 }}
       viewport={{ once: true, amount: 0.3 }}
     >
-      <div className="mb-8 space-y-3">
+      <div className="mb-8 space-y-2 md:space-y-3">
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-accent-soft">
-          &gt;_ {title}
+          &gt;_ {eyebrow}
         </p>
         <h2 className="w-fit border-b-2 border-[#00ffc3] pb-2 text-4xl font-semibold tracking-wide text-slate-50">
           {title}
         </h2>
         {subtitle ? (
-          <p className="max-w-3xl text-lg leading-relaxed text-gray-300">{subtitle}</p>
+          <p className="max-w-3xl text-left text-lg leading-relaxed text-gray-300 md:max-w-4xl">
+            {subtitle}
+          </p>
         ) : null}
       </div>
       {children}

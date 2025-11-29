@@ -10,11 +10,14 @@ export type Profile = {
 export type ExperienceItem = {
   id: number;
   role: string;
-  company: string;
-  companyUrl?: string | null;
-  period: string;
-  kind: "current" | "previous" | "founder";
-  description: string;
+  company_name: string;
+  company_url?: string | null;
+  start_date?: string;
+  end_date?: string | null;
+  is_current: boolean;
+  kind: "fulltime" | "contract" | "founder" | "current" | "previous" | string;
+  description_md?: string;
+  order_index?: number;
 };
 
 export type StatItem = {
@@ -32,14 +35,15 @@ export type TechFocusItem = {
 
 export type Project = {
   id: number;
+  slug: string;
   name: string;
-  description?: string | null;
+  description_md?: string | null;
   period?: string | null;
   company_name?: string | null;
   company_website?: string | null;
-  technologies?: (string | { id?: string | number; name?: string })[];
-  domain?: "cv" | "rag" | "backend" | "mlops" | "other";
-  featured?: boolean;
+  technologies: (string | { id?: string | number; name?: string })[];
+  domain?: "cv" | "rag" | "backend" | "mlops" | "other" | string | null;
+  featured: boolean;
   repo_url?: string | null;
   demo_url?: string | null;
 };

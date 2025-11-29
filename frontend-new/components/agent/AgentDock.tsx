@@ -7,6 +7,9 @@ import AgentChatWindow from "@/components/agent/AgentChatWindow";
 import { askAgent, callAgentStream, ChatStreamEvent } from "@/lib/api";
 import { AgentMessage } from "@/lib/types";
 
+const HINT_KEY = "hasSeenAgentHint_v2";
+const HINT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 дней
+
 const generateSessionId = () => {
   const cryptoObj = typeof globalThis !== "undefined" ? (globalThis as any).crypto : undefined;
   if (cryptoObj && typeof cryptoObj.randomUUID === "function") {
@@ -36,21 +39,70 @@ export default function AgentDock() {
   const lastTickRef = useRef<number>(performance.now());
   const releasePendingRef = useRef<boolean>(false);
   const [streamingStarted, setStreamingStarted] = useState(false);
+  const hintTimerRef = useRef<number | null>(null);
+  const hintHideTimerRef = useRef<number | null>(null);
 
-  // Настраиваемая скорость печати
+  // Скорость вывода символов для стрима
   const CHARS_PER_SECOND = Number(process.env.NEXT_PUBLIC_CHARS_PER_SECOND) || 60;
   const MAX_CHARS_PER_TICK = Number(process.env.NEXT_PUBLIC_MAX_CHARS_PER_TICK) || 4;
+
+  const dismissHint = () => {
+    setHintShown(false);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(HINT_KEY, Date.now().toString());
+      } catch (e) {
+        // ignore
+      }
+    }
+    if (hintTimerRef.current) {
+      clearTimeout(hintTimerRef.current);
+      hintTimerRef.current = null;
+    }
+    if (hintHideTimerRef.current) {
+      clearTimeout(hintHideTimerRef.current);
+      hintHideTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     onResize();
     window.addEventListener("resize", onResize);
-    const t = setTimeout(() => setHintShown(true), 2500);
+
+    const shouldShow = (() => {
+      if (typeof window === "undefined") return false;
+      try {
+        const stored = localStorage.getItem(HINT_KEY);
+        if (!stored) return true;
+        const seenAt = Number(stored);
+        if (Number.isNaN(seenAt)) return true;
+        return Date.now() - seenAt > HINT_TTL_MS;
+      } catch (e) {
+        return true;
+      }
+    })();
+
+    if (shouldShow) {
+      hintTimerRef.current = window.setTimeout(() => setHintShown(true), 5500);
+    }
+
     return () => {
       window.removeEventListener("resize", onResize);
-      clearTimeout(t);
+      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+      if (hintHideTimerRef.current) clearTimeout(hintHideTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!hintShown) return;
+    hintHideTimerRef.current = window.setTimeout(() => {
+      dismissHint();
+    }, 9000);
+    return () => {
+      if (hintHideTimerRef.current) clearTimeout(hintHideTimerRef.current);
+    };
+  }, [hintShown]);
 
   const updateAgentMessage = (tempId: string, updater: (m: AgentMessage) => AgentMessage) => {
     setMessages((prev) =>
@@ -173,7 +225,7 @@ export default function AgentDock() {
             status: "streaming"
           }));
         } else if (event.type === "error") {
-          applyError(`Ошибка агента: ${event.message}`);
+          applyError(`Ошибка запроса: ${event.message}`);
         }
       }
 
@@ -209,7 +261,7 @@ export default function AgentDock() {
           tryReleaseLoading();
         } catch (fallbackErr) {
           console.error("Fallback agent failed", fallbackErr);
-          applyError("Не получилось связаться с агентом. Попробуйте позже.");
+          applyError("Не получилось связаться с агентом. Попробуй позже.");
           releasePendingRef.current = true;
           tryReleaseLoading();
         }
@@ -248,13 +300,18 @@ export default function AgentDock() {
     }
   };
 
+  const handleToggle = () => {
+    setIsOpen((v) => !v);
+    dismissHint();
+  };
+
   const buttonLabel = "AI-агент";
 
   return (
     <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3">
       <button
-        onClick={() => setIsOpen((v) => !v)}
-        className="pointer-events-auto flex items-center gap-3 rounded-full border border-accent/40 bg-gradient-to-r from-accent/20 via-accent-soft/20 to-accent/10 px-4 py-2 text-sm font-semibold text-slate-100 shadow-neon transition-all duration-200 hover:-translate-y-0.5 hover:shadow-neon-strong"
+        onClick={handleToggle}
+        className="pointer-events-auto flex items-center gap-3 rounded-full border border-accent/40 bg-gradient-to-r from-accent/20 via-accent-soft/20 to-accent/10 px-4 py-2 text-sm font-semibold text-slate-100 shadow-neon transition-all duration-200 hover:-translate-y-0.5 hover:shadow-neon-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 animate-[dockPulse_3.6s_ease-in-out_infinite]"
       >
         <span className="relative flex h-2 w-2">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
@@ -285,11 +342,23 @@ export default function AgentDock() {
         </div>
       ) : null}
 
-      {!isOpen && isMobile && hintShown ? (
-        <div className="pointer-events-none mb-1 rounded-xl border border-accent/40 bg-black/70 px-3 py-2 text-xs text-slate-100 shadow-neon">
-          Спросите агента обо мне и моих проектах
+      {!isOpen && hintShown ? (
+        <div className="pointer-events-none mb-1 rounded-xl border border-accent/40 bg-black/80 px-3 py-2 text-xs text-slate-100 shadow-neon">
+          Спроси агента о проектах или опыте
         </div>
       ) : null}
+
+      <style jsx>{`
+        @keyframes dockPulse {
+          0%,
+          100% {
+            box-shadow: 0 0 16px rgba(0, 255, 200, 0.35), 0 0 0 0 rgba(0, 255, 200, 0.16);
+          }
+          50% {
+            box-shadow: 0 0 28px rgba(0, 255, 200, 0.48), 0 0 30px 6px rgba(0, 255, 200, 0.18);
+          }
+        }
+      `}</style>
     </div>
   );
 }

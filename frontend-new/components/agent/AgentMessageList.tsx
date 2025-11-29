@@ -24,7 +24,7 @@ export default function AgentMessageList({ messages }: AgentMessageListProps) {
     >
       {messages.length === 0 ? (
         <div className="flex flex-1 items-center justify-center text-center text-sm text-slate-400">
-          Спросите агента о моих проектах, опыте или технологиях.
+          Спросите агента о моих проектах, опыте или стеке.
         </div>
       ) : (
         messages.map((m) => (
@@ -38,7 +38,7 @@ export default function AgentMessageList({ messages }: AgentMessageListProps) {
             )}
           >
             <p className="font-mono text-[10px] uppercase tracking-wider text-accent-soft/80">
-              {m.role === "user" ? "вы" : "агент"}
+              {m.role === "user" ? "ты" : "агент"}
             </p>
             <div className="mt-1 text-sm leading-relaxed">
               <ReactMarkdown
