@@ -10,7 +10,7 @@ type AgentMessageListProps = {
 };
 
 const TypingDots = () => (
-  <div className="flex items-center gap-1">
+  <div className="flex items-center gap-1 pt-1">
     {[0, 1, 2].map((i) => (
       <span
         key={i}
@@ -56,7 +56,7 @@ export default function AgentMessageList({ messages, typing = false }: AgentMess
     >
       {messages.length === 0 ? (
         <div className="flex flex-1 items-center justify-center text-center text-sm text-slate-400">
-          Спросите агента о моих проектах, опыте или стеке.
+          Спросите агента о моих проектах, опыте или технологиях
         </div>
       ) : (
         messages.map((m, idx) => {
@@ -74,7 +74,7 @@ export default function AgentMessageList({ messages, typing = false }: AgentMess
               )}
             >
               <p className="font-mono text-[10px] uppercase tracking-wider text-accent-soft/80">
-                {m.role === "user" ? "ты" : "агент"}
+                {m.role === "user" ? "вы" : "агент"}
               </p>
               <div className="mt-1 text-sm leading-relaxed">
                 {showTyping ? (
