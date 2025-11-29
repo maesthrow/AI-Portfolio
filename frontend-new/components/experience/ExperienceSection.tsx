@@ -10,10 +10,10 @@ export default function ExperienceSection({ items }: ExperienceSectionProps) {
   return (
     <Section
       id="experience"
-      title="ОПЫТ РАБОТЫ"
-      subtitle="Опыт доставки CV/LLM сервисов и backend-платформ до продакшена."
+      title="Опыт"
+      subtitle="Релевантные роли и проекты в CV/LLM-направлении и надёжных backend-системах."
     >
-      <div className="grid gap-5">
+      <div className="grid gap-8">
         {items.map((item) => (
           <ExperienceCard key={item.id} item={item} />
         ))}

@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -12,9 +14,23 @@
 
 body {
   @apply bg-bg-base text-text-dim antialiased;
-  background: radial-gradient(circle at 20% 20%, rgba(34, 240, 192, 0.08), transparent 35%),
-    radial-gradient(circle at 80% 0%, rgba(139, 92, 246, 0.1), transparent 30%),
+  position: relative;
+  font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+  background: linear-gradient(180deg, #050712 0%, #071021 45%, #050712 100%),
+    radial-gradient(circle at 20% 25%, rgba(34, 240, 192, 0.08), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(139, 92, 246, 0.1), transparent 32%),
     #050712;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.3'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+  opacity: 0.03;
+  z-index: 0;
 }
 
 a {

@@ -11,10 +11,10 @@ export default function PublicationsSection({ items }: PublicationsSectionProps)
   return (
     <Section
       id="publications"
-      title="ПУБЛИКАЦИИ И МАТЕРИАЛЫ"
-      subtitle="Статьи, гайды и материалы по ML/LLM."
+      title="Публикации и выступления"
+      subtitle="Подборка статей и публичных материалов по ML/LLM."
     >
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-8 md:grid-cols-2">
         {items.map((pub) => (
           <PublicationCard key={pub.id} publication={pub} />
         ))}

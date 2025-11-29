@@ -7,27 +7,27 @@ type PillItem = {
 
 const items: PillItem[] = [
   {
-    title: "Вижу, куда движется AI",
+    title: "Product-first поставка AI",
     bullets: [
-      "Выделяю реальные use-cases в CV, LLM/RAG, ML-сервисах",
-      "Собираю MVP быстро, отбираю метрики и проверяю гипотезы",
-      "Отсекаю “AI ради хайпа”, фокус на бизнес-ценности"
+      "Проясняю use-case'ы для CV, LLM/RAG и ML-пайплайнов с метриками результата.",
+      "Быстро прототипирую, проверяю на пользователях и укрепляю под продакшн.",
+      "Делаю выбор в AI прагматично: данные, задержка, стоимость и наблюдаемость."
     ]
   },
   {
-    title: "Проектирую архитектуры",
+    title: "Архитектура и системное мышление",
     bullets: [
-      "Датасеты, обучение, инференс, API — единый пайплайн",
-      "RAG/агенты: retrieval, ранжирование, оценка качества",
-      "Интеграция с существующими сервисами, контроль версий"
+      "Проектирую чистые API, стриминг и границы сервисов под стабильные релизы.",
+      "Фокус в RAG/CV: качество retrieval, оценка, стабильные SLA инференса.",
+      "Предпочитаю воспроизводимые пайплайны и мониторинг вместо разовых правок."
     ]
   },
   {
-    title: "Довожу до продакшена",
+    title: "Запуск и эксплуатация",
     bullets: [
-      "CI/CD, мониторинг качества и латентности",
-      "Обслуживание моделей: тюнинг, обновления, rollback",
-      "Работаю с командами: dev, data, продукт"
+      "CI/CD, feature flags и откаты, чтобы выпускать безопасно и часто.",
+      "Паттерны устойчивости: ретраи, backpressure, плавная деградация.",
+      "Работаю с dev/data/infra-командами, чтобы среды оставались согласованными."
     ]
   }
 ];
@@ -36,20 +36,20 @@ export default function HowIWorkSection() {
   return (
     <Section
       id="how-i-work"
-      title="КАК Я РАБОТАЮ С AI"
-      subtitle="От видения продукта до продакшена: RAG/агенты, CV, ML-сервисы, интеграции."
+      title="Как я работаю с AI-продуктами"
+      subtitle="Процесс доставки RAG, CV и ML-систем с надёжной интеграцией бэкенда."
     >
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-8 lg:grid-cols-3">
         {items.map((item) => (
           <div
             key={item.title}
-            className="group rounded-2xl border border-accent/30 bg-gradient-to-br from-accent/5 via-bg-panel to-black/40 p-5 shadow-neon transition-transform duration-200 hover:-translate-y-1 hover:shadow-neon-strong"
+            className="group rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-accent/10 via-bg-panel to-black/50 p-8 shadow-[0_0_25px_rgba(0,255,200,0.2)] transition-transform duration-300 hover:-translate-y-1 hover:scale-105 hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]"
           >
             <p className="font-mono text-sm text-accent-soft"># {item.title}</p>
-            <ul className="mt-3 space-y-2 text-sm text-slate-200">
+            <ul className="mt-4 space-y-3 text-[1.05rem] leading-relaxed text-gray-300">
               {item.bullets.map((b) => (
-                <li key={b} className="flex items-start gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-accent-soft" />
+                <li key={b} className="flex items-start gap-3">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-accent-soft shadow-[0_0_8px_rgba(0,255,200,0.35)]" />
                   <span>{b}</span>
                 </li>
               ))}

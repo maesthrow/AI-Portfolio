@@ -7,6 +7,7 @@ import TechFocusSection from "@/components/tech/TechFocusSection";
 import ProjectsSection from "@/components/projects/ProjectsSection";
 import PublicationsSection from "@/components/publications/PublicationsSection";
 import ContactsSection from "@/components/contacts/ContactsSection";
+import Footer from "@/components/layout/Footer";
 import {
   getContacts,
   getExperience,
@@ -41,6 +42,7 @@ export default async function Page() {
       <ProjectsSection projects={featuredProjects} />
       <PublicationsSection items={publications} />
       <ContactsSection contacts={contacts} />
+      <Footer />
     </Shell>
   );
 }

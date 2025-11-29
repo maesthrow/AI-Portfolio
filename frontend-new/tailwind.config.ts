@@ -17,12 +17,12 @@ const config: Config = {
         "text-dim": "#cbd5f5"
       },
       fontFamily: {
-        mono: ["JetBrains Mono", "Fira Code", "ui-monospace", "SFMono-Regular"],
-        sans: ["Inter", "system-ui", "sans-serif"]
+        mono: ["Space Grotesk", "Inter", "ui-sans-serif", "system-ui"],
+        sans: ["Space Grotesk", "Inter", "system-ui", "sans-serif"]
       },
       boxShadow: {
-        neon: "0 0 20px rgba(16, 240, 160, 0.25)",
-        "neon-strong": "0 0 30px rgba(34, 240, 192, 0.35)"
+        neon: "0 0 25px rgba(0, 255, 195, 0.25)",
+        "neon-strong": "0 0 35px rgba(0, 255, 195, 0.35)"
       }
     }
   },

@@ -11,17 +11,17 @@ export default function AboutMeSection({ profile, stats }: AboutMeSectionProps) 
   return (
     <Section
       id="about"
-      title="ОБО МНЕ"
-      subtitle="ML/LLM инженер и Python-backend разработчик. Запускаю CV и RAG сервисы, довожу их до продакшена."
+      title="Обо мне"
+      subtitle="ML/LLM инженер с бэкграундом Python/.NET backend. Фокус на CV и RAG-системах и поставке надёжных AI-функций end-to-end."
     >
-      <div className="grid gap-6 rounded-3xl border border-slate-700/60 bg-black/30 p-6 backdrop-blur">
+      <div className="grid gap-8 rounded-3xl border border-[#00ffc3]/20 bg-black/40 p-8 shadow-[0_0_25px_rgba(0,255,200,0.25)] backdrop-blur">
         <div className="space-y-4">
-          <p className="text-base text-slate-200">
+          <p className="text-lg leading-relaxed text-gray-300">
             {profile.subtitle ||
-              "Совмещаю опыт создания CV/LLM-продуктов и построения backend-сервисов. Проектирую ML/LLM пайплайны, интеграции, метрики и наблюдаемость. Делаю решения, которые живут в продакшене, а не остаются демо."}
+              "Делаю CV/LLM-решения на прочной бэкенд-основе. Опыт продакшн-доставки ML/LLM: от прототипов и оценки до деплоя и мониторинга. Комфортно работаю на всём стеке, чтобы быстро выпускать и улучшать без потери надёжности."}
           </p>
-          <p className="text-sm text-slate-400">
-            Работаю с RAG/агентами, детекцией объектов (YOLO), MLOps, API-интеграциями и .NET сервисами.
+          <p className="text-lg leading-relaxed text-gray-300">
+            Сильные стороны: RAG и CV-пайплайны, детекция (YOLO), MLOps, проектирование API и интеграции .NET-бэкендов с ML-сервисами.
           </p>
         </div>
         <StatsGrid stats={stats} />
