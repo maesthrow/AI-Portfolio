@@ -56,7 +56,7 @@ export default function AgentMessageList({ messages, typing = false }: AgentMess
     >
       {messages.length === 0 ? (
         <div className="flex flex-1 items-center justify-center text-center text-sm text-slate-400">
-          Спросите агента о моих проектах, опыте или технологиях
+          Спросите агента о моих проектах, опыте или технологиях.
         </div>
       ) : (
         messages.map((m, idx) => {
