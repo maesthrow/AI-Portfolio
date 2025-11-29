@@ -6,6 +6,8 @@ type AgentInputProps = {
   onSubmit: () => void;
   disabled?: boolean;
   suggestions?: string[];
+  streaming?: boolean;
+  onStop?: () => void;
 };
 
 export default function AgentInput({
@@ -13,12 +15,17 @@ export default function AgentInput({
   onChange,
   onSubmit,
   disabled,
-  suggestions = []
+  suggestions = [],
+  streaming = false,
+  onStop
 }: AgentInputProps) {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (streaming) return;
     onSubmit();
   };
+
+  const inputDisabled = disabled || streaming;
 
   return (
     <div className="space-y-3">
@@ -38,19 +45,30 @@ export default function AgentInput({
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          placeholder={disabled ? "Ожидание ответа..." : "Напиши вопрос..."}
+          disabled={inputDisabled}
+          placeholder={inputDisabled ? "Ожидание ответа..." : "Напиши вопрос..."}
           className="flex-1 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-sm text-slate-100 outline-none ring-accent/30 transition focus:border-accent focus:ring-2 disabled:opacity-50"
         />
-        <button
-          type="submit"
-          disabled={disabled}
-          className={`rounded-xl border border-accent/60 bg-accent/20 px-3 py-2 text-sm font-semibold shadow-neon transition enabled:hover:-translate-y-0.5 enabled:hover:shadow-neon-strong disabled:opacity-50 ${
-            value.trim() ? "text-slate-100" : "text-slate-900"
-          }`}
-        >
-          Отправить
-        </button>
+        {streaming ? (
+          <button
+            type="button"
+            onClick={onStop}
+            disabled={!onStop}
+            className="rounded-xl border border-accent/60 bg-red-500/40 px-3 py-2 text-sm font-semibold text-slate-100 shadow-neon transition hover:-translate-y-0.5 hover:shadow-neon-strong disabled:opacity-50"
+          >
+            Стоп
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={disabled || !value.trim()}
+            className={`rounded-xl border border-accent/60 bg-accent/20 px-3 py-2 text-sm font-semibold shadow-neon transition enabled:hover:-translate-y-0.5 enabled:hover:shadow-neon-strong disabled:opacity-50 ${
+              value.trim() ? "text-slate-100" : "text-slate-900"
+            }`}
+          >
+            Отправить
+          </button>
+        )}
       </form>
     </div>
   );

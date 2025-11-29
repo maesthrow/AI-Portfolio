@@ -65,4 +65,6 @@ export type AgentMessage = {
   role: "user" | "agent";
   content: string;
   createdAt: number;
+  tempId?: string;
+  status?: "streaming" | "done" | "error" | "stopped";
 };

@@ -8,6 +8,7 @@ type AgentChatWindowProps = {
   onValueChange: (v: string) => void;
   onSubmit: () => void;
   loading: boolean;
+  onStop?: () => void;
 };
 
 const LoadingDots = () => (
@@ -46,7 +47,8 @@ export default function AgentChatWindow({
   value,
   onValueChange,
   onSubmit,
-  loading
+  loading,
+  onStop
 }: AgentChatWindowProps) {
   return (
     <div className="flex h-full flex-col gap-3 rounded-2xl border border-accent/40 bg-slate-950/90 p-4 shadow-neon-strong backdrop-blur">
@@ -65,6 +67,8 @@ export default function AgentChatWindow({
         onChange={onValueChange}
         onSubmit={onSubmit}
         disabled={loading}
+        streaming={loading}
+        onStop={onStop}
         suggestions={["Проекты ML", "Где применялся RAG?", "Технологии Python", "Как устроен агент?"]}
       />
       {loading ? <LoadingDots /> : null}

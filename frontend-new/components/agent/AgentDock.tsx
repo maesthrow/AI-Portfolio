@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { askAgent } from "@/lib/api";
-import AgentChatWindow from "@/components/agent/AgentChatWindow";
-import { AgentMessage } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
+
+import AgentChatWindow from "@/components/agent/AgentChatWindow";
+import { askAgent, callAgentStream, ChatStreamEvent } from "@/lib/api";
+import { AgentMessage } from "@/lib/types";
 
 const generateSessionId = () => {
   const cryptoObj = typeof globalThis !== "undefined" ? (globalThis as any).crypto : undefined;
@@ -26,11 +27,8 @@ export default function AgentDock() {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
-  const sessionIdRef = useRef<string>();
-
-  if (!sessionIdRef.current) {
-    sessionIdRef.current = generateSessionId();
-  }
+  const sessionIdRef = useRef<string>(generateSessionId());
+  const streamControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -43,44 +41,106 @@ export default function AgentDock() {
     };
   }, []);
 
-  const sessionId = sessionIdRef.current;
+  const updateAgentMessage = (tempId: string, updater: (m: AgentMessage) => AgentMessage) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.tempId === tempId || m.id === tempId ? updater(m) : m))
+    );
+  };
 
   const handleSend = async () => {
     if (!inputValue.trim() || loading) return;
-    const content = inputValue.trim();
+    const question = inputValue.trim();
+    const sessionId = sessionIdRef.current;
+    const tempId = `${Date.now()}-agent`;
+
     const userMessage: AgentMessage = {
-      id: `${Date.now()}-u`,
+      id: `${Date.now()}-user`,
       role: "user",
-      content,
+      content: question,
       createdAt: Date.now()
     };
-    setMessages((prev) => [...prev, userMessage]);
+    const agentPlaceholder: AgentMessage = {
+      id: tempId,
+      tempId,
+      role: "agent",
+      content: "",
+      createdAt: Date.now(),
+      status: "streaming"
+    };
+
+    setMessages((prev) => [...prev, userMessage, agentPlaceholder]);
     setInputValue("");
     setLoading(true);
+
+    const controller = new AbortController();
+    streamControllerRef.current = controller;
+
+    const applyError = (message: string) => {
+      updateAgentMessage(tempId, (m) => ({
+        ...m,
+        content: message,
+        status: "error"
+      }));
+    };
+
     try {
-      const result = await askAgent(content, sessionId);
-      const agentMessage: AgentMessage = {
-        id: `${Date.now()}-a`,
-        role: "agent",
-        content: result.answer || "Готово.",
-        createdAt: Date.now()
-      };
-      setMessages((prev) => [...prev, agentMessage]);
-    } catch (e) {
-      const errorMessage: AgentMessage = {
-        id: `${Date.now()}-err`,
-        role: "agent",
-        content: "Не получилось связаться с агентом. Попробуйте позже.",
-        createdAt: Date.now()
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      const stream = await callAgentStream(
+        { question, session_id: sessionId },
+        { signal: controller.signal }
+      );
+
+      for await (const event of stream as AsyncIterable<ChatStreamEvent>) {
+        if (event.type === "start" && event.message_id) {
+          updateAgentMessage(tempId, (m) => ({ ...m, id: event.message_id }));
+        } else if (event.type === "delta") {
+          updateAgentMessage(tempId, (m) => ({
+            ...m,
+            content: (m.content || "") + event.content,
+            status: "streaming"
+          }));
+        } else if (event.type === "error") {
+          applyError(`Ошибка агента: ${event.message}`);
+        }
+      }
+
+      updateAgentMessage(tempId, (m) => ({
+        ...m,
+        status: m.status === "error" ? m.status : "done"
+      }));
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        updateAgentMessage(tempId, (m) => ({
+          ...m,
+          content: m.content || "Ответ остановлен.",
+          status: "stopped"
+        }));
+      } else {
+        console.error("Streaming agent failed, falling back to sync", err);
+        try {
+          const fallback = await askAgent(question, sessionId);
+          updateAgentMessage(tempId, (m) => ({
+            ...m,
+            content: fallback.answer,
+            status: "done"
+          }));
+        } catch (fallbackErr) {
+          console.error("Fallback agent failed", fallbackErr);
+          applyError("Не получилось связаться с агентом. Попробуйте позже.");
+        }
+      }
     } finally {
       setLoading(false);
+      streamControllerRef.current = null;
+    }
+  };
+
+  const handleStop = () => {
+    if (streamControllerRef.current) {
+      streamControllerRef.current.abort();
     }
   };
 
   const buttonLabel = "AI-агент";
-  //const buttonLabel = useMemo(() => (isMobile ? "AI" : "AI-агент"), [isMobile]);
 
   return (
     <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3">
@@ -109,13 +169,14 @@ export default function AgentDock() {
             onValueChange={setInputValue}
             onSubmit={handleSend}
             loading={loading}
+            onStop={handleStop}
           />
         </div>
       ) : null}
 
       {!isOpen && isMobile && hintShown ? (
         <div className="pointer-events-none mb-1 rounded-xl border border-accent/40 bg-black/70 px-3 py-2 text-xs text-slate-100 shadow-neon">
-          Спроси агента обо мне и моих проектах →
+          Спросите агента обо мне и моих проектах
         </div>
       ) : null}
     </div>
