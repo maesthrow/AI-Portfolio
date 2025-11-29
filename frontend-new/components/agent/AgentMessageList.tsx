@@ -36,7 +36,7 @@ export default function AgentMessageList({ messages }: AgentMessageListProps) {
             )}
           >
             <p className="font-mono text-[10px] uppercase tracking-wider text-accent-soft/80">
-              {m.role === "user" ? "you" : "agent"}
+              {m.role === "user" ? "вы" : "агент"}
             </p>
             <p className="mt-1 whitespace-pre-wrap leading-relaxed">{m.content}</p>
           </div>
