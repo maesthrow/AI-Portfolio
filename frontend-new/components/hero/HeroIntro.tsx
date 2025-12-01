@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -11,6 +11,13 @@ type HeroIntroProps = {
 };
 
 const primaryContacts: Contact["kind"][] = ["github", "telegram", "linkedin", "other"];
+const defaultName = "Дмитрий Каргин";
+const heroLabel = "AI-Portfolio — портфолио будущего";
+const heroSubheadline = ">_ ML / LLM Engineer";
+const heroDescription =
+  "Создаю готовые AI-системы и решения для реальных сервисов.";
+const heroTags = ["AI-agents", "LLM", "RAG", "CV", "MLOps", "Backend"];
+const scrollHint = "листай дальше";
 
 function contactLink(contacts: Contact[], kind: Contact["kind"]) {
   return contacts.find((c) => c.kind === kind);
@@ -20,44 +27,53 @@ export default function HeroIntro({ profile, contacts }: HeroIntroProps) {
   const avatar =
     profile.avatarUrl ?? (profile as any).avatar_url ?? (profile as any).avatar ?? null;
   const hasAvatar = Boolean(avatar);
+  const displayName = profile.name || defaultName;
 
   return (
     <Section
       id="hero"
-      label="INTRO"
-      title="DMITRIY KARGIN"
-      subtitle="Python / ML инженер — CV, LLM, RAG"
-      className="mt-16 pt-6 md:mt-14 lg:mt-10"
+      label={heroLabel}
+      title=""
+      className="mt-12 pt-4 md:mt-12 lg:mt-10 [&>div>h2]:hidden [&>div]:mb-6 md:[&>div]:mb-8 [&>div>p]:normal-case"
     >
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
-        className="relative overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 p-8 shadow-[0_0_35px_rgba(0,255,200,0.35)] backdrop-blur sm:p-10 md:p-12 lg:p-14"
+        className="relative overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 p-7 shadow-[0_0_35px_rgba(0,255,200,0.35)] backdrop-blur sm:p-10 md:p-12 lg:p-14"
       >
         <div className="pointer-events-none absolute inset-0 opacity-70">
           <div className="absolute inset-0 animate-[glowDrift_22s_ease-in-out_infinite] bg-[radial-gradient(circle_at_30%_30%,rgba(0,255,195,0.12),transparent_35%)]" />
           <div className="absolute inset-0 animate-[gridShift_28s_linear_infinite] bg-[linear-gradient(90deg,rgba(0,255,195,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(0,255,195,0.08)_1px,transparent_1px)] bg-[size:40px_40px] opacity-30" />
           <div className="absolute inset-0 animate-[glowDrift_18s_ease-in-out_infinite] bg-[radial-gradient(circle_at_70%_60%,rgba(139,92,246,0.18),transparent_45%)]" />
         </div>
-        <div className="relative grid gap-10 md:grid-cols-[1.35fr,1fr] md:items-center lg:grid-cols-[3fr,2fr]">
+        <div className="relative grid gap-8 sm:gap-9 md:grid-cols-[1.35fr,1fr] md:items-center md:gap-10 lg:grid-cols-[3fr,2fr]">
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
-            className="space-y-6"
+            className="space-y-5 sm:space-y-6"
           >
-            <p className="flex items-center gap-2 font-mono text-lg text-accent-soft">
-              &gt;_ {profile.title} <span className="animate-pulse opacity-80">_</span>
+            <p className="flex items-center gap-2 font-mono text-base text-accent-soft sm:text-lg">
+              {heroSubheadline} <span className="animate-pulse opacity-80"></span>
             </p>
-            <h1 className="text-5xl font-bold leading-tight text-slate-50 sm:text-6xl">
-              {profile.name || "DMITRIY KARGIN"}
+            <h1 className="text-4xl font-bold leading-tight text-slate-50 sm:text-5xl lg:text-6xl">
+              {displayName}
             </h1>
-            <p className="max-w-3xl text-left text-lg leading-relaxed text-gray-300 md:max-w-4xl">
-              {profile.subtitle ||
-                "ML/LLM инженер, работаю над CV и RAG-системами. Выстраиваю AI-функции от прототипа до продакшна с надёжным пайплайном и понятными метриками."}
+            <p className="max-w-2xl text-left text-base leading-relaxed text-gray-300 sm:text-lg md:max-w-3xl">
+              {heroDescription}
             </p>
-            <div className="flex flex-wrap gap-4">
+            <div className="flex max-w-2xl flex-wrap gap-2.5 text-sm font-medium text-gray-200">
+              {heroTags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-accent/30 bg-white/5 px-3 py-1 leading-tight"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-3 sm:gap-4">
               {primaryContacts.map((kind) => {
                 const item = contactLink(contacts, kind);
                 if (!item) return null;
@@ -84,11 +100,7 @@ export default function HeroIntro({ profile, contacts }: HeroIntroProps) {
           >
             <div className="relative h-56 w-56 overflow-hidden rounded-3xl border border-[#00ffc3]/40 bg-gradient-to-br from-accent/15 via-accent-alt/10 to-transparent shadow-[0_0_35px_rgba(0,255,200,0.3)] sm:h-60 sm:w-60 md:h-64 md:w-64">
               {hasAvatar ? (
-                <img
-                  src={avatar}
-                  alt={profile.name || "avatar"}
-                  className="h-full w-full object-cover"
-                />
+                <img src={avatar} alt={displayName || "avatar"} className="h-full w-full object-cover" />
               ) : (
                 <>
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(34,240,192,0.4),transparent_35%),radial-gradient(circle_at_70%_60%,rgba(139,92,246,0.25),transparent_40%)]" />
@@ -99,7 +111,7 @@ export default function HeroIntro({ profile, contacts }: HeroIntroProps) {
               )}
             </div>
             <div className="absolute -bottom-8 left-1/2 flex -translate-x-1/2 items-center gap-2 font-mono text-sm text-accent-soft">
-              <span className="text-xl leading-none text-[#00ffc3]">{"\u2193"}</span> листай
+              <span className="text-xl leading-none text-[#00ffc3]">{"↓"}</span> {scrollHint}
               <span className="animate-pulse opacity-80">_</span>
             </div>
           </motion.div>

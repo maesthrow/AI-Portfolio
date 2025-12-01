@@ -18,7 +18,7 @@ export default function TechFocusSection({ items }: TechFocusSectionProps) {
       id="tech"
       label="ТЕХНОЛОГИЧЕСКИЙ ФОКУС"
       title="Технологический фокус"
-      subtitle="RAG, CV, .NET-сервисы и MLOps с упором на продуктовую надежность и гибкость решений."
+      subtitle="LLM, RAG, CV, backend и MLOps с упором на продуктовую надежность и гибкость решений."
     >
       <div className="grid gap-8 md:grid-cols-2">
         {items.map((item) => (
