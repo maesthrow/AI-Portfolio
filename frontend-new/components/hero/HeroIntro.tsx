@@ -34,7 +34,7 @@ export default function HeroIntro({ profile, contacts }: HeroIntroProps) {
       id="hero"
       label={heroLabel}
       title=""
-      className="-mt-0 pt-1 sm:mt-6 sm:pt-4 md:mt-12 lg:mt-10 [&>div>h2]:hidden [&>div]:mb-4 sm:[&>div]:mb-6 md:[&>div]:mb-8 [&>div>p]:normal-case"
+      className="!mt-6 pt-0 sm:!mt-8 sm:pt-3 md:!mt-12 lg:!mt-16 [&>div>h2]:hidden [&>div]:mb-4 sm:[&>div]:mb-6 md:[&>div]:mb-8 [&>div>p]:normal-case"
     >
       <motion.div
         initial={{ opacity: 0, y: 24 }}
