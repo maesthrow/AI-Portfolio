@@ -1,7 +1,7 @@
 from datetime import date
 
 from sqlalchemy import Boolean, Date, Integer, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models import Base, TimestampMixin
 
@@ -32,6 +32,12 @@ class CompanyExperience(TimestampMixin, Base):
     project_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     summary_md: Mapped[str | None] = mapped_column(Text, nullable=True)
     achievements_md: Mapped[str | None] = mapped_column(Text, nullable=True)
+    projects = relationship(
+        "ExperienceProject",
+        back_populates="company",
+        order_by="ExperienceProject.order_index.asc()",
+        cascade="all, delete-orphan",
+    )
 
 
 # Backward compatibility for old imports

@@ -13,7 +13,7 @@ from app.models.profile import Profile
 from app.models.contact import Contact
 from app.models.experience import CompanyExperience
 from app.models.experience_project import ExperienceProject
-from app.models.project import Project
+from app.models.project import Project, ProjectTechnology
 from app.models.publication import Publication
 from app.models.stats import Stat
 from app.models.tech_focus import TechFocus, TechFocusTag
@@ -113,9 +113,9 @@ EXPERIENCE_DATA = [
         "end_date": None,
         "is_current": True,
         "kind": "commercial",
-        "company_role_md": "Разрабатывал ML‑сервисы (LLM/CV) для t2: CV‑пайплайн для ребрендинга, RAG‑ассистенты и инфраструктура автообучения моделей.",
+        "company_role_md": "Разрабатываю ML‑продукты: LLM/RAG/CV, строю backend-архитектуру сервисов.",
         "summary_md": (
-            "Проект по разработке сервисов на базе ML-решений (LLM и CV)."
+            "Проект по разработке сервисов на базе ML-решений."
         ),
         "achievements_md": (
             "- Внедрил сервис компьютерного зрения для ребрендинга t2/Tele2: "
@@ -139,7 +139,7 @@ EXPERIENCE_DATA = [
         "end_date": date(2024, 10, 25),
         "is_current": False,
         "kind": "commercial",
-        "company_role_md": "Разрабатывал и поддерживал backend‑сервисы брокера: уведомления, интеграции с внешними системами и клиентский онбординг.",
+        "company_role_md": "Разрабатывал и поддерживал backend‑сервисы: оптимизация, интеграции с внутренними и внешними системами.",
         "summary_md": (
             "Биржевый брокер для лиц, осуществляющих финансовые операции с ценными бумагами."
         ),
@@ -164,7 +164,7 @@ EXPERIENCE_DATA = [
         "end_date": date(2024, 5, 10),
         "is_current": False,
         "kind": "commercial",
-        "company_role_md": "Развивал backend‑сервисы автоматизации аптек и розницы: интеграции, обмен данными и внутренние инструменты поддержки.",
+        "company_role_md": "Развивал backend инструментов автоматизации аптек: фикс багов, интеграции, оптимизация нагруженных сервисов и баз данных.",
         "summary_md": (
             "Сервисы автоматизации аптек и розничной торговли."
         ),
@@ -640,16 +640,47 @@ def seed_technologies(session):
         upsert_one(session, Technology, identity, payload)
 
 
+def seed_projects_with_tech(session):
+    def slugify_tech(name: str) -> str:
+        return (
+            name.lower()
+            .replace(" ", "-")
+            .replace("(", "")
+            .replace(")", "")
+            .replace("/", "-")
+        )
+
+    for idx, data in enumerate(PROJECTS_DATA, start=1):
+        identity = {"id": idx}
+        tech_names = data.get("technologies", [])
+        payload = data.copy()
+        payload.pop("technologies", None)
+        proj = upsert_one(session, Project, identity, payload)
+
+        for t_idx, tech_name in enumerate(tech_names, start=1):
+            tech_slug = slugify_tech(tech_name)
+            tech = get_one(session, Technology, slug=tech_slug)
+            if tech is None:
+                tech = Technology(name=tech_name, slug=tech_slug, category=None, order_index=t_idx * 10)
+                session.add(tech)
+                session.flush()
+
+            link = session.execute(
+                select(ProjectTechnology).filter_by(project_id=proj.id, technology_id=tech.id)
+            ).scalar_one_or_none()
+            if link is None:
+                session.add(ProjectTechnology(project_id=proj.id, technology_id=tech.id))
+
 def run():
     with SessionLocal() as db:
         seed_profile(db)
         seed_contacts(db)
         seed_experience(db)
-        seed_projects(db)
+        seed_technologies(db)
+        seed_projects_with_tech(db)
         seed_publications(db)
         seed_stats(db)
         seed_tech_focus(db)
-        seed_technologies(db)
 
         db.commit()
         print("✔ Seed completed: ai_portfolio_new")

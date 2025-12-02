@@ -23,11 +23,12 @@ class CompanyExperienceOut(BaseModel):
 class ExperienceProjectOut(BaseModel):
     id: int
     name: str
-    slug: str
+    slug: str | None = None
     period: str | None = None
-    description_md: str
-    achievements_md: str
+    description_md: str | None = None
+    achievements_md: str | None = None
     order_index: int
+    technologies: list[str] = []
 
     model_config = ConfigDict(from_attributes=True)
 

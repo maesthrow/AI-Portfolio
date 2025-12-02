@@ -23,6 +23,5 @@ class ExperienceProject(TimestampMixin, Base):
 
     company = relationship(
         "CompanyExperience",
-        backref="projects",
-        order_by="ExperienceProject.order_index.asc()",
+        back_populates="projects",
     )

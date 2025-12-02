@@ -30,6 +30,7 @@ export type ExperienceProject = {
   description_md: string;
   achievements_md: string;
   order_index: number;
+  technologies?: string[];
 };
 
 export type ExperienceDetail = {

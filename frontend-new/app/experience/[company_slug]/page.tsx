@@ -37,10 +37,10 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
   return (
     <Shell>
       <div className="mx-auto flex max-w-5xl flex-col gap-10 px-4 pb-16 pt-10 sm:px-6 lg:px-0">
-        <div className="flex flex-col gap-4 rounded-3xl border border-emerald-400/20 bg-black/60 p-6 shadow-[0_0_30px_rgba(0,255,200,0.18)]">
+        <div className="flex flex-col gap-4 rounded-3xl border border-emerald-400/20 bg-black/60 p-7 shadow-[0_0_30px_rgba(0,255,200,0.18)]">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold text-slate-50 sm:text-3xl">
-              {company.role} {company.company_name ? `в ${company.company_name}` : ""}
+              {company.role}
             </h1>
             <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-200">
               <span
@@ -55,7 +55,7 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-300">
+          <div className="flex flex-wrap items-center gap-3 text-base text-slate-200">
             {company.company_url ? (
               <a
                 href={company.company_url}
@@ -73,38 +73,37 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
           </div>
 
           {company.company_role_md ? (
-            <div className="prose prose-invert max-w-none text-base text-slate-100/90">
+            <div className="prose prose-invert max-w-none text-lg text-slate-100/90">
               <ReactMarkdown>{company.company_role_md}</ReactMarkdown>
             </div>
           ) : company.company_summary_md ? (
-            <div className="prose prose-invert max-w-none text-base text-slate-100/90">
+            <div className="prose prose-invert max-w-none text-lg text-slate-100/90">
               <ReactMarkdown>{company.company_summary_md}</ReactMarkdown>
             </div>
           ) : null}
         </div>
 
         <div className="flex flex-col gap-6">
-          <h2 className="text-xl font-semibold text-slate-50 sm:text-2xl">Проекты в компании</h2>
-          <div className="flex flex-col gap-5">
+          <h2 className="text-xl font-semibold text-slate-50 sm:text-2xl">Проекты и достижения в компании</h2>
+          <div className="flex flex-col gap-6">
             {projects.map((proj) => (
               <div
                 key={proj.id}
-                className="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-5 shadow-[0_0_18px_rgba(0,0,0,0.4)]"
+                className="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-6 shadow-[0_0_18px_rgba(0,0,0,0.4)]"
               >
                 <div className="flex flex-col gap-1">
                   <h3 className="text-lg font-semibold text-emerald-300">{proj.name}</h3>
-                  {proj.period ? <p className="text-sm text-slate-400">{proj.period}</p> : null}
                 </div>
-                <div className="mt-3 prose prose-invert max-w-none text-slate-100/90">
+                <div className="mt-4 prose prose-invert max-w-none text-lg text-slate-100/90">
                   <ReactMarkdown>{proj.description_md}</ReactMarkdown>
                 </div>
-                <div className="mt-4 h-px bg-emerald-400/15" />
-                <div className="mt-3">
+                <div className="mt-5 h-px bg-emerald-400/15" />
+                <div className="mt-4">
                   <ReactMarkdown
                     className="prose prose-invert max-w-none text-slate-100/90"
                     components={{
                       ul: ({ ...props }) => (
-                        <ul className="ml-5 list-disc space-y-2 marker:text-emerald-300" {...props} />
+                        <ul className="ml-5 list-disc space-y-3.5 marker:text-emerald-300" {...props} />
                       ),
                       li: ({ ...props }) => <li className="text-slate-100/90" {...props} />,
                     }}
@@ -112,6 +111,18 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
                     {proj.achievements_md}
                   </ReactMarkdown>
                 </div>
+                {proj.technologies && proj.technologies.length ? (
+                  <div className="mt-7 flex flex-wrap gap-3.5">
+                    {proj.technologies.map((tech) => (
+                      <span
+                        key={tech}
+                        className="rounded-full border border-emerald-400/40 bg-emerald-500/5 px-3.5 py-1 text-[11px] font-semibold text-emerald-100 shadow-[0_0_8px_rgba(0,255,200,0.12)]"
+                      >
+                        {tech}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
