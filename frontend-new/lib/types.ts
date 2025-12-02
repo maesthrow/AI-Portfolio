@@ -9,20 +9,32 @@ export type Profile = {
 
 export type ExperienceItem = {
   id: number;
-  role: string;
+  company_slug: string;
   company_name: string | null;
   company_url?: string | null;
-  project_name?: string | null;
-  project_slug?: string | null;
-  project_url?: string | null;
+  role: string;
   start_date: string;
   end_date: string | null;
   is_current: boolean;
   kind: "commercial" | "personal" | string;
-  summary_md?: string | null;
-  achievements_md?: string | null;
-  description_md?: string | null;
+  company_summary_md?: string | null;
+  company_role_md?: string | null;
   order_index?: number;
+};
+
+export type ExperienceProject = {
+  id: number;
+  name: string;
+  slug: string;
+  period?: string | null;
+  description_md: string;
+  achievements_md: string;
+  order_index: number;
+};
+
+export type ExperienceDetail = {
+  company: ExperienceItem;
+  projects: ExperienceProject[];
 };
 
 export type StatItem = {

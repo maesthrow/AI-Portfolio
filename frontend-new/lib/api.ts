@@ -1,5 +1,6 @@
 import {
   Contact,
+  ExperienceDetail,
   ExperienceItem,
   Profile,
   Project,
@@ -45,6 +46,10 @@ export async function getProfile(): Promise<Profile> {
 
 export async function getExperience(): Promise<ExperienceItem[]> {
   return getJson("/experience");
+}
+
+export async function getExperienceDetail(slug: string): Promise<ExperienceDetail> {
+  return getJson(`/experience/${slug}`);
 }
 
 export async function getStats(): Promise<StatItem[]> {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Iterable
+import re
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -10,7 +11,8 @@ from app.settings import settings
 
 from app.models.profile import Profile
 from app.models.contact import Contact
-from app.models.experience import Experience
+from app.models.experience import CompanyExperience
+from app.models.experience_project import ExperienceProject
 from app.models.project import Project
 from app.models.publication import Publication
 from app.models.stats import Stat
@@ -102,6 +104,7 @@ EXPERIENCE_DATA = [
     {
         "role": "Python / ML Engineer",
         "company_name": "Aston",
+        "company_slug": "aston",
         "company_url": "https://astondevs.ru",
         "project_name": "t2 — Нейросети",
         "project_slug": "t2-ml",
@@ -110,6 +113,7 @@ EXPERIENCE_DATA = [
         "end_date": None,
         "is_current": True,
         "kind": "commercial",
+        "company_role_md": "Разрабатывал ML‑сервисы (LLM/CV) для t2: CV‑пайплайн для ребрендинга, RAG‑ассистенты и инфраструктура автообучения моделей.",
         "summary_md": (
             "Проект по разработке сервисов на базе ML-решений (LLM и CV)."
         ),
@@ -126,6 +130,7 @@ EXPERIENCE_DATA = [
     {
         "role": "Python backend developer",
         "company_name": "ООО «АЛОР +»",
+        "company_slug": "alor",
         "company_url": "https://www.alorbroker.ru",
         "project_name": "АЛОР БРОКЕР",
         "project_slug": "alor-broker",
@@ -134,6 +139,7 @@ EXPERIENCE_DATA = [
         "end_date": date(2024, 10, 25),
         "is_current": False,
         "kind": "commercial",
+        "company_role_md": "Разрабатывал и поддерживал backend‑сервисы брокера: уведомления, интеграции с внешними системами и клиентский онбординг.",
         "summary_md": (
             "Биржевый брокер для лиц, осуществляющих финансовые операции с ценными бумагами."
         ),
@@ -149,6 +155,7 @@ EXPERIENCE_DATA = [
     {
         "role": "Python backend developer",
         "company_name": "АО «Спарго Технологии»",
+        "company_slug": "spargo",
         "company_url": "https://www.spargo.ru",
         "project_name": "F3 TAIL",
         "project_slug": "f3-tail",
@@ -157,6 +164,7 @@ EXPERIENCE_DATA = [
         "end_date": date(2024, 5, 10),
         "is_current": False,
         "kind": "commercial",
+        "company_role_md": "Развивал backend‑сервисы автоматизации аптек и розницы: интеграции, обмен данными и внутренние инструменты поддержки.",
         "summary_md": (
             "Сервисы автоматизации аптек и розничной торговли."
         ),
@@ -172,6 +180,7 @@ EXPERIENCE_DATA = [
     {
         "role": "Python developer",
         "company_name": "АО «РКЦ «Прогресс»",
+        "company_slug": "progress",
         "company_url": "https://samspace.ru",
         "project_name": "СКИО",
         "project_slug": "skio",
@@ -180,6 +189,7 @@ EXPERIENCE_DATA = [
         "end_date": date(2023, 9, 1),
         "is_current": False,
         "kind": "commercial",
+        "company_role_md": "Проектировал и реализовывал систему учета и контроля испытательного оборудования для ракетно‑космического центра.",
         "summary_md": (
             "Система контроля испытательного оборудования."
         ),
@@ -190,29 +200,6 @@ EXPERIENCE_DATA = [
         ),
         "description_md": None,
         "order_index": 40,
-    },
-    # HyperKeeper как личный проект
-    {
-        "role": "Indie developer",
-        "company_name": None,
-        "company_url": None,
-        "project_name": "HyperKeeper",
-        "project_slug": "hyperkeeper",
-        "project_url": "https://t.me/HyperKeeperBot",
-        "start_date": date(2023, 12, 28),
-        "end_date": None,
-        "is_current": True,
-        "kind": "personal",
-        "summary_md": (
-            "Личный Telegram-бот-хранилище: папки, файлы, медиа и заметки "
-            "с интеграцией LLM."
-        ),
-        "achievements_md": (
-            "- Реализовал удобную навигацию и управление контентом.\n"
-            "- Интегрировал LLM (GigaChat) с историей диалогов.\n"
-        ),
-        "description_md": None,
-        "order_index": 50,
     },
 ]
 
@@ -527,10 +514,54 @@ def seed_contacts(session):
 
 
 def seed_experience(session):
+    used_slugs = set()
     for idx, data in enumerate(EXPERIENCE_DATA, start=1):
         identity = {"id": idx}
         payload = {**data, "order_index": data.get("order_index", idx * 10)}
-        upsert_one(session, Experience, identity, payload)
+
+        base_slug = data.get("company_slug") or data.get("company_name") or data.get("project_name") or "company"
+        slug = re.sub(r"[^a-z0-9]+", "-", base_slug.lower()).strip("-") or f"company-{idx}"
+        original_slug = slug
+        counter = 1
+        while slug in used_slugs:
+            slug = f"{original_slug}-{counter}"
+            counter += 1
+        used_slugs.add(slug)
+        payload["company_slug"] = slug
+        payload["company_summary_md"] = data.get("summary_md")
+        payload["company_role_md"] = (
+            data.get("company_role_md")
+            or data.get("summary_md")
+            or data.get("description_md")
+        )
+
+        company: CompanyExperience = upsert_one(session, CompanyExperience, identity, payload)
+
+        # Create/update single project per company experience for now
+        proj_name = data.get("project_name") or (data.get("company_name") or f"Project {idx}")
+        proj_slug = data.get("project_slug") or slug
+        if data.get("start_date"):
+            start_year = data["start_date"].year
+            if data.get("is_current") or data.get("end_date") is None:
+                period = f"{start_year} — н.в."
+            elif data.get("end_date"):
+                period = f"{start_year} — {data['end_date'].year}"
+            else:
+                period = None
+        else:
+            period = None
+
+        proj_payload = {
+            "experience_id": company.id,
+            "name": proj_name,
+            "slug": proj_slug,
+            "period": period,
+            "description_md": data.get("summary_md") or proj_name,
+            "achievements_md": data.get("achievements_md") or "",
+            "order_index": data.get("order_index", idx * 10),
+        }
+        project_identity = {"experience_id": company.id, "slug": proj_payload["slug"]}
+        upsert_one(session, ExperienceProject, project_identity, proj_payload)
 
 
 def seed_projects(session):
@@ -626,5 +657,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-
-
