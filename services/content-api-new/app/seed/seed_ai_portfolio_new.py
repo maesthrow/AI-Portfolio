@@ -1,4 +1,3 @@
-# services/content-api-new/app/seed/seed_ai_portfolio_new.py
 from __future__ import annotations
 
 from datetime import date
@@ -99,95 +98,127 @@ CONTACTS_DATA = [
 ]
 
 EXPERIENCE_DATA = [
-    # Aston / t2 – Нейросети
+    # Aston / t2 — Нейросети
     {
         "role": "Python / ML Engineer",
-        "company_name": "Aston > t2 – Нейросети",
+        "company_name": "Aston",
         "company_url": "https://astondevs.ru",
+        "project_name": "t2 — Нейросети",
+        "project_slug": "t2-ml",
+        "project_url": None,
         "start_date": date(2024, 10, 28),
         "end_date": None,
         "is_current": True,
         "kind": "commercial",
-        "description_md": (
-            "- Проект t2 по разработке сервисов на базе ML-решений (LLM и CV).\n"
-            "- Внедрил сервис компьютерного зрения для ребрендинга t2/Tele2: обучение YOLOv8, "
-            "обработка отчетов по торговым точкам.\n"
-            "- Создал умного помощника с LLM + RAG для расчёта штрафов по договорам.\n"
-            "- Разработал MVP бэкенда авто-обучения и инференса CV-моделей (FastAPI, MLflow, Celery).\n"
+        "summary_md": (
+            "Проект по разработке сервисов на базе ML-решений (LLM и CV)."
         ),
+        "achievements_md": (
+            "- Внедрил сервис компьютерного зрения для ребрендинга t2/Tele2: "
+            "обучение моделей, обработка отчетов по торговым точкам.\n"
+            "- Создал умного помощника с LLM + RAG для расчёта штрафов по договорам.\n"
+            "- Разработал MVP бэкенда авто-обучения и инференса CV-моделей.\n"
+        ),
+        "description_md": None,
         "order_index": 10,
     },
     # АЛОР
     {
         "role": "Python backend developer",
-        "company_name": "ООО «АЛОР +» > АЛОР БРОКЕР",
+        "company_name": "ООО «АЛОР +»",
         "company_url": "https://www.alorbroker.ru",
+        "project_name": "АЛОР БРОКЕР",
+        "project_slug": "alor-broker",
+        "project_url": None,
         "start_date": date(2024, 5, 13),
         "end_date": date(2024, 10, 25),
         "is_current": False,
         "kind": "commercial",
-        "description_md": (
-            "- Сервис нотификаций для бэк-офиса и клиентов.\n"
-            "- Переписал код 3-х сервисов под новый стек.\n"
-            "- Интегрировал сервис отправки отчетов в ФНС с API Контур.Экстерн.\n"
-            "- Доработал сервис регистрации клиентов: уведомления клиентов; валидация данных перед отправкой на биржу.\n"
+        "summary_md": (
+            "Биржевый брокер для лиц, осуществляющих финансовые операции с ценными бумагами."
         ),
+        "achievements_md": (
+            "- Запустил сервис нотификаций для бэк-офиса и клиентов.\n"
+            "- Переписал код трех сервисов под новый стек.\n"
+            "- Интегрировал сервис отправки отчётов в ФНС с API Контур.Экстерн.\n"
+        ),
+        "description_md": None,
         "order_index": 20,
     },
     # Spargo / F3 TAIL
     {
         "role": "Python backend developer",
-        "company_name": "АО «Спарго Технологии» > F3 TAIL",
+        "company_name": "АО «Спарго Технологии»",
         "company_url": "https://www.spargo.ru",
+        "project_name": "F3 TAIL",
+        "project_slug": "f3-tail",
+        "project_url": None,
         "start_date": date(2023, 9, 4),
         "end_date": date(2024, 5, 10),
         "is_current": False,
         "kind": "commercial",
-        "description_md": (
-            "- Сервисы для автоматизации аптек и розничной торговли.\n"
+        "summary_md": (
+            "Сервисы автоматизации аптек и розничной торговли."
+        ),
+        "achievements_md": (
             "- Оптимизировал обмен с Единым Справочником (ускорение > x3).\n"
             "- Внедрил сервис мониторинга и логирования сбоев.\n"
-            "- Разработал Telegram-бота службы поддержки (aiogram, aiogram-dialog).\n"
+            "- Разработал Telegram-бота службы поддержки.\n"
         ),
+        "description_md": None,
         "order_index": 30,
     },
     # РКЦ «Прогресс» / СКИО
     {
         "role": "Python developer",
-        "company_name": "АО «РКЦ «Прогресс» > СКИО",
+        "company_name": "АО «РКЦ «Прогресс»",
         "company_url": "https://samspace.ru",
+        "project_name": "СКИО",
+        "project_slug": "skio",
+        "project_url": None,
         "start_date": date(2022, 8, 1),
         "end_date": date(2023, 9, 1),
         "is_current": False,
         "kind": "commercial",
-        "description_md": (
-            "- Система контроля испытательного оборудования (СКИО).\n"
-            "- По собственной инициативе разработал и внедрил систему в работу испытательного центра.\n"
-            "- Оптимизировал производственный процесс в рамках внедрения технологий бережливого производства.\n"
+        "summary_md": (
+            "Система контроля испытательного оборудования."
         ),
+        "achievements_md": (
+            "- По собственной инициативе разработал систему контроля испытательного оборудования (СКИО).\n"
+            "- Успешно внедрил систему в работу испытательного центра.\n"
+            "- Оптимизировал производственный процесс в рамках бережливого производства.\n"
+        ),
+        "description_md": None,
         "order_index": 40,
     },
     # HyperKeeper как личный проект
     {
         "role": "Indie developer",
-        "company_name": "HyperKeeper > личный проект",
-        "company_url": "https://github.com/maesthrow/HyperKeeperBot",
+        "company_name": None,
+        "company_url": None,
+        "project_name": "HyperKeeper",
+        "project_slug": "hyperkeeper",
+        "project_url": "https://t.me/HyperKeeperBot",
         "start_date": date(2023, 12, 28),
         "end_date": None,
         "is_current": True,
         "kind": "personal",
-        "description_md": (
-            "- Telegram-бот-хранилище: папки, файлы, медиа и заметки.\n"
-            "- Реализовал удобную навигацию и управление контентом.\n"
-            "- Интегрировал с LLM (GigaChat), несколько чатов с сохранением истории.\n"
+        "summary_md": (
+            "Личный Telegram-бот-хранилище: папки, файлы, медиа и заметки "
+            "с интеграцией LLM."
         ),
+        "achievements_md": (
+            "- Реализовал удобную навигацию и управление контентом.\n"
+            "- Интегрировал LLM (GigaChat) с историей диалогов.\n"
+        ),
+        "description_md": None,
         "order_index": 50,
     },
 ]
 
 PROJECTS_DATA = [
     {
-        "name": "t2 – Нейросети",
+        "name": "t2 — Нейросети",
         "slug": "t2-ml",
         "description_md": (
             "ML-платформа для проектов компании t2: CV-сервисы для ребрендинга, "
@@ -590,8 +621,10 @@ def run():
         seed_technologies(db)
 
         db.commit()
-        print("✅ Seed completed: ai_portfolio_new")
+        print("✔ Seed completed: ai_portfolio_new")
 
 
 if __name__ == "__main__":
     run()
+
+

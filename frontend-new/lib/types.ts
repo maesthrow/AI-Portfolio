@@ -10,13 +10,18 @@ export type Profile = {
 export type ExperienceItem = {
   id: number;
   role: string;
-  company_name: string;
+  company_name: string | null;
   company_url?: string | null;
-  start_date?: string;
-  end_date?: string | null;
+  project_name?: string | null;
+  project_slug?: string | null;
+  project_url?: string | null;
+  start_date: string;
+  end_date: string | null;
   is_current: boolean;
-  kind: "fulltime" | "contract" | "founder" | "current" | "previous" | string;
-  description_md?: string;
+  kind: "commercial" | "personal" | string;
+  summary_md?: string | null;
+  achievements_md?: string | null;
+  description_md?: string | null;
   order_index?: number;
 };
 
