@@ -102,7 +102,7 @@ EXPERIENCE_DATA = [
     # Aston / t2 – Нейросети
     {
         "role": "Python / ML Engineer",
-        "company_name": "Aston (проект t2 – Нейросети)",
+        "company_name": "Aston > t2 – Нейросети",
         "company_url": "https://astondevs.ru",
         "start_date": date(2024, 10, 28),
         "end_date": None,
@@ -110,33 +110,34 @@ EXPERIENCE_DATA = [
         "kind": "commercial",
         "description_md": (
             "- Проект t2 по разработке сервисов на базе ML-решений (LLM и CV).\n"
-            "- Сервис компьютерного зрения для ребрендинга t2/Tele2: обучение YOLOv8, "
-            "отчёты по торговым точкам.\n"
-            "- Telegram-бот с LLM + RAG для расчёта штрафов по договорам.\n"
-            "- MVP бэкенда авто-обучения и инференса CV-моделей (FastAPI, MLflow, Celery).\n"
+            "- Внедрил сервис компьютерного зрения для ребрендинга t2/Tele2: обучение YOLOv8, "
+            "обработка отчетов по торговым точкам.\n"
+            "- Создал умного помощника с LLM + RAG для расчёта штрафов по договорам.\n"
+            "- Разработал MVP бэкенда авто-обучения и инференса CV-моделей (FastAPI, MLflow, Celery).\n"
         ),
         "order_index": 10,
     },
     # АЛОР
     {
         "role": "Python backend developer",
-        "company_name": "ООО «АЛОР +» / АЛОР БРОКЕР",
+        "company_name": "ООО «АЛОР +» > АЛОР БРОКЕР",
         "company_url": "https://www.alorbroker.ru",
         "start_date": date(2024, 5, 13),
-        "end_date": date(2024, 10, 27),
+        "end_date": date(2024, 10, 25),
         "is_current": False,
         "kind": "commercial",
         "description_md": (
             "- Сервис нотификаций для бэк-офиса и клиентов.\n"
-            "- Интеграция сервиса отправки отчётов в ФНС с Контур.Экстерн.\n"
-            "- Доработка сервиса регистрации клиентов: валидация данных перед отправкой на биржу.\n"
+            "- Переписал код 3-х сервисов под новый стек.\n"
+            "- Интегрировал сервис отправки отчетов в ФНС с API Контур.Экстерн.\n"
+            "- Доработал сервис регистрации клиентов: уведомления клиентов; валидация данных перед отправкой на биржу.\n"
         ),
         "order_index": 20,
     },
     # Spargo / F3 TAIL
     {
         "role": "Python backend developer",
-        "company_name": "АО «Спарго Технологии» / F3 TAIL",
+        "company_name": "АО «Спарго Технологии» > F3 TAIL",
         "company_url": "https://www.spargo.ru",
         "start_date": date(2023, 9, 4),
         "end_date": date(2024, 5, 10),
@@ -144,32 +145,32 @@ EXPERIENCE_DATA = [
         "kind": "commercial",
         "description_md": (
             "- Сервисы для автоматизации аптек и розничной торговли.\n"
-            "- Оптимизация обмена с Единым Справочником (ускорение >3x).\n"
-            "- Сервис мониторинга и логирования сбоев.\n"
-            "- Telegram-бот службы поддержки (aiogram, aiogram-dialog).\n"
+            "- Оптимизировал обмен с Единым Справочником (ускорение > x3).\n"
+            "- Внедрил сервис мониторинга и логирования сбоев.\n"
+            "- Разработал Telegram-бота службы поддержки (aiogram, aiogram-dialog).\n"
         ),
         "order_index": 30,
     },
     # РКЦ «Прогресс» / СКИО
     {
         "role": "Python developer",
-        "company_name": "АО «РКЦ «Прогресс» / СКИО",
+        "company_name": "АО «РКЦ «Прогресс» > СКИО",
         "company_url": "https://samspace.ru",
         "start_date": date(2022, 8, 1),
         "end_date": date(2023, 9, 1),
         "is_current": False,
         "kind": "commercial",
         "description_md": (
-            "- Серверная часть и БД системы контроля испытательного оборудования (СКИО).\n"
-            "- Проектирование БД (таблицы, индексы, представления).\n"
-            "- Серверные скрипты на Python (SQLAlchemy + psycopg), отчёты CSV/COPY, pytest.\n"
+            "- Система контроля испытательного оборудования (СКИО).\n"
+            "- По собственной инициативе разработал и внедрил систему в работу испытательного центра.\n"
+            "- Оптимизировал производственный процесс в рамках внедрения технологий бережливого производства.\n"
         ),
         "order_index": 40,
     },
     # HyperKeeper как личный проект
     {
         "role": "Indie developer",
-        "company_name": "HyperKeeper (личный проект)",
+        "company_name": "HyperKeeper > личный проект",
         "company_url": "https://github.com/maesthrow/HyperKeeperBot",
         "start_date": date(2023, 12, 28),
         "end_date": None,
@@ -177,8 +178,8 @@ EXPERIENCE_DATA = [
         "kind": "personal",
         "description_md": (
             "- Telegram-бот-хранилище: папки, файлы, медиа и заметки.\n"
-            "- Быстрая навигация и управление контентом.\n"
-            "- Интеграция с LLM (GigaChat), несколько чатов с сохранением истории.\n"
+            "- Реализовал удобную навигацию и управление контентом.\n"
+            "- Интегрировал с LLM (GigaChat), несколько чатов с сохранением истории.\n"
         ),
         "order_index": 50,
     },
