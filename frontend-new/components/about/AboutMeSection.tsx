@@ -53,9 +53,17 @@ export default function AboutMeSection({ profile: _profile, stats }: AboutMeSect
           </p>
           <div className="grid gap-6 md:grid-cols-3">
             {bulletSections.map((section) => (
-              <div key={section.title} className="space-y-3">
-                <h3 className="font-semibold text-accent-soft">{section.title}</h3>
-                <ul className="list-disc space-y-2 pl-5 text-left text-base leading-relaxed text-gray-300 marker:text-accent-soft">
+              <div
+                key={section.title}
+                className="group flex h-full flex-col rounded-3xl border border-[#00ffc3]/20 bg-gradient-to-br from-black/60 via-bg-panel/70 to-black/50 p-6 shadow-[0_0_25px_rgba(0,255,200,0.2)] transition-transform duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-accent-soft">{section.title}</h3>
+                  <span className="rounded-full border border-[#00ffc3]/30 px-3 py-1 text-xs uppercase text-accent-soft/80">
+                    focus
+                  </span>
+                </div>
+                <ul className="mt-4 list-disc space-y-2 pl-5 text-left text-base leading-relaxed text-gray-300 marker:text-accent-soft">
                   {section.items.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
