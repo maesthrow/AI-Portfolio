@@ -33,31 +33,36 @@ export default function ExperienceCard({ item }: ExperienceCardProps) {
     !item.summary_md && !achievements.length && !legacyBullets.length ? item.description_md : null;
   const period = formatPeriod(item.start_date, item.end_date, item.is_current);
 
-  const companyBlock = item.company_name ? (
+  const companyPeriod = item.company_name || period ? (
     <p className="mt-1 text-sm text-slate-300">
-      {item.company_url ? (
-        <a href={item.company_url} target="_blank" rel="noreferrer" className="hover:text-emerald-300">
-          {item.company_name}
-        </a>
-      ) : (
-        item.company_name
-      )}
+      {item.company_name ? (
+        item.company_url ? (
+          <a href={item.company_url} target="_blank" rel="noreferrer" className="text-emerald-300 hover:text-emerald-200">
+            {item.company_name}
+          </a>
+        ) : (
+          <span className="text-emerald-300">{item.company_name}</span>
+        )
+      ) : null}
+      {item.company_name && period ? " · " : null}
+      {period ? <span className="text-slate-400">{period}</span> : null}
     </p>
   ) : null;
 
   const projectBlock = item.project_name ? (
     <p className="mt-1 text-sm text-slate-300">
+      <span className="text-slate-300/70">Проект: </span>
       {item.project_url || item.project_slug ? (
         <a
           href={item.project_url || `/projects/${item.project_slug}`}
           target="_blank"
           rel="noreferrer"
-          className="hover:text-emerald-300"
+          className="text-emerald-300 hover:text-emerald-200"
         >
           {item.project_name}
         </a>
       ) : (
-        item.project_name
+        <span className="text-emerald-300">{item.project_name}</span>
       )}
     </p>
   ) : null;
@@ -89,15 +94,16 @@ export default function ExperienceCard({ item }: ExperienceCardProps) {
 
         <h3 className="mt-3 text-lg font-semibold text-slate-50 sm:text-xl">{item.role}</h3>
 
-        {companyBlock}
+        {companyPeriod}
         {projectBlock}
-        {period ? <p className="mt-1 text-xs text-slate-500">{period}</p> : null}
 
         {item.summary_md ? (
-          <div className="mt-4 text-sm leading-relaxed text-slate-100">
+          <div className="mt-3 max-w-[48rem] text-sm leading-relaxed text-slate-100/90">
             <p>{item.summary_md}</p>
           </div>
         ) : null}
+
+        {item.summary_md && bullets.length ? <div className="my-2 h-px bg-emerald-400/20 sm:my-3" /> : null}
 
         {bullets.length ? (
           <ul className="mt-3 ml-4 list-disc space-y-1 text-sm text-slate-200 marker:text-emerald-300">
