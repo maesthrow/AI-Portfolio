@@ -25,42 +25,6 @@ function parseBullets(md?: string | null) {
     .filter(Boolean);
 }
 
-function renderCompanyAndProject(exp: ExperienceItem) {
-  const company = exp.company_name
-    ? exp.company_url
-      ? (
-          <a href={exp.company_url} target="_blank" rel="noreferrer" className="hover:text-emerald-300">
-            {exp.company_name}
-          </a>
-        )
-      : exp.company_name
-    : null;
-
-  const project = exp.project_name
-    ? exp.project_url || exp.project_slug
-      ? (
-          <a
-            href={exp.project_url || `/projects/${exp.project_slug}`}
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-emerald-300"
-          >
-            {exp.project_name}
-          </a>
-        )
-      : exp.project_name
-    : null;
-
-  if (company && project) {
-    return (
-      <>
-        {company} · {project}
-      </>
-    );
-  }
-  return company || project || null;
-}
-
 export default function ExperienceCard({ item }: ExperienceCardProps) {
   const achievements = parseBullets(item.achievements_md);
   const legacyBullets = parseBullets(item.description_md);
@@ -68,6 +32,35 @@ export default function ExperienceCard({ item }: ExperienceCardProps) {
   const legacyFallbackText =
     !item.summary_md && !achievements.length && !legacyBullets.length ? item.description_md : null;
   const period = formatPeriod(item.start_date, item.end_date, item.is_current);
+
+  const companyBlock = item.company_name ? (
+    <p className="mt-1 text-sm text-slate-300">
+      {item.company_url ? (
+        <a href={item.company_url} target="_blank" rel="noreferrer" className="hover:text-emerald-300">
+          {item.company_name}
+        </a>
+      ) : (
+        item.company_name
+      )}
+    </p>
+  ) : null;
+
+  const projectBlock = item.project_name ? (
+    <p className="mt-1 text-sm text-slate-300">
+      {item.project_url || item.project_slug ? (
+        <a
+          href={item.project_url || `/projects/${item.project_slug}`}
+          target="_blank"
+          rel="noreferrer"
+          className="hover:text-emerald-300"
+        >
+          {item.project_name}
+        </a>
+      ) : (
+        item.project_name
+      )}
+    </p>
+  ) : null;
 
   return (
     <div className="group relative overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-black/60 via-bg-panel/70 to-black/40 p-5 shadow-[0_0_25px_rgba(0,255,200,0.2)] transition-transform duration-300 hover:-translate-y-1.5 hover:scale-[1.02] hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)] sm:p-6">
@@ -96,8 +89,8 @@ export default function ExperienceCard({ item }: ExperienceCardProps) {
 
         <h3 className="mt-3 text-lg font-semibold text-slate-50 sm:text-xl">{item.role}</h3>
 
-        <p className="mt-1 text-sm text-slate-300">{renderCompanyAndProject(item)}</p>
-
+        {companyBlock}
+        {projectBlock}
         {period ? <p className="mt-1 text-xs text-slate-500">{period}</p> : null}
 
         {item.summary_md ? (
