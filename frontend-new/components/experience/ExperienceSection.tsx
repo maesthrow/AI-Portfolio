@@ -19,7 +19,7 @@ export default function ExperienceSection({ items }: ExperienceSectionProps) {
   return (
     <Section
       id="experience"
-      label="Опыт"
+      label="КОММЕРЧЕСКИЙ ОПЫТ"
       title="Коммерческий опыт"
       subtitle="Коммерческие проекты и компании: CV/LLM решения, RAG-системы и устойчивые backend-сервисы."
     >

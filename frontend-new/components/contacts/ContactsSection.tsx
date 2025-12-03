@@ -10,7 +10,7 @@ export default function ContactsSection({ contacts }: ContactsSectionProps) {
   return (
     <Section
       id="contacts"
-      label="КОНТАКТЫ"
+      label="СВЯЗАТЬСЯ СО МНОЙ"
       title="Контакты и связи"
       subtitle="root@portfolio ~ $ contact --list"
       className="mt-32"

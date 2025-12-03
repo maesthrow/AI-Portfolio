@@ -45,10 +45,10 @@ export default function AboutMeSection({ profile: _profile, stats }: AboutMeSect
     <Section id="about" label={sectionLabel} title={sectionTitle} className="mt-28 md:mt-20">
       <div className="grid gap-8 rounded-3xl border border-[#00ffc3]/20 bg-black/40 p-6 shadow-[0_0_25px_rgba(0,255,200,0.25)] backdrop-blur sm:p-8">
         <div className="space-y-4">
-          <p className="max-w-3xl text-left text-lg leading-relaxed text-gray-300 md:max-w-4xl">
+          <p className="max-w-3xl text-left text-lg leading-relaxed text-slate-100 md:max-w-4xl">
             {aboutParagraph1}
           </p>
-          <p className="max-w-3xl text-left text-lg leading-relaxed text-gray-300 md:max-w-4xl">
+          <p className="max-w-3xl text-left text-lg leading-relaxed text-slate-100 md:max-w-4xl">
             {aboutParagraph2}
           </p>
           <div className="grid gap-6 md:grid-cols-3">

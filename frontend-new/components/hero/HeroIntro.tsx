@@ -13,7 +13,7 @@ type HeroIntroProps = {
 const primaryContacts: Contact["kind"][] = ["github", "telegram", "linkedin", "other"];
 const defaultName = "Дмитрий Каргин";
 const heroLabel = "AI-Portfolio — портфолио будущего";
-const heroSubheadline = ">_ ML / LLM Engineer";
+const heroSubheadline = "ML / LLM Engineer";
 const heroDescription =
   "Создаю готовые AI-системы и решения для реальных сервисов.";
 const heroTags = ["AI-agents", "LLM", "RAG", "CV", "MLOps", "Backend"];
@@ -55,12 +55,14 @@ export default function HeroIntro({ profile, contacts }: HeroIntroProps) {
             className="space-y-4 sm:space-y-5 md:space-y-6"
           >
             <p className="flex items-center gap-2 font-mono text-base text-accent-soft sm:text-lg">
-              {heroSubheadline} <span className="animate-pulse opacity-80"></span>
+              <span className="inline-flex items-center rounded-full border border-[#19f0c3]/60 bg-[#19f0c3]/10 px-3 py-1 text-sm font-semibold text-[#19f0c3] sm:text-base">
+                {heroSubheadline}
+              </span>
             </p>
             <h1 className="text-4xl font-bold leading-tight text-slate-50 sm:text-5xl lg:text-6xl">
               {displayName}
             </h1>
-            <p className="max-w-2xl text-left text-base leading-relaxed text-gray-300 sm:text-lg md:max-w-3xl">
+            <p className="max-w-2xl text-left text-base leading-relaxed text-slate-100 sm:text-lg md:max-w-3xl">
               {heroDescription}
             </p>
             <div className="flex max-w-2xl flex-wrap gap-2 text-sm font-medium text-gray-200 sm:gap-2.5">
