@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import clsx from "clsx";
 
 type SectionProps = {
@@ -23,12 +23,13 @@ export default function Section({
   const eyebrow = label || title;
   const labelText = `>_ ${eyebrow}`;
   const isTitleEmpty = !title?.trim();
+  const reduceMotion = useReducedMotion();
 
   const labelVariants = {
     hidden: { opacity: 1 },
     visible: {
       opacity: 1,
-      transition: { staggerChildren: 0.06 }
+      transition: { staggerChildren: 0.05 }
     }
   };
 
@@ -40,11 +41,14 @@ export default function Section({
   return (
     <motion.section
       id={id}
-      className={clsx("relative mt-24 mb-12 scroll-mt-28", className)}
-      initial={{ opacity: 0, y: 20 }}
+      className={clsx(
+        "relative mt-24 mb-20 scroll-mt-28 sm:mb-24 md:mb-28",
+        className
+      )}
+      initial={reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0.7, y: 12 }}
       whileInView={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.65, ease: "easeOut", delay: 0.05 }}
-      viewport={{ once: true, amount: 0.3 }}
+      transition={{ duration: 0.45, ease: "easeOut" }}
+      viewport={{ once: true, amount: 0.12 }}
     >
       <div className="mb-8 space-y-2 md:space-y-3">
         <motion.div

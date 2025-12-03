@@ -11,7 +11,7 @@ export default function PublicationsSection({ items }: PublicationsSectionProps)
   return (
     <Section
       id="publications"
-      label="ПУБЛИКАЦИИ"
+      label="КОНТЕНТ И ПУБЛИКАЦИИ"
       title="Публикации и выступления"
       subtitle="Выжимки опыта и заметки по ML/LLM."
     >
