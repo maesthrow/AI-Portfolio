@@ -12,7 +12,7 @@ export default function ContactsSection({ contacts }: ContactsSectionProps) {
       id="contacts"
       label="СВЯЗАТЬСЯ СО МНОЙ"
       title="Контакты и связи"
-      subtitle="Воспользуйтесь моими контактами напрямую или обратитесь к AI-агенту"
+      subtitle="Воспользуйтесь моими контактами или обратитесь за помощью к AI-агенту."
       className="mt-32"
     >
       <div className="relative overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 p-6 shadow-[0_0_18px_rgba(0,255,200,0.16)] transition duration-300 hover:shadow-[0_0_40px_rgba(0,255,200,0.32)] sm:p-8">
