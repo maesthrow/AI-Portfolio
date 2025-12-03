@@ -55,7 +55,7 @@ export default function AboutMeSection({ profile: _profile, stats }: AboutMeSect
             {bulletSections.map((section) => (
               <div
                 key={section.title}
-                className="group flex h-full flex-col rounded-3xl border border-[#00ffc3]/20 bg-gradient-to-br from-black/60 via-bg-panel/70 to-black/50 p-6 shadow-[0_0_15px_rgba(0,255,200,0.14)] transition-transform duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]"
+                className="group flex h-full flex-col rounded-3xl border border-[#00ffc3]/20 bg-gradient-to-br from-black/60 via-bg-panel/70 to-black/50 p-6 shadow-[0_0_15px_rgba(0,255,200,0.14)] transition duration-300 hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]"
               >
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-accent-soft">{section.title}</h3>

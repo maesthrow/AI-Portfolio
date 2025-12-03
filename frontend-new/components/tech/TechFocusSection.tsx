@@ -24,7 +24,7 @@ export default function TechFocusSection({ items }: TechFocusSectionProps) {
         {items.map((item) => (
           <div
             key={item.id}
-            className="group rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-black/60 via-bg-panel/80 to-black/50 p-8 shadow-[0_0_15px_rgba(0,255,200,0.14)] transition-transform duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]"
+            className="group rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-black/60 via-bg-panel/80 to-black/50 p-8 shadow-[0_0_15px_rgba(0,255,200,0.14)] transition duration-300 hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]"
           >
             <div className="flex items-center justify-between">
               <p className="font-mono text-sm text-accent-soft">{item.label}</p>

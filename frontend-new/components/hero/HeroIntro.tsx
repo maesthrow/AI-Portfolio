@@ -83,7 +83,7 @@ export default function HeroIntro({ profile, contacts }: HeroIntroProps) {
                   <Link
                     key={kind}
                     href={item.url}
-                    className="group inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 bg-black/40 px-5 py-2.5 text-sm font-semibold text-slate-100 shadow-[0_0_15px_rgba(0,255,200,0.18)] transition duration-200 hover:-translate-y-1 hover:scale-105 hover:border-[#00ffc3]/70 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                    className="group inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 bg-black/40 px-5 py-2.5 text-sm font-semibold text-slate-100 shadow-[0_0_15px_rgba(0,255,200,0.18)] transition duration-200 hover:-translate-y-1 hover:border-[#00ffc3]/70 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                     target="_blank"
                     rel="noreferrer"
                   >

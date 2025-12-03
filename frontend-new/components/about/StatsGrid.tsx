@@ -65,7 +65,7 @@ export default function StatsGrid({ stats }: StatsGridProps) {
       {stats.map((stat) => (
         <div
           key={stat.id}
-          className="group rounded-3xl border border-[#00ffc3]/20 bg-gradient-to-br from-black/60 via-bg-panel/70 to-black/50 p-8 shadow-[0_0_15px_rgba(0,255,200,0.14)] transition-transform duration-300 hover:-translate-y-1 hover:scale-105 hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]"
+          className="group rounded-3xl border border-[#00ffc3]/20 bg-gradient-to-br from-black/60 via-bg-panel/70 to-black/50 p-8 shadow-[0_0_15px_rgba(0,255,200,0.14)] transition duration-300 hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]"
         >
           <p className="text-sm uppercase tracking-wide text-accent-soft">{stat.label}</p>
           <p className="mt-3 text-4xl font-semibold text-slate-50">

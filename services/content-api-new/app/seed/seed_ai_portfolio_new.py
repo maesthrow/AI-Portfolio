@@ -54,7 +54,7 @@ PROFILE_DATA = {
     "title": "Python / ML Engineer",
     "subtitle": "CV, LLM, RAG, backend",
     "location": "Samara, Russia",
-    "status": "open_to_opportunities",
+    "status": "ready_to_connect_",
     # аватар подставишь свой, если нужно
     "avatar_url": "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
     "summary_md": (
