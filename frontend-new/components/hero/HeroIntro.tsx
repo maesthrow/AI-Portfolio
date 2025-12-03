@@ -40,7 +40,7 @@ export default function HeroIntro({ profile, contacts }: HeroIntroProps) {
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
-        className="relative overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 p-6 shadow-[0_0_35px_rgba(0,255,200,0.35)] backdrop-blur sm:p-9 md:p-12 lg:p-14"
+        className="relative overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 p-6 shadow-[0_0_22px_rgba(0,255,200,0.22)] backdrop-blur sm:p-9 md:p-12 lg:p-14"
       >
         <div className="pointer-events-none absolute inset-0 opacity-70">
           <div className="absolute inset-0 animate-[glowDrift_22s_ease-in-out_infinite] bg-[radial-gradient(circle_at_30%_30%,rgba(0,255,195,0.12),transparent_35%)]" />
@@ -83,7 +83,7 @@ export default function HeroIntro({ profile, contacts }: HeroIntroProps) {
                   <Link
                     key={kind}
                     href={item.url}
-                    className="group inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 bg-black/40 px-5 py-2.5 text-sm font-semibold text-slate-100 shadow-[0_0_25px_rgba(0,255,200,0.25)] transition duration-200 hover:-translate-y-1 hover:scale-105 hover:border-[#00ffc3]/70 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                    className="group inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 bg-black/40 px-5 py-2.5 text-sm font-semibold text-slate-100 shadow-[0_0_15px_rgba(0,255,200,0.18)] transition duration-200 hover:-translate-y-1 hover:scale-105 hover:border-[#00ffc3]/70 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                     target="_blank"
                     rel="noreferrer"
                   >

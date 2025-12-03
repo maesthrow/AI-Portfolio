@@ -44,7 +44,7 @@ export default function HowIWorkSection() {
         {items.map((item) => (
           <div
             key={item.title}
-            className="group rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-accent/10 via-bg-panel to-black/50 p-8 shadow-[0_0_25px_rgba(0,255,200,0.2)] transition-transform duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]"
+            className="group rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-accent/10 via-bg-panel to-black/50 p-8 shadow-[0_0_15px_rgba(0,255,200,0.14)] transition-transform duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]"
           >
             <p className="font-mono text-sm text-accent-soft"># {item.title}</p>
             <ul className="mt-4 space-y-3 text-[1.05rem] leading-relaxed text-gray-300">

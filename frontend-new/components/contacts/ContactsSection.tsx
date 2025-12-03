@@ -15,7 +15,7 @@ export default function ContactsSection({ contacts }: ContactsSectionProps) {
       subtitle="root@portfolio ~ $ contact --list"
       className="mt-32"
     >
-      <div className="relative overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 p-6 shadow-[0_0_30px_rgba(0,255,200,0.25)] sm:p-8">
+      <div className="relative overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 p-6 shadow-[0_0_18px_rgba(0,255,200,0.16)] transition duration-300 hover:shadow-[0_0_40px_rgba(0,255,200,0.32)] sm:p-8">
         <div className="pointer-events-none absolute inset-0 opacity-40">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(0,255,195,0.12),transparent_35%)]" />
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,255,195,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(0,255,195,0.08)_1px,transparent_1px)] bg-[size:36px_36px] opacity-25" />
