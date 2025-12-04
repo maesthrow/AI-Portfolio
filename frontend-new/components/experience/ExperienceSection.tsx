@@ -1,12 +1,18 @@
 import Section from "@/components/layout/Section";
 import ExperienceCard from "@/components/experience/ExperienceCard";
-import { ExperienceItem } from "@/lib/types";
+import { ExperienceItem, SectionMeta } from "@/lib/types";
 
 type ExperienceSectionProps = {
   items: ExperienceItem[];
+  sectionMeta?: SectionMeta;
 };
 
-export default function ExperienceSection({ items }: ExperienceSectionProps) {
+const defaultLabel = "КОММЕРЧЕСКИЙ ОПЫТ";
+const defaultTitle = "Коммерческий опыт";
+const defaultSubtitle =
+  "Коммерческие проекты и компании: CV/LLM решения, RAG-системы и устойчивые backend-сервисы.";
+
+export default function ExperienceSection({ items, sectionMeta }: ExperienceSectionProps) {
   const commercial = items.filter((item) => item.kind === "commercial");
   const sortedItems = [...commercial].sort((a, b) => {
     if (a.is_current !== b.is_current) return a.is_current ? -1 : 1;
@@ -19,9 +25,9 @@ export default function ExperienceSection({ items }: ExperienceSectionProps) {
   return (
     <Section
       id="experience"
-      label="КОММЕРЧЕСКИЙ ОПЫТ"
-      title="Коммерческий опыт"
-      subtitle="Коммерческие проекты и компании: CV/LLM решения, RAG-системы и устойчивые backend-сервисы."
+      label={defaultLabel}
+      title={sectionMeta?.title || defaultTitle}
+      subtitle={sectionMeta?.subtitle || defaultSubtitle}
     >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {sortedItems.map((item) => (

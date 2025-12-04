@@ -18,6 +18,10 @@ from app.models.publication import Publication
 from app.models.stats import Stat
 from app.models.tech_focus import TechFocus, TechFocusTag
 from app.models.technology import Technology
+from app.models.hero_tag import HeroTag
+from app.models.focus_area import FocusArea, FocusAreaBullet
+from app.models.work_approach import WorkApproach, WorkApproachBullet
+from app.models.section_meta import SectionMeta
 
 # автономная сессия, как в старых сидерах
 engine = create_engine(settings.database_url, future=True)
@@ -50,18 +54,20 @@ def upsert_one(session, model, identity: dict, payload: dict):
 
 PROFILE_DATA = {
     "id": 1,
-    "full_name": "Dmitriy Kargin",
+    "full_name": "Дмитрий Каргин",
     "title": "Python / ML Engineer",
     "subtitle": "CV, LLM, RAG, backend",
-    "location": "Samara, Russia",
+    "location": "Самара, Россия",
     "status": "ready_to_connect_",
-    # аватар подставишь свой, если нужно
     "avatar_url": "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
     "summary_md": (
-        "ML/LLM инженер с бэкенд-фоном Python/.NET. "
-        "Фокус на CV и RAG-системах, надёжных backend-API и интеграциях. "
-        "От подготовки данных и обучения моделей до продакшена и MLOps."
+        "ML/LLM инженер с продуктовым подходом и бэкенд-фоном (Python + .NET). "
+        "Делаю AI-функциональность удобной и надёжной: продумываю архитектуру, "
+        "забочусь о качестве моделей и интегрирую ML-решения так, чтобы они помогали бизнесу."
     ),
+    "hero_headline": "ML/LLM & Backend/MLOps Engineer",
+    "hero_description": "Строю AI-системы от модели и агента до продакшн-сервиса.",
+    "current_position": "Python / ML Engineer @ Aston",
 }
 
 CONTACTS_DATA = [
@@ -395,6 +401,10 @@ TECH_FOCUS_DATA = [
             "RAG",
             "Vector stores",
             "GigaChat / Qwen",
+            "vLLM",
+            "LiteLLM",
+            "TEI",
+            "ReAct",
         ],
     },
     {
@@ -405,6 +415,7 @@ TECH_FOCUS_DATA = [
             "YOLO",
             "Detectron2",
             "Logo detection",
+            "Segmentation",
             "Image pipelines",
         ],
     },
@@ -418,6 +429,7 @@ TECH_FOCUS_DATA = [
             "PostgreSQL",
             "RabbitMQ",
             "Redis",
+            "Celery",
         ],
     },
     {
@@ -430,6 +442,119 @@ TECH_FOCUS_DATA = [
             "vLLM",
             "GitLab CI",
         ],
+    },
+]
+
+HERO_TAGS_DATA = [
+    {"name": "AI-агенты", "order_index": 10},
+    {"name": "LLM", "order_index": 20},
+    {"name": "RAG", "order_index": 30},
+    {"name": "CV", "order_index": 40},
+    {"name": "Backend", "order_index": 50},
+    {"name": "MLOps", "order_index": 60},
+    {"name": "Python", "order_index": 70},
+    {"name": "C# / .NET", "order_index": 80},
+    {"name": "GitHub", "url": "https://github.com/maesthrow", "icon": "github", "order_index": 90},
+    {"name": "Telegram", "url": "https://t.me/kargindmitriy", "icon": "telegram", "order_index": 100},
+    {"name": "LinkedIn", "url": "https://www.linkedin.com/in/dmitriy-kargin", "icon": "linkedin", "order_index": 110},
+]
+
+FOCUS_AREAS_DATA = [
+    {
+        "title": "LLM / AI-агенты / RAG",
+        "is_primary": True,
+        "order_index": 10,
+        "bullets": [
+            "Fine-tuning моделей и LoRA-адаптеры, векторные пайплайны",
+            "Агентные сценарии с инструментальными вызовами (ReAct, LangChain/LangGraph)",
+            "RAG-архитектуры: поиск, ранжирование, хранение векторов (ChromaDB, TEI)",
+            "Контроль качества ответов, настройка промптов под прод",
+        ],
+    },
+    {
+        "title": "CV",
+        "is_primary": False,
+        "order_index": 20,
+        "bullets": [
+            "Детекция и сегментация (YOLO, Detectron2)",
+            "Пайплайны обработки изображений (подготовка датасетов, аугментации)",
+            "Цикл улучшения моделей по ошибкам (валидация, сбор сложных кейсов, дообучение)",
+            "Запуск CV-сервисов в прод",
+        ],
+    },
+    {
+        "title": "Backend / MLOps",
+        "is_primary": False,
+        "order_index": 30,
+        "bullets": [
+            "Backend: Python (FastAPI), C# / .NET (ASP.NET Core), PostgreSQL",
+            "Асинхронные задачи: Celery, RabbitMQ, Redis",
+            "MLOps: MLflow, пайплайны обучения/дообучения, контейнеризация (Docker)",
+            "Интеграции с внешними API и микросервисами",
+        ],
+    },
+]
+
+WORK_APPROACHES_DATA = [
+    {
+        "title": "Product-first дизайн AI",
+        "order_index": 10,
+        "bullets": [
+            "Начинаю с бизнес-задачи, а не с технологии",
+            "Учитываю edge-кейсы и ошибки моделей заранее",
+            "Встраиваю фидбек-циклы: сбор ошибок моделей, обновление датасетов, переобучение",
+        ],
+    },
+    {
+        "title": "Архитектура и интеграции",
+        "order_index": 20,
+        "bullets": [
+            "Проектирую агентные сценарии: LLM как оркестратор инструментов и сервисов (ReAct, LangChain/LangGraph)",
+            "Разделяю retrieval, inference, business-logic — чтобы каждый компонент масштабировался независимо",
+            "Использую API-контракты и version-control для ML-артефактов",
+        ],
+    },
+    {
+        "title": "Запуск и поддержка",
+        "order_index": 30,
+        "bullets": [
+            "Выстраиваю пайплайны обучения/дообучения (Celery, MLflow, очереди), CI/CD для моделей и backend-сервисов",
+            "Настраиваю мониторинг качества моделей и алертинг",
+            "Пишу документацию и runbook для команды",
+        ],
+    },
+]
+
+SECTION_META_DATA = [
+    {
+        "section_key": "experience",
+        "title": "Коммерческий опыт",
+        "subtitle": "Коммерческие проекты и компании: ML/LLM-решения, RAG-системы и устойчивые backend-сервисы.",
+    },
+    {
+        "section_key": "contacts",
+        "title": "Связаться со мной",
+        "subtitle": "Свяжитесь со мной напрямую или через AI-агента на сайте.",
+    },
+    {
+        "section_key": "projects",
+        "title": "Избранные проекты",
+        "subtitle": "Проекты, в которых я участвовал или создавал с нуля.",
+    },
+    {
+        "section_key": "tech_focus",
+        "title": "Технологический фокус",
+        "subtitle": "Основные направления и технологии, с которыми я работаю.",
+    },
+    {
+        "section_key": "how_i_work",
+        "title": "Как я работаю с AI",
+        "subtitle": "Мой подход к разработке AI-продуктов.",
+    },
+    {
+        "section_key": "publications",
+        "title": "Контент и публикации",
+        "subtitle": "Статьи и материалы по AI/ML и разработке.",
     },
 ]
 
@@ -671,6 +796,77 @@ def seed_projects_with_tech(session):
             if link is None:
                 session.add(ProjectTechnology(project_id=proj.id, technology_id=tech.id))
 
+
+def seed_hero_tags(session):
+    for idx, data in enumerate(HERO_TAGS_DATA, start=1):
+        identity = {"id": idx}
+        payload = {**data}
+        upsert_one(session, HeroTag, identity, payload)
+
+
+def seed_focus_areas(session):
+    for idx, data in enumerate(FOCUS_AREAS_DATA, start=1):
+        bullets = data.get("bullets", [])
+        identity = {"id": idx}
+        payload = {
+            "title": data["title"],
+            "is_primary": data.get("is_primary", False),
+            "order_index": data.get("order_index", idx * 10),
+        }
+        focus: FocusArea = upsert_one(session, FocusArea, identity, payload)
+
+        for b_idx, text in enumerate(bullets, start=1):
+            bullet = session.execute(
+                select(FocusAreaBullet).filter_by(
+                    focus_area_id=focus.id,
+                    text=text,
+                )
+            ).scalar_one_or_none()
+            if bullet is None:
+                bullet = FocusAreaBullet(
+                    focus_area_id=focus.id,
+                    text=text,
+                    order_index=b_idx * 10,
+                )
+                session.add(bullet)
+
+
+def seed_work_approaches(session):
+    for idx, data in enumerate(WORK_APPROACHES_DATA, start=1):
+        bullets = data.get("bullets", [])
+        identity = {"id": idx}
+        payload = {
+            "title": data["title"],
+            "order_index": data.get("order_index", idx * 10),
+        }
+        approach: WorkApproach = upsert_one(session, WorkApproach, identity, payload)
+
+        for b_idx, text in enumerate(bullets, start=1):
+            bullet = session.execute(
+                select(WorkApproachBullet).filter_by(
+                    work_approach_id=approach.id,
+                    text=text,
+                )
+            ).scalar_one_or_none()
+            if bullet is None:
+                bullet = WorkApproachBullet(
+                    work_approach_id=approach.id,
+                    text=text,
+                    order_index=b_idx * 10,
+                )
+                session.add(bullet)
+
+
+def seed_section_meta(session):
+    for idx, data in enumerate(SECTION_META_DATA, start=1):
+        identity = {"section_key": data["section_key"]}
+        payload = {
+            "title": data.get("title"),
+            "subtitle": data.get("subtitle"),
+        }
+        upsert_one(session, SectionMeta, identity, payload)
+
+
 def run():
     with SessionLocal() as db:
         seed_profile(db)
@@ -681,6 +877,10 @@ def run():
         seed_publications(db)
         seed_stats(db)
         seed_tech_focus(db)
+        seed_hero_tags(db)
+        seed_focus_areas(db)
+        seed_work_approaches(db)
+        seed_section_meta(db)
 
         db.commit()
         print("✔ Seed completed: ai_portfolio_new")

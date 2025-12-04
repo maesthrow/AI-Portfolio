@@ -18,4 +18,39 @@ class TimestampMixin:
     )
 
 
-__all__ = ["Base", "TimestampMixin"]
+# Import all models for Alembic autogenerate
+from app.models.profile import Profile  # noqa: E402, F401
+from app.models.contact import Contact  # noqa: E402, F401
+from app.models.experience import CompanyExperience  # noqa: E402, F401
+from app.models.experience_project import ExperienceProject  # noqa: E402, F401
+from app.models.project import Project  # noqa: E402, F401
+from app.models.publication import Publication  # noqa: E402, F401
+from app.models.stats import Stat  # noqa: E402, F401
+from app.models.tech_focus import TechFocus, TechFocusTag  # noqa: E402, F401
+from app.models.technology import Technology  # noqa: E402, F401
+from app.models.hero_tag import HeroTag  # noqa: E402, F401
+from app.models.focus_area import FocusArea, FocusAreaBullet  # noqa: E402, F401
+from app.models.work_approach import WorkApproach, WorkApproachBullet  # noqa: E402, F401
+from app.models.section_meta import SectionMeta  # noqa: E402, F401
+
+
+__all__ = [
+    "Base",
+    "TimestampMixin",
+    "Profile",
+    "Contact",
+    "CompanyExperience",
+    "ExperienceProject",
+    "Project",
+    "Publication",
+    "Stat",
+    "TechFocus",
+    "TechFocusTag",
+    "Technology",
+    "HeroTag",
+    "FocusArea",
+    "FocusAreaBullet",
+    "WorkApproach",
+    "WorkApproachBullet",
+    "SectionMeta",
+]

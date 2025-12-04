@@ -15,3 +15,8 @@ class Profile(TimestampMixin, Base):
     status: Mapped[str | None] = mapped_column(String, nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
     summary_md: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Hero section fields
+    hero_headline: Mapped[str | None] = mapped_column(String, nullable=True)
+    hero_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_position: Mapped[str | None] = mapped_column(String, nullable=True)

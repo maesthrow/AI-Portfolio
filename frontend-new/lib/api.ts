@@ -2,11 +2,16 @@ import {
   Contact,
   ExperienceDetail,
   ExperienceItem,
+  FocusArea,
+  HeroTag,
   Profile,
   Project,
+  ProjectDetail,
   Publication,
+  SectionMeta,
   StatItem,
-  TechFocusItem
+  TechFocusItem,
+  WorkApproach
 } from "./types";
 
 export type ChatStreamEvent =
@@ -70,6 +75,34 @@ export async function getPublications(): Promise<Publication[]> {
 
 export async function getContacts(): Promise<Contact[]> {
   return getJson("/contacts");
+}
+
+export async function getHeroTags(): Promise<HeroTag[]> {
+  return getJson("/hero-tags");
+}
+
+export async function getFocusAreas(): Promise<FocusArea[]> {
+  return getJson("/focus-areas");
+}
+
+export async function getWorkApproaches(): Promise<WorkApproach[]> {
+  return getJson("/work-approaches");
+}
+
+export async function getSectionMeta(key: string): Promise<SectionMeta> {
+  return getJson(`/section-meta/${key}`);
+}
+
+export async function getAllSectionMeta(): Promise<SectionMeta[]> {
+  return getJson("/section-meta");
+}
+
+export async function getProjectBySlug(slug: string): Promise<ProjectDetail> {
+  return getJson(`/projects/${slug}`);
+}
+
+export async function getFeaturedProjects(): Promise<Project[]> {
+  return getJson("/projects?featured=true");
 }
 
 export async function askAgent(question: string, sessionId: string) {

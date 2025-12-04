@@ -3,31 +3,38 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import Section from "@/components/layout/Section";
-import { Contact, Profile } from "@/lib/types";
+import { Contact, HeroTag, Profile } from "@/lib/types";
 
 type HeroIntroProps = {
   profile: Profile;
   contacts: Contact[];
+  heroTags?: HeroTag[];
 };
 
 const primaryContacts: Contact["kind"][] = ["github", "telegram", "linkedin", "other"];
 const defaultName = "Дмитрий Каргин";
 const heroLabel = "AI-Portfolio — портфолио будущего";
-const heroSubheadline = "ML / LLM Engineer";
-const heroDescription =
-  "Создаю готовые AI-системы и решения для реальных сервисов.";
-const heroTags = ["AI-agents", "LLM", "RAG", "CV", "MLOps", "Backend"];
-const scrollHint = "листай дальше";
+const defaultHeadline = "ML / LLM Engineer";
+const defaultDescription = "Создаю готовые AI-системы и решения для реальных сервисов.";
+const fallbackTags = ["AI-agents", "LLM", "RAG", "CV", "MLOps", "Backend"];
 
 function contactLink(contacts: Contact[], kind: Contact["kind"]) {
   return contacts.find((c) => c.kind === kind);
 }
 
-export default function HeroIntro({ profile, contacts }: HeroIntroProps) {
+export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntroProps) {
   const avatar =
     profile.avatarUrl ?? (profile as any).avatar_url ?? (profile as any).avatar ?? null;
   const hasAvatar = Boolean(avatar);
   const displayName = profile.name || defaultName;
+  const headline = profile.hero_headline || defaultHeadline;
+  const description = profile.hero_description || defaultDescription;
+  const currentPosition = profile.current_position;
+
+  // Separate skill tags from link tags (those with icons)
+  const skillTags = heroTags.filter((t) => !t.icon);
+  const linkTags = heroTags.filter((t) => t.icon);
+  const displayTags = skillTags.length > 0 ? skillTags.map((t) => t.name) : fallbackTags;
 
   return (
     <Section
@@ -56,17 +63,22 @@ export default function HeroIntro({ profile, contacts }: HeroIntroProps) {
           >
             <p className="flex items-center gap-2 font-mono text-base text-accent-soft sm:text-lg">
               <span className="inline-flex items-center rounded-full border border-[#19f0c3]/60 bg-[#19f0c3]/10 px-3 py-1 text-sm font-semibold text-[#19f0c3] sm:text-base">
-                {heroSubheadline}
+                {headline}
               </span>
             </p>
             <h1 className="text-4xl font-bold leading-tight text-slate-50 sm:text-5xl lg:text-6xl">
               {displayName}
             </h1>
             <p className="max-w-2xl text-left text-base leading-relaxed text-slate-100 sm:text-lg md:max-w-3xl">
-              {heroDescription}
+              {description}
             </p>
+            {currentPosition && (
+              <p className="text-sm text-accent-soft/80 font-mono">
+                Сейчас: {currentPosition}
+              </p>
+            )}
             <div className="flex max-w-2xl flex-wrap gap-2 text-sm font-medium text-gray-200 sm:gap-2.5">
-              {heroTags.map((tag) => (
+              {displayTags.map((tag) => (
                 <span
                   key={tag}
                   className="rounded-full border border-accent/30 bg-white/5 px-3 py-1 leading-tight"

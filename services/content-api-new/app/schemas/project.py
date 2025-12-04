@@ -16,3 +16,7 @@ class ProjectOut(BaseModel):
     technologies: list[str] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectDetailOut(ProjectOut):
+    long_description_md: str | None = None

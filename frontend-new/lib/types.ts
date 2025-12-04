@@ -5,6 +5,9 @@ export type Profile = {
   location?: string;
   status?: string;
   avatarUrl?: string | null;
+  hero_headline?: string | null;
+  hero_description?: string | null;
+  current_position?: string | null;
 };
 
 export type ExperienceItem = {
@@ -89,4 +92,50 @@ export type AgentMessage = {
   createdAt: number;
   tempId?: string;
   status?: "streaming" | "done" | "error" | "stopped";
+};
+
+export type HeroTag = {
+  id: number;
+  name: string;
+  url?: string | null;
+  icon?: string | null;
+  order_index: number;
+};
+
+export type FocusAreaBullet = {
+  id: number;
+  text: string;
+  order_index: number;
+};
+
+export type FocusArea = {
+  id: number;
+  title: string;
+  is_primary: boolean;
+  order_index: number;
+  bullets: FocusAreaBullet[];
+};
+
+export type WorkApproachBullet = {
+  id: number;
+  text: string;
+  order_index: number;
+};
+
+export type WorkApproach = {
+  id: number;
+  title: string;
+  order_index: number;
+  bullets: WorkApproachBullet[];
+};
+
+export type SectionMeta = {
+  id: number;
+  section_key: string;
+  title?: string | null;
+  subtitle?: string | null;
+};
+
+export type ProjectDetail = Project & {
+  long_description_md?: string | null;
 };

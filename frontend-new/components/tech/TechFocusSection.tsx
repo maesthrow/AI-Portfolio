@@ -1,9 +1,15 @@
 import Section from "@/components/layout/Section";
-import { TechFocusItem } from "@/lib/types";
+import { SectionMeta, TechFocusItem } from "@/lib/types";
 
 type TechFocusSectionProps = {
   items: TechFocusItem[];
+  sectionMeta?: SectionMeta;
 };
+
+const defaultLabel = "ТЕХНОЛОГИЧЕСКИЙ ФОКУС";
+const defaultTitle = "Технологический фокус";
+const defaultSubtitle =
+  "LLM, RAG, CV, backend и MLOps с упором на продуктовую надежность и гибкость решений.";
 
 function normalizeTag(tag: TechFocusItem["tags"][number]) {
   if (typeof tag === "string") return tag;
@@ -12,13 +18,13 @@ function normalizeTag(tag: TechFocusItem["tags"][number]) {
   return "tag";
 }
 
-export default function TechFocusSection({ items }: TechFocusSectionProps) {
+export default function TechFocusSection({ items, sectionMeta }: TechFocusSectionProps) {
   return (
     <Section
       id="tech"
-      label="ТЕХНОЛОГИЧЕСКИЙ ФОКУС"
-      title="Технологический фокус"
-      subtitle="LLM, RAG, CV, backend и MLOps с упором на продуктовую надежность и гибкость решений."
+      label={defaultLabel}
+      title={sectionMeta?.title || defaultTitle}
+      subtitle={sectionMeta?.subtitle || defaultSubtitle}
     >
       <div className="grid gap-8 md:grid-cols-2">
         {items.map((item) => (

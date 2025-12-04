@@ -1,12 +1,12 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
 from app.models.project import Project
-from app.schemas.project import ProjectOut
+from app.schemas.project import ProjectDetailOut, ProjectOut
 
 router = APIRouter()
 
@@ -37,3 +37,30 @@ def list_projects(
         )
         for p in projects
     ]
+
+
+@router.get("/{slug}", response_model=ProjectDetailOut)
+def get_project_by_slug(slug: str, db: Session = Depends(get_db)):
+    stmt = (
+        select(Project)
+        .options(joinedload(Project.technologies))
+        .where(Project.slug == slug)
+    )
+    project = db.execute(stmt).scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return ProjectDetailOut(
+        id=project.id,
+        name=project.name,
+        slug=project.slug,
+        description_md=project.description_md,
+        long_description_md=project.long_description_md,
+        period=project.period,
+        company_name=project.company_name,
+        company_website=project.company_website,
+        domain=project.domain,
+        featured=project.featured,
+        repo_url=project.repo_url,
+        demo_url=project.demo_url,
+        technologies=[t.name for t in project.technologies],
+    )
