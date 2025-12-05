@@ -1,18 +1,23 @@
 import Section from "@/components/layout/Section";
 import ContactCard from "@/components/contacts/ContactCard";
-import { Contact } from "@/lib/types";
+import { Contact, SectionMeta } from "@/lib/types";
 
 type ContactsSectionProps = {
   contacts: Contact[];
+  sectionMeta?: SectionMeta;
 };
 
-export default function ContactsSection({ contacts }: ContactsSectionProps) {
+const defaultLabel = "СВЯЗАТЬСЯ СО МНОЙ";
+const defaultTitle = "Контакты и связи";
+const defaultSubtitle = "Воспользуйтесь моими контактами или обратитесь за помощью к AI-агенту.";
+
+export default function ContactsSection({ contacts, sectionMeta }: ContactsSectionProps) {
   return (
     <Section
       id="contacts"
-      label="СВЯЗАТЬСЯ СО МНОЙ"
-      title="Контакты и связи"
-      subtitle="Воспользуйтесь моими контактами или обратитесь за помощью к AI-агенту."
+      label={defaultLabel}
+      title={sectionMeta?.title || defaultTitle}
+      subtitle={sectionMeta?.subtitle || defaultSubtitle}
       className="mt-32"
     >
       <div className="relative overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 p-6 shadow-[0_0_18px_rgba(0,255,200,0.16)] transition duration-300 hover:shadow-[0_0_40px_rgba(0,255,200,0.32)] sm:p-8">

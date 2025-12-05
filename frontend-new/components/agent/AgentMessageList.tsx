@@ -89,15 +89,17 @@ export default function AgentMessageList({ messages, typing = false }: AgentMess
                       ul: ({ node, ...props }) => <ul className="ml-4 list-disc space-y-1" {...props} />,
                       ol: ({ node, ...props }) => <ol className="ml-4 list-decimal space-y-1" {...props} />,
                       li: ({ node, ...props }) => <li className="whitespace-pre-wrap" {...props} />,
-                      code: ({ node, inline, ...props }) =>
-                        inline ? (
+                      code: ({ node, className, ...props }) => {
+                        const isInline = !className?.includes("language-");
+                        return isInline ? (
                           <code className="rounded bg-slate-800 px-1 py-0.5 text-xs" {...props} />
                         ) : (
                           <code
                             className="block whitespace-pre-wrap rounded bg-slate-900 px-3 py-2 text-xs"
                             {...props}
                           />
-                        )
+                        );
+                      }
                     }}
                   >
                     {m.content}

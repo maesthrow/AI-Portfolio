@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Project } from "@/lib/types";
 
 const domainLabels: Record<string, { label: string; tone: string }> = {
@@ -60,7 +61,12 @@ export default function ProjectCard({ project }: ProjectCardProps) {
       </div>
 
       <div className="relative space-y-2">
-        <p className="text-2xl font-semibold leading-tight text-slate-50">{project.name}</p>
+        <Link
+          href={`/projects/${project.slug}`}
+          className="text-2xl font-semibold leading-tight text-slate-50 transition-colors hover:text-accent"
+        >
+          {project.name}
+        </Link>
         {description ? (
           <p className="text-sm leading-relaxed text-slate-300">{description}</p>
         ) : null}
