@@ -249,7 +249,7 @@ PROJECTS_DATA = [
             "Личный Telegram-бот-хранилище: структура папок, файлы, медиа, текстовые заметки. "
             "Интеграция с LLM (GigaChat), история диалогов и быстрый поиск по контенту."
         ),
-        "period": "2023 — н.в.",
+        "period": "2023 — 2024",
         "company_name": None,
         "company_website": None,
         "domain": "personal_product",

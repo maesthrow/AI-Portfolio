@@ -62,13 +62,16 @@ export default function ExperienceCard({ item }: ExperienceCardProps) {
           <p className="text-sm leading-relaxed text-slate-100/90">{item.company_summary_md}</p>
         ) : null}
 
-        <div className="mt-auto flex items-center justify-end gap-4 border-t border-emerald-400/20 pt-3 text-sm font-medium text-emerald-200">
+        <div className="mt-auto flex justify-end border-t border-[#00ffc3]/20 pt-4">
           <Link
             href={moreHref}
-            className="inline-flex items-center gap-1 text-emerald-200 transition-colors duration-200 hover:text-emerald-100"
+            className="group/cta inline-flex items-center gap-1.5 rounded-full border border-[#00ffc3]/50 bg-black/50 px-4 py-1.5 text-xs font-semibold text-slate-200 transition-all duration-200 hover:border-[#00ffc3]/80 hover:text-accent hover:shadow-[0_0_14px_rgba(0,255,200,0.25)]"
           >
             Подробнее
-            <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-0.5">
+            <span
+              aria-hidden="true"
+              className="transition-transform duration-300 group-hover/cta:translate-x-0.5"
+            >
               →
             </span>
           </Link>

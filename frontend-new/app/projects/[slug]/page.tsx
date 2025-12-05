@@ -179,9 +179,15 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         <div className="flex justify-start">
           <Link
             href="/#projects"
-            className="inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 px-4 py-2 text-sm font-medium text-accent transition hover:-translate-y-0.5 hover:border-accent hover:text-accent-soft"
+            className="group/cta inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 bg-black/50 px-4 py-2 text-sm font-medium text-accent transition-all duration-200 hover:border-[#00ffc3]/80 hover:text-accent hover:shadow-[0_0_14px_rgba(0,255,200,0.25)]"
           >
-            &#8592; Назад к проектам
+            <span
+              aria-hidden="true"
+              className="transition-transform duration-300 group-hover/cta:-translate-x-0.5"
+            >
+              &#8592;
+            </span>
+            <span>Назад к проектам</span>
           </Link>
         </div>
       </div>

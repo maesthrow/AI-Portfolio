@@ -15,7 +15,7 @@ type AboutSection = {
   badge?: string;
 };
 
-const sectionLabel = ">_ ОБО МНЕ";
+const sectionLabel = "ОБО МНЕ";
 const sectionTitle = "ОБО МНЕ";
 
 const fallbackParagraphs = [

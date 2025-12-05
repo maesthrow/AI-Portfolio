@@ -40,8 +40,8 @@ export default function ProjectCard({ project }: ProjectCardProps) {
   const description = shortDescription(project.description_md || (project as any).description);
 
   return (
-    <div className="group relative flex flex-col gap-5 rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-black/60 via-bg-panel/80 to-black/50 p-8 shadow-[0_0_15px_rgba(0,255,200,0.14)] transition duration-300 hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]">
-      <div className="absolute inset-px rounded-[22px] bg-gradient-to-r from-accent/10 via-transparent to-accent-alt/10 opacity-0 transition-opacity duration-500 group-hover:opacity-70" />
+    <div className="group/card relative flex flex-col gap-5 rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-black/60 via-bg-panel/80 to-black/50 p-8 pb-6 shadow-[0_0_15px_rgba(0,255,200,0.14)] transition duration-300 hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)]">
+      <div className="absolute inset-px rounded-[22px] bg-gradient-to-r from-accent/10 via-transparent to-accent-alt/10 opacity-0 transition-opacity duration-500 group-hover/card:opacity-70" />
       <div className="relative flex flex-wrap items-center gap-2">
         {domain ? (
           <span
@@ -72,12 +72,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
         ) : null}
       </div>
 
-      <div className="relative mt-auto flex flex-wrap items-center justify-between gap-3 text-sm text-slate-300">
-        {project.period ? (
-          <span className="text-slate-400">{project.period}</span>
-        ) : (
-          <span className="text-transparent">—</span>
-        )}
+      <div className="relative mt-auto space-y-3 text-sm text-slate-300">
         <div className="flex flex-wrap gap-3">
           {project.repo_url ? (
             <a
@@ -99,6 +94,20 @@ export default function ProjectCard({ project }: ProjectCardProps) {
               Demo
             </a>
           ) : null}
+        </div>
+        <div className="mt-2.5 flex justify-end border-t border-[#00ffc3]/20 pt-4">
+          <Link
+            href={`/projects/${project.slug}`}
+            className="group/cta inline-flex items-center gap-1.5 rounded-full border border-[#00ffc3]/50 bg-black/50 px-4 py-1.5 text-xs font-semibold text-slate-200 transition-all duration-200 hover:border-[#00ffc3]/80 hover:text-accent hover:shadow-[0_0_14px_rgba(0,255,200,0.25)]"
+          >
+            Подробнее
+            <span
+              aria-hidden="true"
+              className="transition-transform duration-300 group-hover/cta:translate-x-0.5"
+            >
+              →
+            </span>
+          </Link>
         </div>
       </div>
     </div>
