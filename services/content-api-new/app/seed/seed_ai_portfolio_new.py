@@ -65,9 +65,9 @@ PROFILE_DATA = {
         "Делаю AI-функциональность удобной и надёжной: продумываю архитектуру, "
         "забочусь о качестве моделей и интегрирую ML-решения так, чтобы они помогали бизнесу."
     ),
-    "hero_headline": "ML/LLM & Backend/MLOps Engineer",
-    "hero_description": "Строю AI-системы от модели и агента до продакшн-сервиса.",
-    "current_position": "Python / ML Engineer @ Aston",
+    "hero_headline": "AI/ML Engineer | Backend Developer",
+    "hero_description": "Строю AI-системы от модели и агента до продакшн-сервисов.",
+    "current_position": "Backend Developer / ML Engineer в Aston",
 }
 
 CONTACTS_DATA = [
@@ -446,7 +446,7 @@ TECH_FOCUS_DATA = [
 ]
 
 HERO_TAGS_DATA = [
-    {"name": "AI-агенты", "order_index": 10},
+    {"name": "AI-agents", "order_index": 10},
     {"name": "LLM", "order_index": 20},
     {"name": "RAG", "order_index": 30},
     {"name": "CV", "order_index": 40},

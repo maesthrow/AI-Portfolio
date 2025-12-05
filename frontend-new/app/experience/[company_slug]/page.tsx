@@ -19,6 +19,13 @@ type PageProps = {
   params: { company_slug: string };
 };
 
+function normalizeTech(value: string | { id?: string | number; name?: string }) {
+  if (typeof value === "string") return value;
+  if (value?.name) return value.name;
+  if (value?.id !== undefined) return String(value.id);
+  return null;
+}
+
 export default async function ExperienceCompanyPage({ params }: PageProps) {
   let detail: ExperienceDetail | null = null;
   try {
@@ -33,6 +40,13 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
 
   const { company, projects } = detail;
   const period = formatPeriod(company.start_date, company.end_date, company.is_current);
+  const companyTechs = Array.from(
+    new Set(
+      projects
+        .flatMap((proj) => (proj.technologies || []).map((tech) => normalizeTech(tech as any)))
+        .filter(Boolean) as string[]
+    )
+  );
 
   return (
     <Shell>
@@ -94,16 +108,16 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
                 <div className="flex flex-col gap-1">
                   <h3 className="text-lg font-semibold text-emerald-300">{proj.name}</h3>
                 </div>
-                <div className="mt-4 prose prose-invert max-w-none text-lg text-slate-100/90">
+                <div className="mt-4 prose prose-invert max-w-none text-lg text-slate-100">
                   <ReactMarkdown>{proj.description_md}</ReactMarkdown>
                 </div>
                 <div className="mt-5 h-px bg-emerald-400/15" />
                 <div className="mt-4">
                   <ReactMarkdown
-                    className="prose prose-invert max-w-none text-slate-100/90"
+                    className="prose prose-invert max-w-none text-slate-100"
                     components={{
                       ul: ({ ...props }) => (
-                        <ul className="ml-5 list-disc space-y-3.5 marker:text-emerald-300" {...props} />
+                        <ul className="ml-5 list-disc space-y-4 marker:text-emerald-300" {...props} />
                       ),
                       li: ({ ...props }) => <li className="text-slate-100/90" {...props} />,
                     }}
@@ -111,22 +125,26 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
                     {proj.achievements_md}
                   </ReactMarkdown>
                 </div>
-                {proj.technologies && proj.technologies.length ? (
-                  <div className="mt-7 flex flex-wrap gap-3.5">
-                    {proj.technologies.map((tech) => (
-                      <span
-                        key={tech}
-                        className="rounded-full border border-emerald-400/40 bg-emerald-500/5 px-3.5 py-1 text-[11px] font-semibold text-emerald-100 shadow-[0_0_8px_rgba(0,255,200,0.12)]"
-                      >
-                        {tech}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
               </div>
             ))}
           </div>
         </div>
+
+        {companyTechs.length > 0 ? (
+          <div className="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-6 shadow-[0_0_18px_rgba(0,0,0,0.4)]">
+            <h2 className="mb-4 text-xl font-semibold text-slate-50">Технологии</h2>
+            <div className="flex flex-wrap gap-3">
+              {companyTechs.map((tech) => (
+                <span
+                  key={tech}
+                  className="rounded-full border border-[#00ffc3]/40 bg-accent/10 px-4 py-1.5 text-sm font-medium text-slate-100 shadow-[0_0_10px_rgba(0,255,200,0.2)]"
+                >
+                  {tech}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="flex justify-start">
           <Link

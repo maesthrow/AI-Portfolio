@@ -119,7 +119,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
               className="prose prose-invert max-w-none text-slate-100/90"
               components={{
                 ul: ({ ...props }) => (
-                  <ul className="ml-5 list-disc space-y-3 marker:text-accent" {...props} />
+                  <ul className="ml-5 list-disc space-y-4 marker:text-accent" {...props} />
                 ),
                 li: ({ ...props }) => <li className="text-slate-100/90" {...props} />,
                 h1: ({ ...props }) => (
