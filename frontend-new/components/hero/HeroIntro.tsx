@@ -1,8 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Link from "next/link";
+import { Github, Linkedin, Send, Sparkles } from "lucide-react";
 import Section from "@/components/layout/Section";
+import { SocialBadge, type SocialBadgeProps } from "@/components/ui/SocialBadge";
 import { Contact, HeroTag, Profile } from "@/lib/types";
 
 type HeroIntroProps = {
@@ -12,6 +13,12 @@ type HeroIntroProps = {
 };
 
 const primaryContacts: Contact["kind"][] = ["github", "telegram", "linkedin", "other"];
+const socialIcons: Partial<Record<Contact["kind"], SocialBadgeProps["icon"]>> = {
+  github: Github,
+  telegram: Send,
+  linkedin: Linkedin,
+  other: Sparkles,
+};
 const defaultName = "Дмитрий Каргин";
 const heroLabel = "AI-Portfolio — портфолио будущего";
 const defaultHeadline = "ML / LLM Engineer";
@@ -92,16 +99,12 @@ export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntr
                 const item = contactLink(contacts, kind);
                 if (!item) return null;
                 return (
-                  <Link
+                  <SocialBadge
                     key={kind}
                     href={item.url}
-                    className="group inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 bg-black/40 px-5 py-2.5 text-sm font-semibold text-slate-100 shadow-[0_0_15px_rgba(0,255,200,0.18)] transition duration-200 hover:-translate-y-1 hover:border-[#00ffc3]/70 hover:shadow-[0_0_45px_rgba(0,255,200,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span className="h-2 w-2 rounded-full bg-accent-soft shadow-[0_0_12px_rgba(0,255,200,0.6)] transition group-hover:shadow-[0_0_18px_rgba(0,255,200,0.8)]" />
-                    {item.label}
-                  </Link>
+                    label={item.label}
+                    icon={socialIcons[kind] ?? Sparkles}
+                  />
                 );
               })}
             </div>
