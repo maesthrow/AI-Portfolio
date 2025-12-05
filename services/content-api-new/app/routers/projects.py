@@ -46,7 +46,7 @@ def get_project_by_slug(slug: str, db: Session = Depends(get_db)):
         .options(joinedload(Project.technologies))
         .where(Project.slug == slug)
     )
-    project = db.execute(stmt).scalar_one_or_none()
+    project = db.execute(stmt).unique().scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return ProjectDetailOut(
