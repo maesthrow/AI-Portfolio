@@ -12,6 +12,12 @@ const defaultTitle = "Контакты и связи";
 const defaultSubtitle = "Воспользуйтесь моими контактами или обратитесь за помощью к AI-агенту.";
 
 export default function ContactsSection({ contacts, sectionMeta }: ContactsSectionProps) {
+  const uniqueContacts =
+    contacts?.filter(
+      (contact, idx, arr) =>
+        idx === arr.findIndex((c) => c.kind === contact.kind && c.value === contact.value)
+    ) || [];
+
   return (
     <Section
       id="contacts"
@@ -33,7 +39,7 @@ export default function ContactsSection({ contacts, sectionMeta }: ContactsSecti
           <p className="text-xs text-accent">✓ Загружены контакты</p>
         </div>
         <div className="relative mt-5 grid gap-6 sm:grid-cols-2">
-          {contacts.map((contact) => (
+          {uniqueContacts.map((contact) => (
             <ContactCard key={`${contact.kind}-${contact.value}`} contact={contact} />
           ))}
         </div>
