@@ -79,7 +79,7 @@ export type Publication = {
 };
 
 export type Contact = {
-  kind: "email" | "telegram" | "github" | "linkedin" | "other";
+  kind: "email" | "telegram" | "github" | "linkedin" | "hh" | "leetcode" | "other";
   label: string;
   value: string;
   url: string;

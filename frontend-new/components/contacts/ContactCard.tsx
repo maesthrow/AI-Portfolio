@@ -34,6 +34,45 @@ const ContactIcons: Record<Contact["kind"] | "default", JSX.Element> = {
       <path d="M4.9 9.4H2.3v12.2h2.6V9.4Zm.2-3.9a1.5 1.5 0 1 0-3 0c0 .8.7 1.5 1.5 1.5.9 0 1.5-.7 1.5-1.5ZM22 21.6v-7.7c0-3-1.6-4.4-3.9-4.4-1.8 0-2.6 1-3 1.6V9.4H12c0 .7 0 12.2 0 12.2h3.1v-6.8c0-.4 0-.8.1-1 .3-.8 1-1.6 2-1.6 1.3 0 1.9 1.2 1.9 3v6.4H22Z" />
     </svg>
   ),
+  hh: (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-6 w-6"
+      aria-hidden="true"
+    >
+      <text
+        x="12"
+        y="17"  // ниже, чтобы крупный текст не «залазил» вверх
+        textAnchor="middle"
+        fontSize="15.5"
+        fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        fontWeight="700"
+        fill="currentColor"
+      >
+        hh
+      </text>
+    </svg>
+  ),  
+  leetcode: (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-6 w-6"
+      aria-hidden="true"
+    >
+      <text
+        x="12"
+        y="17"  // оптический центр по высоте
+        textAnchor="middle"
+        fontSize="14.5"
+        fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        fontWeight="700"
+        letterSpacing="0.4"
+        fill="currentColor"
+      >
+        LC
+      </text>
+    </svg>
+  ),  
   default: (
     <svg
       viewBox="0 0 24 24"
@@ -58,6 +97,9 @@ const ContactColors: Record<Contact["kind"] | "default", string> = {
     "border-slate-500/60 bg-slate-700/30 text-slate-100 shadow-[0_0_12px_rgba(148,163,184,0.25)]",
   linkedin:
     "border-purple-400/60 bg-purple-500/10 text-purple-100 shadow-[0_0_12px_rgba(168,85,247,0.25)]",
+  hh: "border-rose-400/60 bg-rose-500/10 text-rose-100 shadow-[0_0_12px_rgba(251,113,133,0.25)]",
+  leetcode:
+    "border-amber-400/60 bg-amber-500/10 text-amber-100 shadow-[0_0_12px_rgba(251,191,36,0.25)]",
   other:
     "border-[#00ffc3]/50 bg-accent/10 text-accent shadow-[0_0_12px_rgba(0,255,200,0.25)]",
   default:

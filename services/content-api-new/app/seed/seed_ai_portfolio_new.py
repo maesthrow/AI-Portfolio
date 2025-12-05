@@ -88,10 +88,10 @@ CONTACTS_DATA = [
         "is_primary": False,
     },
     {
-        "kind": "github",
-        "label": "GitHub",
-        "value": "maesthrow",
-        "url": "https://github.com/maesthrow",
+        "kind": "hh",
+        "label": "hh.ru",
+        "value": "Dmitriy Kargin",
+        "url": "https://samara.hh.ru/resume/4ff077d4ff0f9bb97a0039ed1f767833386370",
         "order_index": 30,
         "is_primary": False,
     },
@@ -101,6 +101,22 @@ CONTACTS_DATA = [
         "value": "Dmitriy Kargin",
         "url": "https://www.linkedin.com/in/dmitriy-kargin",
         "order_index": 40,
+        "is_primary": False,
+    },
+    {
+        "kind": "github",
+        "label": "GitHub",
+        "value": "maesthrow",
+        "url": "https://github.com/maesthrow",
+        "order_index": 50,
+        "is_primary": False,
+    },
+    {
+        "kind": "leetcode",
+        "label": "LeetCode",
+        "value": "maesthrow",
+        "url": "https://leetcode.com/maesthrow/",
+        "order_index": 60,
         "is_primary": False,
     },
 ]
@@ -704,8 +720,19 @@ def seed_profile(session):
 
 
 def seed_contacts(session):
+    # ensure unique contact per kind; drop any duplicates before upserting
+    existing = session.execute(select(Contact).order_by(Contact.id.asc())).scalars().all()
+    seen_kinds: dict[str, Contact] = {}
+    for contact in existing:
+        if contact.kind in seen_kinds:
+            session.delete(contact)
+        else:
+            seen_kinds[contact.kind] = contact
+    if len(seen_kinds) != len(existing):
+        session.flush()
+
     for idx, data in enumerate(CONTACTS_DATA, start=1):
-        identity = {"id": idx}
+        identity = {"kind": data["kind"]}
         payload = {**data, "order_index": data.get("order_index", idx * 10)}
         upsert_one(session, Contact, identity, payload)
 
