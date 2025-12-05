@@ -45,6 +45,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     .filter(Boolean) as string[];
 
   const descriptionContent = project.long_description_md || project.description_md;
+  const summaryContent = project.description_md;
 
   return (
     <Shell>
@@ -88,6 +89,12 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             ) : null}
           </div>
 
+          {summaryContent ? (
+            <ReactMarkdown className="prose prose-invert max-w-none text-base text-slate-100/90">
+              {summaryContent}
+            </ReactMarkdown>
+          ) : null}
+
           <div className="flex flex-wrap gap-3">
             {project.repo_url ? (
               <a
@@ -114,7 +121,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
         {descriptionContent ? (
           <div className="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-6 shadow-[0_0_18px_rgba(0,0,0,0.4)]">
-            <h2 className="mb-4 text-xl font-semibold text-slate-50">Описание проекта</h2>
+            <h2 className="mb-4 text-xl font-semibold text-slate-50">Подробное описание</h2>
             <ReactMarkdown
               className="prose prose-invert max-w-none text-slate-100/90"
               components={{
