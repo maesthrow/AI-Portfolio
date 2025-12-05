@@ -66,8 +66,8 @@ PROFILE_DATA = {
         "забочусь о качестве моделей и интегрирую ML-решения так, чтобы они помогали бизнесу."
     ),
     "hero_headline": "AI/ML Engineer | Backend Developer",
-    "hero_description": "Строю AI-системы от модели и агента до продакшн-сервисов.",
-    "current_position": "Backend Developer / ML Engineer в Aston",
+    "hero_description": "Строю AI-системы от модели и агента до продакшн-сервиса.",
+    "current_position": "Backend-разработчик / ML-инженер в Aston",
 }
 
 CONTACTS_DATA = [
@@ -523,13 +523,12 @@ HERO_TAGS_DATA = [
     {"name": "LLM", "order_index": 20},
     {"name": "RAG", "order_index": 30},
     {"name": "CV", "order_index": 40},
-    {"name": "Backend", "order_index": 50},
-    {"name": "MLOps", "order_index": 60},
-    {"name": "Python", "order_index": 70},
-    {"name": "C# / .NET", "order_index": 80},
-    {"name": "GitHub", "url": "https://github.com/maesthrow", "icon": "github", "order_index": 90},
-    {"name": "Telegram", "url": "https://t.me/kargindmitriy", "icon": "telegram", "order_index": 100},
-    {"name": "LinkedIn", "url": "https://www.linkedin.com/in/dmitriy-kargin", "icon": "linkedin", "order_index": 110},
+    {"name": "MLOps", "order_index": 50},
+    {"name": "Python", "order_index": 60},
+    {"name": "C# / .NET", "order_index": 70},
+    {"name": "GitHub", "url": "https://github.com/maesthrow", "icon": "github", "order_index": 80},
+    {"name": "Telegram", "url": "https://t.me/kargindmitriy", "icon": "telegram", "order_index": 90},
+    {"name": "LinkedIn", "url": "https://www.linkedin.com/in/dmitriy-kargin", "icon": "linkedin", "order_index": 100},
 ]
 
 FOCUS_AREAS_DATA = [
