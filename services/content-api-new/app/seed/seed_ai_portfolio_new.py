@@ -217,6 +217,12 @@ PROJECTS_DATA = [
             "ML-платформа для проектов компании t2: CV-сервисы для ребрендинга, "
             "LLM + RAG-системы, бэкенд авто-обучения и инференса CV-моделей."
         ),
+        "long_description_md": (
+            "- CV-пайплайн для контроля бренда, цветов и подложек в тысячах фотоконтентов.\n"
+            "- LLM-ассистент с RAG для расчёта штрафов и разборов спорных кейсов (LangChain/LangGraph, vLLM, ChromaDB).\n"
+            "- MLOps: MLflow, Celery, RabbitMQ, пайплайн автообучения и валидации моделей.\n"
+            "- Backend на FastAPI, интеграции с внутренними сервисами t2."
+        ),
         "period": "2024 — н.в.",
         "company_name": "t2 (проект в Aston)",
         "company_website": "https://t2.ru",
@@ -243,36 +249,13 @@ PROJECTS_DATA = [
         ],
     },
     {
-        "name": "HyperKeeper",
-        "slug": "hyperkeeper",
-        "description_md": (
-            "Личный Telegram-бот-хранилище: структура папок, файлы, медиа, текстовые заметки. "
-            "Интеграция с LLM (GigaChat), история диалогов и быстрый поиск по контенту."
-        ),
-        "period": "2023 — 2024",
-        "company_name": None,
-        "company_website": None,
-        "domain": "personal_product",
-        "featured": True,
-        "repo_url": "https://github.com/maesthrow/HyperKeeperBot",
-        "demo_url": "https://t.me/HyperKeeperBot",
-        "technologies": [
-            "Python 3.12",
-            "aiogram",
-            "aiogram-dialog",
-            "MongoDB",
-            "LangChain",
-            "GigaChain",
-            "Docker",
-        ],
-    },
-    {
         "name": "АЛОР БРОКЕР",
         "slug": "alor-broker",
         "description_md": (
             "Python-бэкенд для брокерских сервисов: нотификации, регистрация клиентов, "
             "интеграция с ФНС через Контур.Экстерн."
         ),
+        "long_description_md": None,
         "period": "2024",
         "company_name": "ООО «АЛОР +»",
         "company_website": "https://www.alorbroker.ru",
@@ -296,6 +279,7 @@ PROJECTS_DATA = [
             "Сервисы для автоматизации аптек и розничной торговли: интеграции, мониторинг, "
             "бот службы поддержки на aiogram-dialog."
         ),
+        "long_description_md": None,
         "period": "2023–2024",
         "company_name": "АО «Спарго Технологии»",
         "company_website": "https://www.spargo.ru",
@@ -334,6 +318,95 @@ PROJECTS_DATA = [
             "psycopg",
             "PostgreSQL",
             "pytest",
+        ],
+    },
+    {
+        "name": "HyperKeeper",
+        "slug": "hyperkeeper",
+        "description_md": (
+            "Личный Telegram-бот-хранилище: структура папок, файлы, медиа, текстовые заметки. "
+            "Интеграция с LLM (GigaChat), история диалогов и быстрый поиск по контенту."
+        ),
+        "long_description_md": (
+            "- Telegram-бот для загрузки документов, заметок и медиа.\n"
+            "- RAG-поиск по личному хранилищу, ответ через LLM.\n"
+            "- Модульная архитектура: aiogram, LangChain, MongoDB, ChromaDB."
+        ),
+        "period": "2023 — 2024",
+        "company_name": None,
+        "company_website": None,
+        "domain": "Bot",
+        "featured": True,
+        "repo_url": "https://github.com/maesthrow/HyperKeeperBot",
+        "demo_url": "https://t.me/HyperKeeperBot",
+        "technologies": [
+            "Python 3.12",
+            "aiogram",
+            "aiogram-dialog",
+            "MongoDB",
+            "LangChain",
+            "GigaChain",
+            "Docker",
+        ],
+    },
+    {
+        "name": "AI-Portfolio",
+        "slug": "ai-portfolio",
+        "description_md": (
+            "Личный AI-портфолио-сайт. Фронтенд на Next.js, backend-сервисы (content-api, rag-api) на FastAPI, "
+            "LLM-инфраструктура (vLLM, TEI, ChromaDB). Встроенный AI-агент для ответов на вопросы по опыту и проектам."
+        ),
+        "long_description_md": (
+            "- Next.js фронтенд и дизайн портфолио.\n"
+            "- Content API + RAG API на FastAPI, отдельные сервисы для данных и индексации.\n"
+            "- vLLM, Text Embeddings Inference, ChromaDB и агенты для ответов по содержимому сайта.\n"
+            "- Полная автоматизация контента через сиды и CI/CD пайплайн."
+        ),
+        "period": "2025 — н.в.",
+        "company_name": None,
+        "company_website": "https://github.com/maesthrow/AI-Portfolio",
+        "domain": "rag",
+        "featured": True,
+        "repo_url": "https://github.com/maesthrow/AI-Portfolio",
+        "demo_url": None,
+        "technologies": [
+            "Next.js",
+            "FastAPI",
+            "vLLM",
+            "Text Embeddings Inference",
+            "ChromaDB",
+            "RAG",
+            "AI-агент",
+            "Docker",
+            "PostgreSQL",
+        ],
+    },
+    {
+        "name": "ReAct-Agent",
+        "slug": "react-agent",
+        "description_md": (
+            "ReAct-агент на базе LLM, комбинирующий рассуждение и вызов инструментов. "
+            "Поддерживает цепочку действий: поиск задач, операции над ними, интеграция с внешними API."
+        ),
+        "long_description_md": (
+            "- Реализация ReAct-подхода с LangChain и кастомными тулзами.\n"
+            "- Поддержка сложных последовательностей действий и возврата к предыдущим шагам.\n"
+            "- Демонстрация AI-агентного стека и интеграции с внешними API."
+        ),
+        "period": "2025",
+        "company_name": None,
+        "company_website": "https://github.com/maesthrow/ReAct-Agent",
+        "domain": "AI-agents",
+        "featured": True,
+        "repo_url": "https://github.com/maesthrow/ReAct-Agent",
+        "demo_url": None,
+        "technologies": [
+            "Python",
+            "LLM",
+            "ReAct",
+            "LangChain",
+            "Tools/Function calling",
+            "vLLM",
         ],
     },
 ]
