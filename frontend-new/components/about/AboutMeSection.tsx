@@ -15,7 +15,7 @@ type AboutSection = {
   badge?: string;
 };
 
-const sectionLabel = "ОБО МНЕ";
+const sectionLabel = ">_ ОБО МНЕ";
 const sectionTitle = "ОБО МНЕ";
 
 const fallbackParagraphs = [
@@ -65,7 +65,6 @@ export default function AboutMeSection({ profile, stats, focusAreas = [] }: Abou
   const normalizeSummaryText = (text: string | null) =>
     text ? text.replace(/Python\s*\+\s*\.NET/gi, "Python\u00a0+\u00a0.NET").trim() : null;
 
-  // Use API data if available, otherwise use fallback
   const sections: AboutSection[] =
     focusAreas.length > 0
       ? focusAreas.map((fa) => ({
@@ -80,9 +79,13 @@ export default function AboutMeSection({ profile, stats, focusAreas = [] }: Abou
   const summaryParagraphs =
     summaryText && summaryText.length > 0
       ? summaryText
-          .split(summarySplitRegex)
-          .map((p) => p.trim())
-          .filter(Boolean)
+          .split(/\n+/)
+          .flatMap((block) =>
+            block
+              .split(summarySplitRegex)
+              .map((p) => p.trim())
+              .filter(Boolean)
+          )
       : fallbackParagraphs;
 
   return (

@@ -61,7 +61,7 @@ PROFILE_DATA = {
     "status": "ready_to_connect_",
     "avatar_url": "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
     "summary_md": (
-        "ML/LLM инженер с продуктовым подходом и бэкенд-фоном: Python + .NET.\n"
+        "ML/LLM инженер с продуктовым подходом и бэкенд-фоном (Python + .NET).\n"
         "Делаю AI-функциональность удобной и надёжной: продумываю архитектуру, "
         "забочусь о качестве моделей и интегрирую ML-решения так, чтобы они помогали бизнесу."
     ),
@@ -221,7 +221,7 @@ PROJECTS_DATA = [
         "company_name": "t2 (проект в Aston)",
         "company_website": "https://t2.ru",
         "domain": "ml_platform",
-        "featured": True,
+        "featured": False,
         "repo_url": None,
         "demo_url": None,
         "technologies": [
