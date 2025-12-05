@@ -776,10 +776,11 @@ def seed_projects_with_tech(session):
         )
 
     for idx, data in enumerate(PROJECTS_DATA, start=1):
-        identity = {"id": idx}
         tech_names = data.get("technologies", [])
         payload = data.copy()
         payload.pop("technologies", None)
+        slug = payload.get("slug")
+        identity = {"slug": slug}
         proj = upsert_one(session, Project, identity, payload)
 
         for t_idx, tech_name in enumerate(tech_names, start=1):
