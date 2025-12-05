@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Github } from "lucide-react";
 import { Project } from "@/lib/types";
 
 const domainLabels: Record<string, { label: string; tone: string }> = {
@@ -81,6 +82,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
               rel="noreferrer"
               className="inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 bg-black/50 px-4 py-1.5 font-semibold text-accent shadow-[0_0_18px_rgba(0,255,200,0.25)] transition-transform duration-200 hover:-translate-y-0.5 hover:text-accent-soft"
             >
+              <Github className="h-4 w-4" aria-hidden="true" />
               GitHub
             </a>
           ) : null}
