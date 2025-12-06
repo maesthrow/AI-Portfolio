@@ -64,11 +64,17 @@ export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntr
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
-        className="relative w-full overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 px-4 py-4 shadow-[0_0_26px_rgba(0,255,200,0.24)] backdrop-blur sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10 xl:px-12 xl:py-12"
+        className="relative w-full overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 px-4 py-4 shadow-[0_0_26px_rgba(0,255,200,0.24)] backdrop-blur transition-shadow duration-500 hover:shadow-[0_0_40px_rgba(0,255,200,0.3)] sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10 xl:px-12 xl:py-12"
       >
+        {/* Corner decorations */}
+        <div className="pointer-events-none absolute left-0 top-0 h-4 w-4 rounded-tl-lg border-l-2 border-t-2 border-accent/50" />
+        <div className="pointer-events-none absolute right-0 top-0 h-4 w-4 rounded-tr-lg border-r-2 border-t-2 border-accent/50" />
+        <div className="pointer-events-none absolute bottom-0 left-0 h-4 w-4 rounded-bl-lg border-b-2 border-l-2 border-accent/50" />
+        <div className="pointer-events-none absolute bottom-0 right-0 h-4 w-4 rounded-br-lg border-b-2 border-r-2 border-accent/50" />
+
+        {/* Background gradient blobs (без grid) */}
         <div className="pointer-events-none absolute inset-0 opacity-70">
           <div className="absolute inset-0 animate-[glowDrift_22s_ease-in-out_infinite] bg-[radial-gradient(circle_at_30%_30%,rgba(0,255,195,0.12),transparent_35%)]" />
-          <div className="absolute inset-0 animate-[gridShift_28s_linear_infinite] bg-[linear-gradient(90deg,rgba(0,255,195,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(0,255,195,0.08)_1px,transparent_1px)] bg-[size:40px_40px] opacity-30" />
           <div className="absolute inset-0 animate-[glowDrift_18s_ease-in-out_infinite] bg-[radial-gradient(circle_at_70%_60%,rgba(139,92,246,0.18),transparent_45%)]" />
         </div>
         <div className="relative flex flex-col gap-6 sm:gap-7 md:gap-8 lg:flex-row lg:items-center lg:gap-11 xl:gap-14">
@@ -78,11 +84,12 @@ export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntr
             transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
             className="space-y-3 sm:space-y-4 md:space-y-5"
           >
-            <p className="flex items-center gap-2 font-mono text-sm text-accent-soft sm:text-base">
-              <span className="inline-flex items-center rounded-full border border-[#19f0c3]/60 bg-[#19f0c3]/10 px-3 py-[3px] text-[11px] font-semibold text-[#19f0c3] sm:text-xs md:text-sm">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/10 px-4 py-1.5 text-[11px] font-semibold text-accent sm:text-xs md:text-sm">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
                 {headline}
               </span>
-            </p>
+            </div>
             <h1 className="text-2xl font-bold leading-tight text-slate-50 sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl">
               {displayName}
             </h1>
@@ -98,7 +105,7 @@ export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntr
               {displayTags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-full border border-accent/30 bg-white/5 px-3 py-1 leading-tight"
+                  className="rounded-full border border-accent/30 bg-white/5 px-3 py-1 leading-tight transition-all duration-300 hover:border-accent/60 hover:text-accent hover:shadow-[0_0_12px_rgba(16,240,160,0.25)]"
                 >
                   {tag}
                 </span>
@@ -125,9 +132,13 @@ export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntr
             transition={{ duration: 0.9, ease: "easeOut", delay: 0.15 }}
             className="relative flex h-full items-center justify-center lg:justify-end"
           >
-            <div className="relative h-40 w-40 overflow-hidden rounded-3xl border border-[#00ffc3]/40 bg-gradient-to-br from-accent/15 via-accent-alt/10 to-transparent shadow-[0_0_35px_rgba(0,255,200,0.3)] sm:h-44 sm:w-44 md:h-56 md:w-56 lg:h-64 lg:w-64 xl:h-72 xl:w-72">
+            <div className="group relative h-40 w-40 overflow-hidden rounded-3xl border border-[#00ffc3]/40 bg-gradient-to-br from-accent/15 via-accent-alt/10 to-transparent shadow-[0_0_35px_rgba(0,255,200,0.3)] transition-all duration-500 hover:border-accent/60 hover:shadow-[0_0_50px_rgba(0,255,200,0.4)] sm:h-44 sm:w-44 md:h-56 md:w-56 lg:h-64 lg:w-64 xl:h-72 xl:w-72">
               {hasAvatar ? (
-                <img src={avatar} alt={displayName || "avatar"} className="h-full w-full object-cover" />
+                <>
+                  <img src={avatar} alt={displayName || "avatar"} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                  {/* Gradient overlay для глубины */}
+                  <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-black/30 to-transparent" />
+                </>
               ) : (
                 <>
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(34,240,192,0.4),transparent_35%),radial-gradient(circle_at_70%_60%,rgba(139,92,246,0.25),transparent_40%)]" />
@@ -149,14 +160,6 @@ export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntr
             }
             100% {
               transform: translate3d(0, 0, 0) scale(1);
-            }
-          }
-          @keyframes gridShift {
-            0% {
-              background-position: 0 0;
-            }
-            100% {
-              background-position: 140px 110px;
             }
           }
         `}</style>

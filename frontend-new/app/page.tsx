@@ -70,14 +70,18 @@ export default async function Page() {
 
         <HeroScrollHint targetId="about" />
       </section>
-      <AboutMeSection profile={profile} stats={stats} focusAreas={focusAreas} />
-      <ExperienceSection items={experience} sectionMeta={sectionMetaMap["experience"]} />
-      <ProjectsSection projects={featuredProjects} sectionMeta={sectionMetaMap["projects"]} />
-      <HowIWorkSection workApproaches={workApproaches} sectionMeta={sectionMetaMap["how_i_work"]} />
-      <TechFocusSection items={techFocus} sectionMeta={sectionMetaMap["tech_focus"]} />
-      <PublicationsSection items={publications} sectionMeta={sectionMetaMap["publications"]} />
-      <ContactsSection contacts={contacts} sectionMeta={sectionMetaMap["contacts"]} />
-      <Footer />
+
+      {/* Timeline wrapper - линия начинается после Hero */}
+      <div className="relative before:pointer-events-none before:absolute before:-left-8 before:top-0 before:h-full before:w-px before:bg-gradient-to-b before:from-accent-soft/70 before:via-accent/25 before:to-transparent">
+        <AboutMeSection profile={profile} stats={stats} focusAreas={focusAreas} />
+        <ExperienceSection items={experience} sectionMeta={sectionMetaMap["experience"]} />
+        <ProjectsSection projects={featuredProjects} sectionMeta={sectionMetaMap["projects"]} />
+        <HowIWorkSection workApproaches={workApproaches} sectionMeta={sectionMetaMap["how_i_work"]} />
+        <TechFocusSection items={techFocus} sectionMeta={sectionMetaMap["tech_focus"]} />
+        <PublicationsSection items={publications} sectionMeta={sectionMetaMap["publications"]} />
+        <ContactsSection contacts={contacts} sectionMeta={sectionMetaMap["contacts"]} />
+        <Footer />
+      </div>
     </Shell>
   );
 }

@@ -49,15 +49,18 @@ export default function HeroScrollHint({ targetId }: HeroScrollHintProps) {
 
   return (
     <div className="pointer-events-none relative z-20 pb-[env(safe-area-inset-bottom,0px)]">
-      <button
-        type="button"
-        onClick={handleClick}
-        ref={btnRef}
-        className="pointer-events-auto absolute bottom-[-5rem] left-1/2 grid h-12 w-12 -translate-x-1/2 place-items-center rounded-full border border-accent/70 bg-accent/10 text-accent shadow-[0_0_24px_rgba(16,240,160,0.45)] backdrop-blur transition hover:-translate-y-1 hover:border-accent/80 hover:bg-accent/15 hover:shadow-[0_0_32px_rgba(16,240,160,0.6)] sm:bottom-10"
-      >
-        <ChevronDown className="relative top-[2px] h-5 w-5 animate-bounce-slow stroke-[2.6]" aria-hidden="true" />
-        <span className="sr-only">Scroll to next section</span>
-      </button>
+      <div className="absolute bottom-[-5rem] left-1/2 flex -translate-x-1/2 flex-col items-center gap-2 sm:bottom-10">
+        <span className="text-xs uppercase tracking-widest text-accent/60">Scroll</span>
+        <button
+          type="button"
+          onClick={handleClick}
+          ref={btnRef}
+          className="pointer-events-auto grid h-12 w-12 place-items-center rounded-full border border-accent/70 bg-accent/10 text-accent shadow-[0_0_24px_rgba(16,240,160,0.45)] backdrop-blur transition hover:-translate-y-1 hover:border-accent/80 hover:bg-accent/15 hover:shadow-[0_0_32px_rgba(16,240,160,0.6)]"
+        >
+          <ChevronDown className="relative top-[2px] h-5 w-5 animate-bounce-slow stroke-[2.6]" aria-hidden="true" />
+          <span className="sr-only">Scroll to next section</span>
+        </button>
+      </div>
     </div>
   );
 }

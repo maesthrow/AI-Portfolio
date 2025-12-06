@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(cat:*)",
-      "Bash(dir /b \"D:\\dev\\PycharmProjects\\ai\\AI-Portfolio\\frontend-new\")"
+      "Bash(dir /b \"D:\\dev\\PycharmProjects\\ai\\AI-Portfolio\\frontend-new\")",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []
