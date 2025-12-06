@@ -59,6 +59,10 @@
   - `stats.py` - Stat (ключевые метрики для отображения)
   - `tech_focus.py` - TechFocus (области фокуса технологий)
   - `technology.py` - Technology (элементы технологического стека)
+  - `hero_tag.py` - HeroTag (теги, отображаемые в hero-секции)
+  - `focus_area.py` - FocusArea, FocusAreaBullet (области фокуса с маркированными списками)
+  - `work_approach.py` - WorkApproach, WorkApproachBullet (подходы к работе с маркированными списками)
+  - `section_meta.py` - SectionMeta (метаданные секций: заголовки, подзаголовки)
 - `app/routers/` - API эндпоинты:
   - `profile.py` - GET `/api/v1/profile`
   - `experience.py` - GET `/api/v1/experience`, GET `/api/v1/experience/{slug}`
@@ -68,6 +72,10 @@
   - `publications.py` - GET `/api/v1/publications`
   - `contacts.py` - GET `/api/v1/contacts`
   - `rag.py` - GET `/api/v1/rag/documents` (экспорт данных для индексации RAG)
+  - `hero_tags.py` - GET `/api/v1/hero-tags`
+  - `focus_areas.py` - GET `/api/v1/focus-areas`
+  - `work_approaches.py` - GET `/api/v1/work-approaches`
+  - `section_meta.py` - GET `/api/v1/section-meta`, GET `/api/v1/section-meta/{section_key}`
 - `alembic/` - Миграции базы данных
 
 ### 2. **RAG API** (`services/rag-api/`)
@@ -114,20 +122,28 @@
   - `projects/ProjectsSection.tsx` - Избранные проекты
   - `publications/PublicationsSection.tsx` - Статьи/публикации
   - `contacts/ContactsSection.tsx` - Контактная информация
+  - `how/HowIWorkSection.tsx` - Секция "Как я работаю"
   - `layout/Shell.tsx`, `layout/Footer.tsx` - Компоненты макета
+  - `ui/` - Общие UI компоненты (кнопки, карточки и т.д.)
 - `lib/api.ts` - Функции API клиента
 - `lib/types.ts` - TypeScript определения типов
 
 ### 4. **Инфраструктура** (`infra/`)
-- Оркестрация Docker Compose (compose.apps.yaml)
+- Оркестрация Docker Compose (compose.apps.yaml - основной compose-файл)
+- Альтернативные compose-файлы: `compose.apps.new.yaml`, `compose.db.yaml`, `compose.ml.yaml`
 - Сервисы:
   - PostgreSQL (внешний, доступ через host.docker.internal)
   - ChromaDB (векторная база данных)
   - vLLM (Qwen2.5-7B-Instruct-AWQ через OpenAI-совместимый API)
   - TEI (Text Embeddings Inference для multilingual-e5-base)
   - LiteLLM (единый прокси для LLM/embeddings)
-  - content-api-new (порт 8003)
+  - content-api (порт 8003) - собирается из content-api-new/
   - rag-api (порт 8004)
+
+**Примечание:** Существует два похожих compose-файла:
+- `compose.apps.yaml` - Основной файл (сервис: `content-api`, порт 8003)
+- `compose.apps.new.yaml` - Альтернативный (сервис: `content-api-new`, порт 8013)
+Используйте `compose.apps.yaml` как основную конфигурацию.
 
 ---
 
@@ -166,6 +182,9 @@ alembic downgrade -1
 # Проверка статуса миграций
 alembic current
 alembic history
+
+# Заполнение базы данных примерными данными
+python -m app.seed.seed_ai_portfolio_new
 ```
 
 Переменные окружения:
@@ -192,7 +211,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```bash
 litellm_base_url=http://localhost:8005/v1
 litellm_api_key=dev-secret-123
-chat_model=GigaChat
+chat_model=Qwen2.5  # LLM модель по умолчанию (или GigaChat, если настроен)
 embedding_model=embedding-default
 CHROMA_HOST=localhost
 CHROMA_PORT=8001
@@ -332,6 +351,21 @@ LangGraph агент (`services/rag-api/app/agent/graph.py`) используе�
 **TechFocus** (`tech_focus.py`):
 - Группировка областей фокуса технологий
 
+**HeroTag** (`hero_tag.py`):
+- Теги, отображаемые в hero-секции (text, order_index)
+
+**FocusArea** (`focus_area.py`):
+- Области фокуса с вложенными маркированными списками (title, description, icon, order_index)
+- Связь один-ко-многим с `FocusAreaBullet`
+
+**WorkApproach** (`work_approach.py`):
+- Подходы к работе с вложенными маркированными списками (title, description, icon, order_index)
+- Связь один-ко-многим с `WorkApproachBullet`
+
+**SectionMeta** (`section_meta.py`):
+- Метаданные для секций (section_key, title, subtitle)
+- Используется для настройки заголовков секций в UI
+
 ---
 
 ## Переменные окружения
@@ -354,7 +388,7 @@ LangGraph агент (`services/rag-api/app/agent/graph.py`) используе�
 **LLM-инфраструктура:**
 - `LITELLM_BASE_URL` - URL прокси LiteLLM (например, `http://litellm:4000/v1`)
 - `LITELLM_MASTER_KEY` - Ключ аутентификации LiteLLM
-- `CHAT_MODEL` - Алиас модели чата (например, `GigaChat`, сопоставляется в litellm/config.yaml)
+- `CHAT_MODEL` - Алиас модели чата (например, `Qwen2.5` или `GigaChat`, сопоставляется в litellm/config.yaml)
 - `EMBEDDING_MODEL` - Алиас модели эмбеддингов (например, `embedding-default`)
 - `GIGA_AUTH_DATA` - GigaChat base64 credentials (если используется GigaChat)
 - `HF_TOKEN` - HuggingFace токен для загрузки моделей
@@ -403,7 +437,8 @@ LangGraph агент (`services/rag-api/app/agent/graph.py`) используе�
 
 9. **Алиасы моделей LiteLLM**:
    - Имена моделей должны совпадать с алиасами в `infra/litellm/config.yaml`
-   - По умолчанию: `CHAT_MODEL=GigaChat`, `EMBEDDING_MODEL=embedding-default`
+   - Модели по умолчанию: `CHAT_MODEL=Qwen2.5` (или `GigaChat`), `EMBEDDING_MODEL=embedding-default`
+   - Проверьте `infra/litellm/config.yaml` для доступных алиасов моделей
 
 10. **Markdown поля**:
     - Многие поля поддерживают markdown (например, `summary_md`, `description_md`, `achievements_md`)
@@ -429,6 +464,8 @@ AI-Portfolio/
 │   │   ├── projects/               # Витрина проектов
 │   │   ├── publications/           # Список публикаций
 │   │   ├── contacts/               # Карточки контактов
+│   │   ├── how/                    # Секция "Как я работаю"
+│   │   ├── ui/                     # Общие UI компоненты
 │   │   └── layout/                 # Shell, Footer
 │   ├── lib/
 │   │   ├── api.ts                  # API клиент (SSR)
@@ -451,7 +488,11 @@ AI-Portfolio/
 │   │   │   │   ├── contact.py
 │   │   │   │   ├── stats.py
 │   │   │   │   ├── tech_focus.py
-│   │   │   │   └── technology.py
+│   │   │   │   ├── technology.py
+│   │   │   │   ├── hero_tag.py
+│   │   │   │   ├── focus_area.py
+│   │   │   │   ├── work_approach.py
+│   │   │   │   └── section_meta.py
 │   │   │   ├── routers/           # API эндпоинты (/api/v1/*)
 │   │   │   │   ├── profile.py
 │   │   │   │   ├── experience.py
@@ -460,7 +501,11 @@ AI-Portfolio/
 │   │   │   │   ├── contacts.py
 │   │   │   │   ├── stats.py
 │   │   │   │   ├── tech_focus.py
-│   │   │   │   └── rag.py         # Экспорт RAG документов
+│   │   │   │   ├── rag.py         # Экспорт RAG документов
+│   │   │   │   ├── hero_tags.py
+│   │   │   │   ├── focus_areas.py
+│   │   │   │   ├── work_approaches.py
+│   │   │   │   └── section_meta.py
 │   │   │   ├── schemas/           # Pydantic схемы
 │   │   │   ├── core/config.py     # Настройки
 │   │   │   └── db.py              # Настройка базы данных
