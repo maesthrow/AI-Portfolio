@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import Shell from "@/components/layout/Shell";
 import HeroIntro from "@/components/hero/HeroIntro";
 import AboutMeSection from "@/components/about/AboutMeSection";
@@ -55,7 +56,13 @@ export default async function Page() {
 
   return (
     <Shell>
-      <HeroIntro profile={profile} contacts={contacts} heroTags={heroTags} />
+      <section className="relative flex min-h-[calc(var(--app-dvh)-4rem)] flex-col justify-center">
+        <HeroIntro profile={profile} contacts={contacts} heroTags={heroTags} />
+        <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 animate-bounce text-cyan-400/70 sm:bottom-8">
+          <ChevronDown className="h-7 w-7" aria-hidden="true" />
+          <span className="sr-only">Scroll down</span>
+        </div>
+      </section>
       <AboutMeSection profile={profile} stats={stats} focusAreas={focusAreas} />
       <ExperienceSection items={experience} sectionMeta={sectionMetaMap["experience"]} />
       <ProjectsSection projects={featuredProjects} sectionMeta={sectionMetaMap["projects"]} />

@@ -6,6 +6,31 @@
 
 :root {
   color-scheme: dark;
+  --app-dvh: 100dvh;
+}
+
+.h-dvh {
+  height: var(--app-dvh);
+}
+
+.min-h-dvh {
+  min-height: var(--app-dvh);
+}
+
+@supports not (height: 100dvh) {
+  :root {
+    --app-dvh: 100vh;
+  }
+
+  .h-dvh {
+    height: 100vh;
+    height: -webkit-fill-available;
+  }
+
+  .min-h-dvh {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+  }
 }
 
 * {
