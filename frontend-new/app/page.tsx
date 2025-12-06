@@ -56,7 +56,7 @@ export default async function Page() {
 
   return (
     <Shell>
-      <section className="relative isolate flex min-h-[calc(var(--app-dvh)-3.5rem)] flex-col overflow-hidden pb-24 sm:min-h-[calc(var(--app-dvh)-4.5rem)] sm:pb-14">
+      <section className="relative isolate flex min-h-[calc(var(--app-dvh)-3rem)] flex-col overflow-hidden pb-24 sm:min-h-[calc(var(--app-dvh)-4.5rem)] sm:pb-14">
         <div className="pointer-events-none absolute inset-0 -z-10">
           <div className="hero-grid absolute inset-0 opacity-[0.16]" />
           <div className="hero-glow absolute -inset-x-24 top-[-25%] h-[140%]" />

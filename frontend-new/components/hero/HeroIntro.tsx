@@ -47,8 +47,19 @@ export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntr
       id="hero"
       label={heroLabel}
       title=""
-      className="!mt-0 !mb-0 pt-0 [&>div]:mb-4 sm:[&>div]:mb-5 md:[&>div]:mb-6 [&>div>p]:normal-case"
+      className="!mt-0 !mb-0 pt-0 [&>div]:mb-4 sm:[&>div]:mb-5 md:[&>div]:mb-6 [&>div>p]:normal-case [&>div:first-child]:hidden"
     >
+      <div className="mb-4 md:mb-6">
+        <div className="mt-1">
+          <h1 className="hero-title text-3xl font-semibold tracking-tight text-accent md:text-4xl lg:text-[2.75rem]">
+            AI-Portfolio
+          </h1>
+          <div className="hero-line mt-3 h-px w-full max-w-[720px] opacity-80" />
+          <p className="hero-tagline hero-tagline-typing mt-2 text-sm text-accent/85 md:text-base">
+            Портфолио со встроенным AI-агентом
+          </p>
+        </div>
+      </div>
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
