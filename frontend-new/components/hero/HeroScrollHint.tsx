@@ -15,20 +15,20 @@ export default function HeroScrollHint({ targetId }: HeroScrollHintProps) {
     const onScroll = () => {
       if (!visible) return;
 
-      // Hide once the button itself scrolls past the viewport top.
-      const btn = btnRef.current;
-      if (btn) {
-        const rect = btn.getBoundingClientRect();
-        if (rect.bottom <= 0) {
-          setVisible(false);
-          return;
-        }
-      }
-
-      // Fallback trigger by next section position.
+      // Найти целевую секцию и её заголовок
       const target = document.getElementById(targetId);
-      const trigger = target ? Math.max(40, target.offsetTop - 8) : 200;
-      if (window.scrollY >= trigger) {
+      if (!target) return;
+
+      // Найти заголовок внутри секции (ищем h2, h3 или элемент с классом section title)
+      const sectionHeader = target.querySelector('h2, h3, [class*="title"]');
+      if (!sectionHeader) return;
+
+      // Получить позицию заголовка относительно viewport
+      const headerRect = sectionHeader.getBoundingClientRect();
+
+      // Скрыть кнопку когда заголовок секции появляется в верхней части viewport
+      // (когда верх заголовка пересекает центр экрана)
+      if (headerRect.top < window.innerHeight * 0.6) {
         setVisible(false);
       }
     };

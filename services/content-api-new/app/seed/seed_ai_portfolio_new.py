@@ -67,7 +67,7 @@ PROFILE_DATA = {
     ),
     "hero_headline": "AI/ML Engineer | Backend Developer",
     "hero_description": "Строю AI-системы от модели и агента до продакшн-сервиса.",
-    "current_position": "Backend-разработчик / ML-инженер в Aston",
+    "current_position": "Backend / ML-инженер в Aston",
 }
 
 CONTACTS_DATA = [
