@@ -33,6 +33,47 @@
   }
 }
 
+@keyframes hero-grid-pan {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 80px 40px;
+  }
+}
+
+.hero-grid {
+  background-image: linear-gradient(90deg, rgba(0, 255, 195, 0.1) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(0, 255, 195, 0.1) 1px, transparent 1px);
+  background-repeat: repeat;
+  background-size: 80px 80px;
+  animation: hero-grid-pan 45s linear infinite;
+}
+
+.hero-glow {
+  background: radial-gradient(
+    circle at center,
+    rgba(0, 255, 200, 0.18) 0%,
+    rgba(0, 255, 200, 0.12) 25%,
+    transparent 55%
+  );
+  filter: blur(18px);
+}
+
+@keyframes hero-bounce-slow {
+  0%,
+  100% {
+    transform: translateY(2px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-bounce-slow {
+  animation: hero-bounce-slow 1.9s ease-in-out infinite;
+}
+
 * {
   box-sizing: border-box;
 }
