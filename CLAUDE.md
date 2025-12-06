@@ -59,6 +59,10 @@ Key modules:
   - `stats.py` - Stat (key metrics for display)
   - `tech_focus.py` - TechFocus (technology focus areas)
   - `technology.py` - Technology (tech stack items)
+  - `hero_tag.py` - HeroTag (tags displayed in hero section)
+  - `focus_area.py` - FocusArea, FocusAreaBullet (focus areas with bullet points)
+  - `work_approach.py` - WorkApproach, WorkApproachBullet (work approaches with bullets)
+  - `section_meta.py` - SectionMeta (metadata for sections like titles, subtitles)
 - `app/routers/` - API endpoints:
   - `profile.py` - GET `/api/v1/profile`
   - `experience.py` - GET `/api/v1/experience`, GET `/api/v1/experience/{slug}`
@@ -68,6 +72,10 @@ Key modules:
   - `publications.py` - GET `/api/v1/publications`
   - `contacts.py` - GET `/api/v1/contacts`
   - `rag.py` - GET `/api/v1/rag/documents` (exports data for RAG indexing)
+  - `hero_tags.py` - GET `/api/v1/hero-tags`
+  - `focus_areas.py` - GET `/api/v1/focus-areas`
+  - `work_approaches.py` - GET `/api/v1/work-approaches`
+  - `section_meta.py` - GET `/api/v1/section-meta`, GET `/api/v1/section-meta/{section_key}`
 - `alembic/` - Database migrations
 
 ### 2. **RAG API** (`services/rag-api/`)
@@ -114,20 +122,28 @@ Key structure:
   - `projects/ProjectsSection.tsx` - Featured projects
   - `publications/PublicationsSection.tsx` - Articles/publications
   - `contacts/ContactsSection.tsx` - Contact information
+  - `how/HowIWorkSection.tsx` - How I Work section
   - `layout/Shell.tsx`, `layout/Footer.tsx` - Layout components
+  - `ui/` - Shared UI components (buttons, cards, etc.)
 - `lib/api.ts` - API client functions
 - `lib/types.ts` - TypeScript type definitions
 
 ### 4. **Infrastructure** (`infra/`)
-- Docker Compose orchestration (compose.apps.yaml)
+- Docker Compose orchestration (compose.apps.yaml - primary compose file)
+- Alternative compose files: `compose.apps.new.yaml`, `compose.db.yaml`, `compose.ml.yaml`
 - Services:
   - PostgreSQL (external, accessed via host.docker.internal)
   - ChromaDB (vector database)
   - vLLM (Qwen2.5-7B-Instruct-AWQ via OpenAI-compatible API)
   - TEI (Text Embeddings Inference for multilingual-e5-base)
   - LiteLLM (unified proxy for LLM/embeddings)
-  - content-api-new (port 8003)
+  - content-api (port 8003) - builds from content-api-new/
   - rag-api (port 8004)
+
+**Note:** There are two similar compose files:
+- `compose.apps.yaml` - Main file (service: `content-api`, port 8003)
+- `compose.apps.new.yaml` - Alternative (service: `content-api-new`, port 8013)
+Use `compose.apps.yaml` as the primary configuration.
 
 ---
 
@@ -166,6 +182,9 @@ alembic downgrade -1
 # Check migration status
 alembic current
 alembic history
+
+# Seed database with sample data
+python -m app.seed.seed_ai_portfolio_new
 ```
 
 Environment variables:
@@ -192,7 +211,7 @@ Environment variables:
 ```bash
 litellm_base_url=http://localhost:8005/v1
 litellm_api_key=dev-secret-123
-chat_model=GigaChat
+chat_model=Qwen2.5  # Default LLM model (or GigaChat if configured)
 embedding_model=embedding-default
 CHROMA_HOST=localhost
 CHROMA_PORT=8001
@@ -332,6 +351,21 @@ Key models and relationships (`services/content-api-new/app/models/`):
 **TechFocus** (`tech_focus.py`):
 - Technology focus areas grouping
 
+**HeroTag** (`hero_tag.py`):
+- Tags displayed in hero section (text, order_index)
+
+**FocusArea** (`focus_area.py`):
+- Focus areas with nested bullet points (title, description, icon, order_index)
+- One-to-many with `FocusAreaBullet`
+
+**WorkApproach** (`work_approach.py`):
+- Work approaches with nested bullet points (title, description, icon, order_index)
+- One-to-many with `WorkApproachBullet`
+
+**SectionMeta** (`section_meta.py`):
+- Metadata for sections (section_key, title, subtitle)
+- Used for customizing section headers throughout the UI
+
 ---
 
 ## Environment Variables
@@ -354,7 +388,7 @@ Key variables (see `infra/.env.dev`):
 **LLM Infrastructure:**
 - `LITELLM_BASE_URL` - LiteLLM proxy URL (e.g., `http://litellm:4000/v1`)
 - `LITELLM_MASTER_KEY` - LiteLLM authentication key
-- `CHAT_MODEL` - Chat model alias (e.g., `GigaChat`, mapped in litellm/config.yaml)
+- `CHAT_MODEL` - Chat model alias (e.g., `Qwen2.5` or `GigaChat`, mapped in litellm/config.yaml)
 - `EMBEDDING_MODEL` - Embedding model alias (e.g., `embedding-default`)
 - `GIGA_AUTH_DATA` - GigaChat base64 credentials (if using GigaChat)
 - `HF_TOKEN` - HuggingFace token for model downloads
@@ -403,7 +437,8 @@ Key variables (see `infra/.env.dev`):
 
 9. **LiteLLM Model Aliases**:
    - Model names must match aliases in `infra/litellm/config.yaml`
-   - Default: `CHAT_MODEL=GigaChat`, `EMBEDDING_MODEL=embedding-default`
+   - Default models: `CHAT_MODEL=Qwen2.5` (or `GigaChat`), `EMBEDDING_MODEL=embedding-default`
+   - Check `infra/litellm/config.yaml` for available model aliases
 
 10. **Markdown Fields**:
     - Many fields support markdown (e.g., `summary_md`, `description_md`, `achievements_md`)
@@ -429,6 +464,8 @@ AI-Portfolio/
 │   │   ├── projects/               # Projects showcase
 │   │   ├── publications/           # Publications list
 │   │   ├── contacts/               # Contact cards
+│   │   ├── how/                    # How I Work section
+│   │   ├── ui/                     # Shared UI components
 │   │   └── layout/                 # Shell, Footer
 │   ├── lib/
 │   │   ├── api.ts                  # API client (SSR)
@@ -451,7 +488,11 @@ AI-Portfolio/
 │   │   │   │   ├── contact.py
 │   │   │   │   ├── stats.py
 │   │   │   │   ├── tech_focus.py
-│   │   │   │   └── technology.py
+│   │   │   │   ├── technology.py
+│   │   │   │   ├── hero_tag.py
+│   │   │   │   ├── focus_area.py
+│   │   │   │   ├── work_approach.py
+│   │   │   │   └── section_meta.py
 │   │   │   ├── routers/           # API endpoints (/api/v1/*)
 │   │   │   │   ├── profile.py
 │   │   │   │   ├── experience.py
@@ -460,7 +501,11 @@ AI-Portfolio/
 │   │   │   │   ├── contacts.py
 │   │   │   │   ├── stats.py
 │   │   │   │   ├── tech_focus.py
-│   │   │   │   └── rag.py         # RAG document export
+│   │   │   │   ├── rag.py         # RAG document export
+│   │   │   │   ├── hero_tags.py
+│   │   │   │   ├── focus_areas.py
+│   │   │   │   ├── work_approaches.py
+│   │   │   │   └── section_meta.py
 │   │   │   ├── schemas/           # Pydantic schemas
 │   │   │   ├── core/config.py     # Settings
 │   │   │   └── db.py              # Database setup
