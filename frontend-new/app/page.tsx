@@ -1,6 +1,7 @@
 import Shell from "@/components/layout/Shell";
 import HeroIntro from "@/components/hero/HeroIntro";
 import HeroScrollHint from "@/components/hero/HeroScrollHint";
+import { ParticlesBackground } from "@/components/hero/ParticlesBackground";
 import AboutMeSection from "@/components/about/AboutMeSection";
 import ExperienceSection from "@/components/experience/ExperienceSection";
 import HowIWorkSection from "@/components/how/HowIWorkSection";
@@ -56,10 +57,11 @@ export default async function Page() {
 
   return (
     <Shell>
-      <section className="relative isolate flex min-h-[calc(var(--app-dvh)-3rem)] flex-col overflow-hidden pb-24 sm:min-h-[calc(var(--app-dvh)-4.5rem)] sm:pb-14">
-        <div className="pointer-events-none absolute inset-0 -z-10">
+      <section className="relative isolate flex min-h-[calc(var(--app-dvh)-3rem)] flex-col pb-24 sm:min-h-[calc(var(--app-dvh)-4.5rem)] sm:pb-14">
+        <div className="pointer-events-none absolute -z-10 inset-x-0 top-0 h-[calc(100%+12rem)] overflow-hidden sm:h-[calc(100%+16rem)]">
           <div className="hero-grid absolute inset-0 opacity-[0.16]" />
           <div className="hero-glow absolute -inset-x-24 top-[-25%] h-[140%]" />
+          <ParticlesBackground />
         </div>
 
         <div className="flex flex-1 items-start pt-3 sm:items-center sm:pt-0">

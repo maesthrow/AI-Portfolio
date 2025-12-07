@@ -150,19 +150,6 @@ export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntr
             </div>
           </motion.div>
         </div>
-        <style jsx>{`
-          @keyframes glowDrift {
-            0% {
-              transform: translate3d(0, 0, 0) scale(1);
-            }
-            50% {
-              transform: translate3d(10px, -8px, 0) scale(1.01);
-            }
-            100% {
-              transform: translate3d(0, 0, 0) scale(1);
-            }
-          }
-        `}</style>
       </motion.div>
     </Section>
   );
