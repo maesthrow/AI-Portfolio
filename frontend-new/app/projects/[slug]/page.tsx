@@ -62,7 +62,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             ) : null}
             {project.featured ? (
               <span className="rounded-full border border-accent/60 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-accent shadow-[0_0_12px_rgba(0,255,200,0.25)]">
-                Featured
+                Избранный проект
               </span>
             ) : null}
           </div>
