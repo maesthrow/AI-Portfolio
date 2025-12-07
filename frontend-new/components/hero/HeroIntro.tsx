@@ -73,20 +73,22 @@ function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntroProps) {
           >
             AI-Portfolio
           </motion.h1>
-          <motion.div
-            initial={{ scaleX: 0, opacity: 0 }}
-            animate={{ scaleX: 1, opacity: 0.8 }}
-            transition={{ duration: 0.5, ease: "easeOut", delay: 0.4 }}
-            className="hero-line mt-3 h-px w-full max-w-[720px] origin-left"
-          />
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.2, delay: 0.8 }}
-            className="hero-tagline hero-tagline-typing mt-2 text-sm text-accent/85 md:text-base"
-          >
-            Портфолио со встроенным AI-агентом
-          </motion.p>
+          <div className="mt-3 inline-flex flex-col items-start">
+            <motion.div
+              initial={{ scaleX: 0, opacity: 0 }}
+              animate={{ scaleX: 1, opacity: 0.8 }}
+              transition={{ duration: 0.5, ease: "easeOut", delay: 0.4 }}
+              className="hero-line h-px w-full origin-left"
+            />
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2, delay: 0.8 }}
+              className="hero-tagline hero-tagline-typing mt-2 text-sm text-accent/85 md:text-base"
+            >
+              Портфолио со встроенным AI-агентом
+            </motion.p>
+          </div>
         </div>
       </div>
       <motion.div
