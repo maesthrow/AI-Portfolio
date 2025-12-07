@@ -315,21 +315,57 @@ The LangGraph agent (`services/rag-api/app/agent/graph.py`) uses ReAct pattern:
 - Tools: `portfolio_rag_tool`, `list_projects_tool`
 - Agent MUST call RAG tool for any portfolio-related questions
 
-### Hero Particles Animation
-The hero section includes an animated particles background (`frontend-new/components/hero/ParticlesBackground.tsx`):
-- Canvas-based rendering for 60fps performance
-- 35-80 particles (responsive to viewport width)
-- 8 cyberpunk-themed particle shapes: pulseRing, dataNode, scanLine, hexagon, crosshair, diamond, triangle, orb
-- All particles have pulsing animations with different phases
+### Hero Section Animations
+The hero section includes sophisticated animations:
+
+**Particles Background** (`frontend-new/components/hero/ParticlesBackground.tsx`):
+- Canvas-based rendering with performance optimizations
+- Desktop: 60fps, 35-80 particles with glow effects
+- Mobile: 30fps, 25-50 particles, no glow (for performance)
+- 8 cyberpunk-themed particle shapes: pulseRing, dataNode, scanLine, hexagon, crosshair, diamond, circuit, orb
 - Mouse interaction: particles are repelled by cursor movement (vortex effect)
-- Glow effect on ~40% of particles
+- IntersectionObserver for visibility detection (pauses when scrolled away)
+- Gradual particle spawn on page load
 - Particles wrap around screen edges
-- Animation area extends below hero section toward "About" section
+
+**Hero Intro Animations** (`frontend-new/components/hero/HeroIntro.tsx`):
+- Sequential entrance animations using Framer Motion:
+  1. "AI-Portfolio" title fades in from below (0s)
+  2. Animated line sweeps across (0.4s delay)
+  3. Tagline appears and typing animation starts (0.8s delay, CSS typing at 1.1s)
+  4. Main card fades in (0.5s delay)
+  5. Card content appears (0.7s delay)
+  6. Avatar image appears (0.85s delay)
+- Line width auto-adjusts to match tagline text width
+- Uses `next/image` for optimized avatar loading
+- `will-change` hints for GPU acceleration
+
+**CSS Animations** (`frontend-new/app/globals.css`):
+- `hero-grid-pan` - Moving grid background
+- `hero-line-sweep` - Running light effect on line
+- `hero-typing` + `hero-caret` - Typewriter effect for tagline
+- `glowDrift` - Floating gradient blobs
+- `hero-bounce-slow` - Scroll button bounce
+- `@media (prefers-reduced-motion)` - Respects user preferences
+- Mobile optimizations: reduced blur, slower animations
 
 Key files:
-- `frontend-new/components/hero/ParticlesBackground.tsx` - Main canvas component
-- `frontend-new/app/page.tsx` - Integration point (inside hero background layer)
-- `frontend-new/app/globals.css` - Contains `glowDrift` keyframe for gradient blobs
+- `frontend-new/components/hero/ParticlesBackground.tsx` - Canvas particle system
+- `frontend-new/components/hero/HeroIntro.tsx` - Hero content with Framer Motion
+- `frontend-new/components/hero/HeroScrollHint.tsx` - Scroll down button
+- `frontend-new/app/page.tsx` - Integration point
+- `frontend-new/app/globals.css` - CSS animations and keyframes
+
+### Performance Optimizations
+The frontend includes several performance optimizations:
+- **React.memo** on card components (ProjectCard, ExperienceCard, ContactCard, PublicationCard)
+- **useMemo/useCallback** in HeroIntro and AgentDock for memoized values and callbacks
+- **next/image** for optimized image loading with proper sizes attribute
+- **IntersectionObserver** in ParticlesBackground for visibility-based animation pausing
+- **Throttled event handlers** for resize and mouse events
+- **Frame rate limiting** on mobile devices (30fps vs 60fps)
+- **will-change CSS hints** for GPU-accelerated animations
+- **prefers-reduced-motion** media query support
 
 ### Database Models
 Key models and relationships (`services/content-api-new/app/models/`):
@@ -475,7 +511,7 @@ AI-Portfolio/
 │   │   ├── layout.tsx              # Root layout with AgentDock
 │   │   └── experience/[company_slug]/ # Experience detail page
 │   ├── components/
-│   │   ├── agent/                  # RAG agent chat components
+│   │   ├── agent/                  # RAG agent chat components (AgentDock, AgentChatWindow, etc.)
 │   │   ├── hero/                   # Hero section (HeroIntro, HeroScrollHint, ParticlesBackground)
 │   │   ├── about/                  # About section with stats
 │   │   ├── experience/             # Experience timeline
