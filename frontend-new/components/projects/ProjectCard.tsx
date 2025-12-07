@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Github } from "lucide-react";
+import { normalizeTech, shortDescription } from "@/lib/presentation";
 import { Project } from "@/lib/types";
 
 const domainLabels: Record<string, { label: string; tone: string }> = {
@@ -13,23 +14,6 @@ const domainLabels: Record<string, { label: string; tone: string }> = {
 type ProjectCardProps = {
   project: Project;
 };
-
-function normalizeTech(value: string | { id?: string | number; name?: string }) {
-  if (typeof value === "string") return value;
-  if (value?.name) return value.name;
-  if (value?.id !== undefined) return String(value.id);
-  return null;
-}
-
-function shortDescription(md?: string | null) {
-  if (!md) return null;
-  const lines = md
-    .split("\n")
-    .map((line) => line.replace(/^[*-]\s*/, "").trim())
-    .filter(Boolean);
-  if (!lines.length) return null;
-  return lines.slice(0, 2).join(" ");
-}
 
 export default function ProjectCard({ project }: ProjectCardProps) {
   const domainKey = project.domain?.toString().toLowerCase();

@@ -1,5 +1,6 @@
 import Section from "@/components/layout/Section";
 import ContactCard from "@/components/contacts/ContactCard";
+import { uniqueContacts } from "@/lib/presentation";
 import { Contact, SectionMeta } from "@/lib/types";
 
 type ContactsSectionProps = {
@@ -12,11 +13,7 @@ const defaultTitle = "Контакты и связи";
 const defaultSubtitle = "Воспользуйтесь моими контактами или обратитесь за помощью к AI-агенту.";
 
 export default function ContactsSection({ contacts, sectionMeta }: ContactsSectionProps) {
-  const uniqueContacts =
-    contacts?.filter(
-      (contact, idx, arr) =>
-        idx === arr.findIndex((c) => c.kind === contact.kind && c.value === contact.value)
-    ) || [];
+  const distinctContacts = uniqueContacts(contacts);
 
   return (
     <Section
@@ -39,7 +36,7 @@ export default function ContactsSection({ contacts, sectionMeta }: ContactsSecti
           <p className="text-xs text-accent">✓ Загружены контакты</p>
         </div>
         <div className="relative mt-5 grid gap-6 sm:grid-cols-2">
-          {uniqueContacts.map((contact) => (
+          {distinctContacts.map((contact) => (
             <ContactCard key={`${contact.kind}-${contact.value}`} contact={contact} />
           ))}
         </div>

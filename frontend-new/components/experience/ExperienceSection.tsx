@@ -1,5 +1,6 @@
 import Section from "@/components/layout/Section";
 import ExperienceCard from "@/components/experience/ExperienceCard";
+import { sortExperience } from "@/lib/presentation";
 import { ExperienceItem, SectionMeta } from "@/lib/types";
 
 type ExperienceSectionProps = {
@@ -10,17 +11,11 @@ type ExperienceSectionProps = {
 const defaultLabel = "КОММЕРЧЕСКИЙ ОПЫТ";
 const defaultTitle = "Коммерческий опыт";
 const defaultSubtitle =
-  "Коммерческие проекты и компании: CV/LLM решения, RAG-системы и устойчивые backend-сервисы.";
+  "Коммерческие проекты и компании: ML/LLM-направления, RAG-системы, надежные backend-сервисы и интеграции.";
 
 export default function ExperienceSection({ items, sectionMeta }: ExperienceSectionProps) {
   const commercial = items.filter((item) => item.kind === "commercial");
-  const sortedItems = [...commercial].sort((a, b) => {
-    if (a.is_current !== b.is_current) return a.is_current ? -1 : 1;
-    const aDate = a.start_date ? new Date(a.start_date).getTime() : 0;
-    const bDate = b.start_date ? new Date(b.start_date).getTime() : 0;
-    if (aDate !== bDate) return bDate - aDate;
-    return (a.order_index ?? 0) - (b.order_index ?? 0);
-  });
+  const sortedItems = sortExperience(commercial);
 
   return (
     <Section

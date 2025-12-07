@@ -1,6 +1,6 @@
- "use client";
+"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { StatItem } from "@/lib/types";
 
 function CountUp({ value }: { value: string | number }) {
@@ -21,12 +21,12 @@ function CountUp({ value }: { value: string | number }) {
     if (!el) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && !hasAnimated.current) {
-            hasAnimated.current = true;
-            const duration = 1200;
-            const start = performance.now();
-            const step = (now: number) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting && !hasAnimated.current) {
+                hasAnimated.current = true;
+                const duration = 1200;
+                const start = performance.now();
+                const step = (now: number) => {
               const progress = Math.min((now - start) / duration, 1);
               const eased = 1 - Math.pow(1 - progress, 3);
               const current = numberPart * eased;
@@ -34,6 +34,7 @@ function CountUp({ value }: { value: string | number }) {
               if (progress < 1) requestAnimationFrame(step);
             };
             requestAnimationFrame(step);
+            observer.unobserve(entry.target);
           }
         });
       },
@@ -58,7 +59,7 @@ type StatsGridProps = {
   stats: StatItem[];
 };
 
-export default function StatsGrid({ stats }: StatsGridProps) {
+function StatsGrid({ stats }: StatsGridProps) {
   if (!stats?.length) return null;
   return (
     <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
@@ -79,3 +80,5 @@ export default function StatsGrid({ stats }: StatsGridProps) {
     </div>
   );
 }
+
+export default memo(StatsGrid);

@@ -4,27 +4,12 @@ import ReactMarkdown from "react-markdown";
 
 import Shell from "@/components/layout/Shell";
 import { getExperienceDetail } from "@/lib/api";
+import { formatPeriod, normalizeTech } from "@/lib/presentation";
 import { ExperienceDetail } from "@/lib/types";
-
-function formatPeriod(start?: string | null, end?: string | null, isCurrent?: boolean) {
-  if (!start) return null;
-  const startYear = new Date(start).getFullYear();
-  const endYear = end ? new Date(end).getFullYear() : null;
-  if (isCurrent || (!end && !endYear)) return `${startYear} — н.в.`;
-  if (endYear) return `${startYear} — ${endYear}`;
-  return `${startYear}`;
-}
 
 type PageProps = {
   params: { company_slug: string };
 };
-
-function normalizeTech(value: string | { id?: string | number; name?: string }) {
-  if (typeof value === "string") return value;
-  if (value?.name) return value.name;
-  if (value?.id !== undefined) return String(value.id);
-  return null;
-}
 
 export default async function ExperienceCompanyPage({ params }: PageProps) {
   let detail: ExperienceDetail | null = null;
@@ -64,7 +49,7 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
                     : "border border-slate-600/70 bg-slate-800/70 text-slate-200"
                 }`}
               >
-                {company.is_current ? "Текущее" : "Прошлое"}
+                {company.is_current ? "ТЕКУЩЕЕ" : "ПРОШЛОЕ"}
               </span>
             </div>
           </div>
@@ -98,7 +83,7 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
         </div>
 
         <div className="flex flex-col gap-6">
-          <h2 className="text-xl font-semibold text-slate-50 sm:text-2xl">Проекты и достижения в компании</h2>
+          <h2 className="text-xl font-semibold text-slate-50 sm:text-2xl">Проекты и достижения</h2>
           <div className="flex flex-col gap-6">
             {projects.map((proj) => (
               <div
@@ -119,7 +104,7 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
                       ul: ({ ...props }) => (
                         <ul className="ml-5 list-disc space-y-4 marker:text-emerald-300" {...props} />
                       ),
-                      li: ({ ...props }) => <li className="text-slate-100/90" {...props} />,
+                      li: ({ ...props }) => <li className="text-slate-100/90" {...props} />
                     }}
                   >
                     {proj.achievements_md}

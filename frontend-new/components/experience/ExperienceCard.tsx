@@ -1,18 +1,10 @@
 import Link from "next/link";
+import { formatPeriod } from "@/lib/presentation";
 import { ExperienceItem } from "@/lib/types";
 
 type ExperienceCardProps = {
   item: ExperienceItem;
 };
-
-function formatPeriod(start?: string | null, end?: string | null, isCurrent?: boolean) {
-  if (!start) return null;
-  const startYear = new Date(start).getFullYear();
-  const endYear = end ? new Date(end).getFullYear() : null;
-  if (isCurrent || (!end && !endYear)) return `${startYear} — н.в.`;
-  if (endYear) return `${startYear} — ${endYear}`;
-  return `${startYear}`;
-}
 
 export default function ExperienceCard({ item }: ExperienceCardProps) {
   const period = formatPeriod(item.start_date, item.end_date, item.is_current);
@@ -30,7 +22,7 @@ export default function ExperienceCard({ item }: ExperienceCardProps) {
                 : "border border-slate-600/70 bg-slate-800/70 text-slate-200"
             }`}
           >
-            {item.is_current ? "Текущее" : "Прошлое"}
+            {item.is_current ? "ТЕКУЩЕЕ" : "ПРОШЛОЕ"}
           </span>
         </div>
 

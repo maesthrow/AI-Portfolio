@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+"use client";
+
+import { memo, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import clsx from "clsx";
 
@@ -40,6 +42,66 @@ const TypingDots = () => (
   </div>
 );
 
+type MessageBubbleProps = {
+  message: AgentMessage;
+  showTyping: boolean;
+};
+
+const MessageBubble = memo(
+  function MessageBubble({ message, showTyping }: MessageBubbleProps) {
+    const isUser = message.role === "user";
+
+    return (
+      <div
+        className={clsx(
+          "rounded-xl border px-3 py-2",
+          isUser
+            ? "border-accent/40 bg-accent/10 text-slate-50"
+            : "border-slate-700/70 bg-slate-900/60 text-slate-100"
+        )}
+      >
+        <p className="font-mono text-[10px] uppercase tracking-wider text-accent-soft/80">
+          {isUser ? "Пользователь" : "Агент"}
+        </p>
+        <div className="mt-1 text-sm leading-relaxed">
+          {showTyping ? (
+            <TypingDots />
+          ) : (
+            <ReactMarkdown
+              components={{
+                p: ({ node, ...props }) => (
+                  <p className="whitespace-pre-wrap leading-relaxed" {...props} />
+                ),
+                strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
+                ul: ({ node, ...props }) => <ul className="ml-4 list-disc space-y-1" {...props} />,
+                ol: ({ node, ...props }) => <ol className="ml-4 list-decimal space-y-1" {...props} />,
+                li: ({ node, ...props }) => <li className="whitespace-pre-wrap" {...props} />,
+                code: ({ node, className, ...props }) => {
+                  const isInline = !className?.includes("language-");
+                  return isInline ? (
+                    <code className="rounded bg-slate-800 px-1 py-0.5 text-xs" {...props} />
+                  ) : (
+                    <code
+                      className="block whitespace-pre-wrap rounded bg-slate-900 px-3 py-2 text-xs"
+                      {...props}
+                    />
+                  );
+                }
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          )}
+        </div>
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.message.content === next.message.content &&
+    prev.message.role === next.message.role &&
+    prev.showTyping === next.showTyping
+);
+
 export default function AgentMessageList({ messages, typing = false }: AgentMessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -56,57 +118,20 @@ export default function AgentMessageList({ messages, typing = false }: AgentMess
     >
       {messages.length === 0 ? (
         <div className="flex flex-1 items-center justify-center text-center text-sm text-slate-400">
-          Спросите агента о моих проектах, опыте или технологиях.
+          История сообщений пока пуста. Задайте вопрос, чтобы начать диалог.
         </div>
       ) : (
-        messages.map((m, idx) => {
+        messages.map((message, idx) => {
           const isLast = idx === messages.length - 1;
-          const showTyping = typing && m.role === "agent" && m.status === "streaming" && isLast;
+          const showTyping =
+            typing && message.role === "agent" && message.status === "streaming" && isLast;
 
           return (
-            <div
-              key={m.id}
-              className={clsx(
-                "rounded-xl border px-3 py-2",
-                m.role === "user"
-                  ? "border-accent/40 bg-accent/10 text-slate-50"
-                  : "border-slate-700/70 bg-slate-900/60 text-slate-100"
-              )}
-            >
-              <p className="font-mono text-[10px] uppercase tracking-wider text-accent-soft/80">
-                {m.role === "user" ? "вы" : "агент"}
-              </p>
-              <div className="mt-1 text-sm leading-relaxed">
-                {showTyping ? (
-                  <TypingDots />
-                ) : (
-                  <ReactMarkdown
-                    components={{
-                      p: ({ node, ...props }) => (
-                        <p className="whitespace-pre-wrap leading-relaxed" {...props} />
-                      ),
-                      strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
-                      ul: ({ node, ...props }) => <ul className="ml-4 list-disc space-y-1" {...props} />,
-                      ol: ({ node, ...props }) => <ol className="ml-4 list-decimal space-y-1" {...props} />,
-                      li: ({ node, ...props }) => <li className="whitespace-pre-wrap" {...props} />,
-                      code: ({ node, className, ...props }) => {
-                        const isInline = !className?.includes("language-");
-                        return isInline ? (
-                          <code className="rounded bg-slate-800 px-1 py-0.5 text-xs" {...props} />
-                        ) : (
-                          <code
-                            className="block whitespace-pre-wrap rounded bg-slate-900 px-3 py-2 text-xs"
-                            {...props}
-                          />
-                        );
-                      }
-                    }}
-                  >
-                    {m.content}
-                  </ReactMarkdown>
-                )}
-              </div>
-            </div>
+            <MessageBubble
+              key={message.tempId || message.id}
+              message={message}
+              showTyping={showTyping}
+            />
           );
         })
       )}

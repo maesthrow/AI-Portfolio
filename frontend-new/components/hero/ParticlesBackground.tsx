@@ -242,8 +242,8 @@ export function ParticlesBackground() {
   const particlesRef = useRef<Particle[]>([]);
   const animationRef = useRef<number>(0);
   const mousePosRef = useRef({ x: -1000, y: -1000 });
-  const prevMousePosRef = useRef({ x: -1000, y: -1000 });
   const mouseVelocityRef = useRef({ x: 0, y: 0 });
+  const resizeRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -251,6 +251,11 @@ export function ParticlesBackground() {
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    if (prefersReducedMotion) {
+      return;
+    }
 
     let width = window.innerWidth;
     let height = window.innerHeight;
@@ -287,7 +292,7 @@ export function ParticlesBackground() {
       spawnedCount += toSpawn;
     }, 80);
 
-    const handleResize = () => {
+    const updateParticleCount = () => {
       resizeCanvas();
       const newCount = Math.min(80, Math.max(35, Math.floor(width / 20)));
       const currentCount = particlesRef.current.length;
@@ -299,6 +304,14 @@ export function ParticlesBackground() {
       } else if (newCount < currentCount) {
         particlesRef.current = particlesRef.current.slice(0, newCount);
       }
+    };
+
+    const handleResize = () => {
+      if (resizeRafRef.current) return;
+      resizeRafRef.current = requestAnimationFrame(() => {
+        resizeRafRef.current = null;
+        updateParticleCount();
+      });
     };
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -313,7 +326,6 @@ export function ParticlesBackground() {
         };
       }
 
-      prevMousePosRef.current = prev;
       mousePosRef.current = newPos;
     };
 
@@ -335,6 +347,9 @@ export function ParticlesBackground() {
         x: mouseVel.x * 0.92,
         y: mouseVel.y * 0.92
       };
+
+      const baseSpeed = 0.2;
+      const minSpeed = baseSpeed * 0.5;
 
       particlesRef.current.forEach((particle) => {
         // Distance from mouse
@@ -393,11 +408,10 @@ export function ParticlesBackground() {
         particle.speedX *= 0.995;
         particle.speedY *= 0.995;
         // Restore base drift
-        const baseSpeed = 0.2;
-        if (Math.abs(particle.speedX) < baseSpeed * 0.5) {
+        if (Math.abs(particle.speedX) < minSpeed) {
           particle.speedX += (Math.random() - 0.5) * 0.01;
         }
-        if (Math.abs(particle.speedY) < baseSpeed * 0.5) {
+        if (Math.abs(particle.speedY) < minSpeed) {
           particle.speedY += (Math.random() - 0.5) * 0.01;
         }
 
@@ -442,6 +456,9 @@ export function ParticlesBackground() {
       clearInterval(spawnInterval);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("mousemove", handleMouseMove);
+      if (resizeRafRef.current) {
+        cancelAnimationFrame(resizeRafRef.current);
+      }
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }

@@ -9,33 +9,42 @@ type HeroScrollHintProps = {
 
 export default function HeroScrollHint({ targetId }: HeroScrollHintProps) {
   const [visible, setVisible] = useState(true);
-  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const visibleRef = useRef(true);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const onScroll = () => {
-      if (!visible) return;
+    const target = document.getElementById(targetId);
+    if (!target) return;
 
-      // Найти целевую секцию и её заголовок
-      const target = document.getElementById(targetId);
-      if (!target) return;
+    const sectionHeader = target.querySelector('h2, h3, [class*="title"]');
+    if (!sectionHeader) return;
 
-      // Найти заголовок внутри секции (ищем h2, h3 или элемент с классом section title)
-      const sectionHeader = target.querySelector('h2, h3, [class*="title"]');
-      if (!sectionHeader) return;
-
-      // Получить позицию заголовка относительно viewport
+    const evaluateVisibility = () => {
       const headerRect = sectionHeader.getBoundingClientRect();
 
-      // Скрыть кнопку когда заголовок секции появляется в верхней части viewport
-      // (когда верх заголовка пересекает центр экрана)
-      if (headerRect.top < window.innerHeight * 0.6) {
+      if (visibleRef.current && headerRect.top < window.innerHeight * 0.6) {
+        visibleRef.current = false;
         setVisible(false);
+        window.removeEventListener("scroll", onScroll);
       }
+      rafRef.current = null;
+    };
+
+    const onScroll = () => {
+      if (!visibleRef.current || rafRef.current) return;
+      rafRef.current = requestAnimationFrame(evaluateVisibility);
     };
 
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [targetId, visible]);
+    evaluateVisibility();
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, [targetId]);
 
   if (!visible) return null;
 
@@ -44,6 +53,7 @@ export default function HeroScrollHint({ targetId }: HeroScrollHintProps) {
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+    visibleRef.current = false;
     setVisible(false);
   };
 
@@ -54,7 +64,6 @@ export default function HeroScrollHint({ targetId }: HeroScrollHintProps) {
         <button
           type="button"
           onClick={handleClick}
-          ref={btnRef}
           className="pointer-events-auto grid h-12 w-12 place-items-center rounded-full border border-accent/70 bg-accent/10 text-accent shadow-[0_0_24px_rgba(16,240,160,0.45)] backdrop-blur transition hover:-translate-y-1 hover:border-accent/80 hover:bg-accent/15 hover:shadow-[0_0_32px_rgba(16,240,160,0.6)]"
         >
           <ChevronDown className="relative top-[2px] h-5 w-5 animate-bounce-slow stroke-[2.6]" aria-hidden="true" />

@@ -5,6 +5,7 @@ import { Github } from "lucide-react";
 
 import Shell from "@/components/layout/Shell";
 import { getProjectBySlug } from "@/lib/api";
+import { normalizeTech } from "@/lib/presentation";
 import { ProjectDetail } from "@/lib/types";
 
 const domainLabels: Record<string, { label: string; tone: string }> = {
@@ -15,13 +16,6 @@ const domainLabels: Record<string, { label: string; tone: string }> = {
   mlops: { label: "MLOps", tone: "border-amber-200/50 bg-amber-200/10 text-amber-200" },
   other: { label: "Other", tone: "border-slate-700/80 bg-slate-800/70 text-slate-100" }
 };
-
-function normalizeTech(value: string | { id?: string | number; name?: string }) {
-  if (typeof value === "string") return value;
-  if (value?.name) return value.name;
-  if (value?.id !== undefined) return String(value.id);
-  return null;
-}
 
 type PageProps = {
   params: { slug: string };
@@ -62,7 +56,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             ) : null}
             {project.featured ? (
               <span className="rounded-full border border-accent/60 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-accent shadow-[0_0_12px_rgba(0,255,200,0.25)]">
-                Featured
+                Избранное
               </span>
             ) : null}
           </div>
@@ -115,7 +109,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 rounded-full border border-accent-alt/60 bg-accent-alt/10 px-5 py-2 font-semibold text-accent-soft shadow-[0_0_18px_rgba(139,92,246,0.3)] transition-transform duration-200 hover:-translate-y-0.5"
               >
-                Demo
+                Демо
               </a>
             ) : null}
           </div>
@@ -123,7 +117,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
         {descriptionContent ? (
           <div className="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-6 shadow-[0_0_18px_rgba(0,0,0,0.4)]">
-            <h2 className="mb-4 text-xl font-semibold text-slate-50">Подробное описание</h2>
+            <h2 className="mb-4 text-xl font-semibold text-slate-50">Подробности проекта</h2>
             <ReactMarkdown
               className="prose prose-invert max-w-none text-slate-100/90"
               components={{

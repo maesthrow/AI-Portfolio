@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Github, Linkedin, Send, Sparkles } from "lucide-react";
 import Section from "@/components/layout/Section";
@@ -26,21 +27,34 @@ const defaultDescription =
   "Строю AI-системы от модели и агента до продакшн-сервиса. Забочусь о качестве моделей и интегрирую их так, чтобы они помогали бизнесу.";
 const fallbackTags = ["AI-agents", "LLM", "RAG", "CV", "MLOps", "Backend"];
 
-function contactLink(contacts: Contact[], kind: Contact["kind"]) {
-  return contacts.find((c) => c.kind === kind);
-}
-
-export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntroProps) {
-  const avatar =
-    profile.avatarUrl ?? (profile as any).avatar_url ?? (profile as any).avatar ?? null;
+const HeroIntroComponent = ({ profile, contacts, heroTags = [] }: HeroIntroProps) => {
+  const avatar = useMemo(
+    () => profile.avatarUrl ?? (profile as any).avatar_url ?? (profile as any).avatar ?? null,
+    [profile]
+  );
   const hasAvatar = Boolean(avatar);
-  const displayName = profile.name || defaultName;
-  const headline = profile.hero_headline || defaultHeadline;
-  const description = profile.hero_description || defaultDescription;
-  const currentPosition = profile.current_position || profile.status || null;
+  const { displayName, headline, description, currentPosition } = useMemo(
+    () => ({
+      displayName: profile.name || defaultName,
+      headline: profile.hero_headline || defaultHeadline,
+      description: profile.hero_description || defaultDescription,
+      currentPosition: profile.current_position || profile.status || null
+    }),
+    [profile]
+  );
 
-  const skillTags = heroTags.filter((t) => !t.icon);
-  const displayTags = skillTags.length > 0 ? skillTags.map((t) => t.name) : fallbackTags;
+  const displayTags = useMemo(() => {
+    const skillTags = heroTags.filter((t) => !t.icon);
+    return skillTags.length > 0 ? skillTags.map((t) => t.name) : fallbackTags;
+  }, [heroTags]);
+
+  const primaryContactItems = useMemo(
+    () =>
+      primaryContacts
+        .map((kind) => contacts.find((c) => c.kind === kind))
+        .filter(Boolean) as Contact[],
+    [contacts]
+  );
 
   return (
     <Section
@@ -112,18 +126,14 @@ export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntr
               ))}
             </div>
             <div className="flex flex-wrap gap-2.5 pt-1 sm:gap-3 sm:pt-2">
-              {primaryContacts.map((kind) => {
-                const item = contactLink(contacts, kind);
-                if (!item) return null;
-                return (
-                  <SocialBadge
-                    key={kind}
-                    href={item.url}
-                    label={item.label}
-                    icon={socialIcons[kind] ?? Sparkles}
-                  />
-                );
-              })}
+              {primaryContactItems.map((item) => (
+                <SocialBadge
+                  key={item.kind}
+                  href={item.url}
+                  label={item.label}
+                  icon={socialIcons[item.kind] ?? Sparkles}
+                />
+              ))}
             </div>
           </motion.div>
           <motion.div
@@ -153,4 +163,6 @@ export default function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntr
       </motion.div>
     </Section>
   );
-}
+};
+
+export default memo(HeroIntroComponent);
