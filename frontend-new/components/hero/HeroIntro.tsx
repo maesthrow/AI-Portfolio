@@ -82,7 +82,7 @@ function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntroProps) {
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.3, delay: 0.7 }}
+            transition={{ duration: 0.2, delay: 0.8 }}
             className="hero-tagline hero-tagline-typing mt-2 text-sm text-accent/85 md:text-base"
           >
             Портфолио со встроенным AI-агентом
