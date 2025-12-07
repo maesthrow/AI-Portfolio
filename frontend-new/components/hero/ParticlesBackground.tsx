@@ -282,11 +282,12 @@ export function ParticlesBackground() {
     }, isMobileRef.current ? 100 : 80);
 
     // Visibility detection - pause animation when not visible
+    // rootMargin extends the detection area so animation continues while particles are still visible
     const observer = new IntersectionObserver(
       (entries) => {
         isVisibleRef.current = entries[0]?.isIntersecting ?? true;
       },
-      { threshold: 0.1 }
+      { threshold: 0, rootMargin: "200px 0px 200px 0px" }
     );
     observer.observe(canvas);
 

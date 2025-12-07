@@ -65,19 +65,34 @@ function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntroProps) {
     >
       <div className="mb-4 md:mb-6">
         <div className="mt-1">
-          <h1 className="hero-title text-3xl font-semibold tracking-tight text-accent md:text-4xl lg:text-[2.75rem]">
+          <motion.h1
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className="hero-title text-4xl font-semibold tracking-tight text-accent md:text-5xl lg:text-[3.25rem]"
+          >
             AI-Portfolio
-          </h1>
-          <div className="hero-line mt-3 h-px w-full max-w-[720px] opacity-80" />
-          <p className="hero-tagline hero-tagline-typing mt-2 text-sm text-accent/85 md:text-base">
+          </motion.h1>
+          <motion.div
+            initial={{ scaleX: 0, opacity: 0 }}
+            animate={{ scaleX: 1, opacity: 0.8 }}
+            transition={{ duration: 0.5, ease: "easeOut", delay: 0.4 }}
+            className="hero-line mt-3 h-px w-full max-w-[720px] origin-left"
+          />
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3, delay: 0.7 }}
+            className="hero-tagline hero-tagline-typing mt-2 text-sm text-accent/85 md:text-base"
+          >
             Портфолио со встроенным AI-агентом
-          </p>
+          </motion.p>
         </div>
       </div>
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
+        transition={{ duration: 0.8, ease: "easeOut", delay: 0.5 }}
         className="relative w-full overflow-hidden rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-bg-panel/80 via-black/60 to-bg-panel/80 px-4 py-4 shadow-[0_0_26px_rgba(0,255,200,0.24)] backdrop-blur transition-shadow duration-500 hover:shadow-[0_0_40px_rgba(0,255,200,0.3)] will-change-[transform,opacity] sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10 xl:px-12 xl:py-12"
       >
         {/* Corner decorations */}
@@ -95,7 +110,7 @@ function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntroProps) {
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
+            transition={{ duration: 0.8, ease: "easeOut", delay: 0.7 }}
             className="space-y-3 will-change-[transform,opacity] sm:space-y-4 md:space-y-5"
           >
             <div className="flex items-center gap-2">
@@ -139,7 +154,7 @@ function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntroProps) {
           <motion.div
             initial={{ opacity: 0, y: 32 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, ease: "easeOut", delay: 0.15 }}
+            transition={{ duration: 0.9, ease: "easeOut", delay: 0.85 }}
             className="relative flex h-full items-center justify-center will-change-[transform,opacity] lg:justify-end"
           >
             <div className="group relative h-40 w-40 overflow-hidden rounded-3xl border border-[#00ffc3]/40 bg-gradient-to-br from-accent/15 via-accent-alt/10 to-transparent shadow-[0_0_35px_rgba(0,255,200,0.3)] transition-all duration-500 hover:border-accent/60 hover:shadow-[0_0_50px_rgba(0,255,200,0.4)] sm:h-44 sm:w-44 md:h-56 md:w-56 lg:h-64 lg:w-64 xl:h-72 xl:w-72">
