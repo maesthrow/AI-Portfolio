@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 
 import AgentChatWindow from "@/components/agent/AgentChatWindow";
@@ -42,11 +42,13 @@ export default function AgentDock() {
   const hintTimerRef = useRef<number | null>(null);
   const hintHideTimerRef = useRef<number | null>(null);
 
-  // Скорость вывода символов для стрима
-  const CHARS_PER_SECOND = Number(process.env.NEXT_PUBLIC_CHARS_PER_SECOND) || 60;
-  const MAX_CHARS_PER_TICK = Number(process.env.NEXT_PUBLIC_MAX_CHARS_PER_TICK) || 4;
+  // Скорость вывода символов для стрима - memoized
+  const charSpeed = useMemo(() => ({
+    perSecond: Number(process.env.NEXT_PUBLIC_CHARS_PER_SECOND) || 60,
+    maxPerTick: Number(process.env.NEXT_PUBLIC_MAX_CHARS_PER_TICK) || 4
+  }), []);
 
-  const dismissHint = () => {
+  const dismissHint = useCallback(() => {
     setHintShown(false);
     if (typeof window !== "undefined") {
       try {
@@ -63,11 +65,18 @@ export default function AgentDock() {
       clearTimeout(hintHideTimerRef.current);
       hintHideTimerRef.current = null;
     }
-  };
+  }, []);
 
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
-    onResize();
+    let resizeTimeout: number | null = null;
+    const onResize = () => {
+      if (resizeTimeout) return;
+      resizeTimeout = window.setTimeout(() => {
+        setIsMobile(window.innerWidth < 768);
+        resizeTimeout = null;
+      }, 150);
+    };
+    setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", onResize);
 
     const shouldShow = (() => {
@@ -89,6 +98,7 @@ export default function AgentDock() {
 
     return () => {
       window.removeEventListener("resize", onResize);
+      if (resizeTimeout) clearTimeout(resizeTimeout);
       if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
       if (hintHideTimerRef.current) clearTimeout(hintHideTimerRef.current);
     };
@@ -126,7 +136,7 @@ export default function AgentDock() {
     }
   };
 
-  const pumpChars = (targetId: string) => {
+  const pumpChars = useCallback((targetId: string) => {
     if (!charQueueRef.current.length) {
       frameRef.current = null;
       tryReleaseLoading();
@@ -134,7 +144,7 @@ export default function AgentDock() {
     }
 
     const now = performance.now();
-    const intervalMs = 1000 / CHARS_PER_SECOND;
+    const intervalMs = 1000 / charSpeed.perSecond;
 
     if (now - lastTickRef.current < intervalMs) {
       frameRef.current = requestAnimationFrame(() => pumpChars(targetId));
@@ -144,7 +154,7 @@ export default function AgentDock() {
     const elapsed = now - lastTickRef.current;
     lastTickRef.current = now;
     const budget = Math.max(1, Math.floor(elapsed / intervalMs));
-    const take = Math.min(MAX_CHARS_PER_TICK, budget, charQueueRef.current.length);
+    const take = Math.min(charSpeed.maxPerTick, budget, charQueueRef.current.length);
     const chunk = charQueueRef.current.splice(0, take).join("");
 
     if (chunk) {
@@ -152,15 +162,15 @@ export default function AgentDock() {
     }
 
     frameRef.current = requestAnimationFrame(() => pumpChars(targetId));
-  };
+  }, [charSpeed]);
 
-  const enqueueChars = (targetId: string, text: string) => {
+  const enqueueChars = useCallback((targetId: string, text: string) => {
     if (!text) return;
     charQueueRef.current.push(...text);
     if (!frameRef.current) {
       pumpChars(targetId);
     }
-  };
+  }, [pumpChars]);
 
   const handleSend = async () => {
     if (!inputValue.trim() || loading) return;
@@ -300,10 +310,10 @@ export default function AgentDock() {
     }
   };
 
-  const handleToggle = () => {
+  const handleToggle = useCallback(() => {
     setIsOpen((v) => !v);
     dismissHint();
-  };
+  }, [dismissHint]);
 
   const buttonLabel = "AI-агент";
 

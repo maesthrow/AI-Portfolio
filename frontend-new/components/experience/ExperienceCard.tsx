@@ -1,3 +1,4 @@
+import { memo } from "react";
 import Link from "next/link";
 import { ExperienceItem } from "@/lib/types";
 
@@ -14,7 +15,7 @@ function formatPeriod(start?: string | null, end?: string | null, isCurrent?: bo
   return `${startYear}`;
 }
 
-export default function ExperienceCard({ item }: ExperienceCardProps) {
+function ExperienceCard({ item }: ExperienceCardProps) {
   const period = formatPeriod(item.start_date, item.end_date, item.is_current);
   const moreHref = `/experience/${item.company_slug}`;
 
@@ -80,3 +81,5 @@ export default function ExperienceCard({ item }: ExperienceCardProps) {
     </div>
   );
 }
+
+export default memo(ExperienceCard);

@@ -1,10 +1,11 @@
+import { memo } from "react";
 import { Publication } from "@/lib/types";
 
 type PublicationCardProps = {
   publication: Publication;
 };
 
-export default function PublicationCard({ publication }: PublicationCardProps) {
+function PublicationCard({ publication }: PublicationCardProps) {
   return (
     <div className="group rounded-3xl border border-[#00ffc3]/20 bg-black/40 p-7 shadow-[0_0_15px_rgba(0,255,200,0.12)] transition duration-300 hover:border-[#00ffc3]/60 hover:shadow-[0_0_45px_rgba(0,255,200,0.3)]">
       <div className="flex items-center justify-between gap-2">
@@ -28,3 +29,5 @@ export default function PublicationCard({ publication }: PublicationCardProps) {
     </div>
   );
 }
+
+export default memo(PublicationCard);

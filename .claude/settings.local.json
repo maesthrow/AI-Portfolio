@@ -1,10 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cat:*)",
-      "Bash(dir /b \"D:\\dev\\PycharmProjects\\ai\\AI-Portfolio\\frontend-new\")",
-      "Bash(find:*)",
-      "Bash(npm run lint)"
+      "Bash(npx tsc --noEmit)"
     ],
     "deny": [],
     "ask": []

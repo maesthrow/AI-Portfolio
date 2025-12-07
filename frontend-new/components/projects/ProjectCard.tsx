@@ -1,3 +1,4 @@
+import { memo } from "react";
 import Link from "next/link";
 import { Github } from "lucide-react";
 import { Project } from "@/lib/types";
@@ -31,7 +32,7 @@ function shortDescription(md?: string | null) {
   return lines.slice(0, 2).join(" ");
 }
 
-export default function ProjectCard({ project }: ProjectCardProps) {
+function ProjectCard({ project }: ProjectCardProps) {
   const domainKey = project.domain?.toString().toLowerCase();
   const domain = domainKey ? domainLabels[domainKey] : null;
   const techTags = (project.technologies || [])
@@ -115,3 +116,5 @@ export default function ProjectCard({ project }: ProjectCardProps) {
     </div>
   );
 }
+
+export default memo(ProjectCard);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 
 type ParticleShape =
   | "pulseRing"
@@ -31,9 +31,12 @@ const SHAPES: ParticleShape[] = [
   "crosshair", "diamond", "circuit", "orb"
 ];
 
+// Pre-calculated constants
+const PI2 = Math.PI * 2;
+const PI_DIV_3 = Math.PI / 3;
+
 function createParticle(width: number, height: number): Particle {
   const shapeIndex = Math.floor(Math.random() * SHAPES.length);
-  const shape = SHAPES[shapeIndex];
   return {
     x: Math.random() * width,
     y: Math.random() * height,
@@ -42,93 +45,83 @@ function createParticle(width: number, height: number): Particle {
     speedY: (Math.random() - 0.5) * 0.4,
     opacity: Math.random() * 0.3 + 0.1,
     glowing: Math.random() > 0.6,
-    phase: Math.random() * Math.PI * 2,
-    shape,
-    rotation: Math.random() * Math.PI * 2,
+    phase: Math.random() * PI2,
+    shape: SHAPES[shapeIndex],
+    rotation: Math.random() * PI2,
     rotationSpeed: (Math.random() - 0.5) * 0.015
   };
 }
 
+// Optimized draw function - reduced ctx state changes
 function drawParticle(
   ctx: CanvasRenderingContext2D,
   particle: Particle,
-  color: string,
-  time: number
+  time: number,
+  opacity: number
 ) {
+  const s = particle.size;
+  const pulse = Math.sin(time * 2 + particle.phase) * 0.3 + 0.7;
+
   ctx.save();
   ctx.translate(particle.x, particle.y);
   ctx.rotate(particle.rotation);
 
-  const s = particle.size;
-  const pulse = Math.sin(time * 2 + particle.phase) * 0.3 + 0.7;
-
+  const color = `rgba(16,240,160,${opacity})`;
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.lineWidth = 1;
 
   switch (particle.shape) {
     case "pulseRing": {
-      // Пульсирующее кольцо с внутренней точкой
       const ringSize = s * pulse;
       ctx.beginPath();
-      ctx.arc(0, 0, ringSize, 0, Math.PI * 2);
+      ctx.arc(0, 0, ringSize, 0, PI2);
       ctx.stroke();
-      // Внутренняя точка
       ctx.beginPath();
-      ctx.arc(0, 0, s * 0.2, 0, Math.PI * 2);
+      ctx.arc(0, 0, s * 0.2, 0, PI2);
       ctx.fill();
       break;
     }
 
     case "dataNode": {
-      // Квадрат с точкой, бегающей по рёбрам
       const hs = s * 0.6;
       ctx.strokeRect(-hs, -hs, hs * 2, hs * 2);
-      // Вершины квадрата (по часовой стрелке)
-      const sqPoints = [
-        { x: -hs, y: -hs },
-        { x: hs, y: -hs },
-        { x: hs, y: hs },
-        { x: -hs, y: hs }
-      ];
-      // Точка бегает по периметру (0-4 = полный цикл по 4 рёбрам)
       const sqProgress = ((time * 0.6 + particle.phase) % 4);
       const sqEdgeIndex = Math.floor(sqProgress);
       const sqEdgeProgress = sqProgress - sqEdgeIndex;
-      const sq1 = sqPoints[sqEdgeIndex];
-      const sq2 = sqPoints[(sqEdgeIndex + 1) % 4];
-      const sqDotX = sq1.x + (sq2.x - sq1.x) * sqEdgeProgress;
-      const sqDotY = sq1.y + (sq2.y - sq1.y) * sqEdgeProgress;
+      // Inline vertex calculation
+      const sqX = sqEdgeIndex === 0 ? -hs + (hs * 2) * sqEdgeProgress :
+                  sqEdgeIndex === 1 ? hs :
+                  sqEdgeIndex === 2 ? hs - (hs * 2) * sqEdgeProgress : -hs;
+      const sqY = sqEdgeIndex === 0 ? -hs :
+                  sqEdgeIndex === 1 ? -hs + (hs * 2) * sqEdgeProgress :
+                  sqEdgeIndex === 2 ? hs : hs - (hs * 2) * sqEdgeProgress;
       ctx.beginPath();
-      ctx.arc(sqDotX, sqDotY, s * 0.18 * pulse, 0, Math.PI * 2);
+      ctx.arc(sqX, sqY, s * 0.18 * pulse, 0, PI2);
       ctx.fill();
       break;
     }
 
     case "scanLine": {
-      // Горизонтальная линия со "сканирующим" эффектом
       const lineWidth = s * 1.5;
       const scanPos = Math.sin(time * 3 + particle.phase) * lineWidth * 0.8;
       ctx.beginPath();
       ctx.moveTo(-lineWidth, 0);
       ctx.lineTo(lineWidth, 0);
       ctx.stroke();
-      // Яркая точка "сканера"
       ctx.beginPath();
-      ctx.arc(scanPos, 0, s * 0.2, 0, Math.PI * 2);
+      ctx.arc(scanPos, 0, s * 0.2, 0, PI2);
       ctx.fill();
       break;
     }
 
     case "hexagon": {
-      // Шестиугольник
       ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const angle = (i * Math.PI) / 3;
-        const x = Math.cos(angle) * s * pulse;
-        const y = Math.sin(angle) * s * pulse;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+      const hexSize = s * pulse;
+      ctx.moveTo(hexSize, 0);
+      for (let i = 1; i < 6; i++) {
+        const angle = i * PI_DIV_3;
+        ctx.lineTo(Math.cos(angle) * hexSize, Math.sin(angle) * hexSize);
       }
       ctx.closePath();
       ctx.stroke();
@@ -136,10 +129,8 @@ function drawParticle(
     }
 
     case "crosshair": {
-      // Прицел
       const len = s * 0.8;
       const gap = s * 0.25;
-      // Линии
       ctx.beginPath();
       ctx.moveTo(-len, 0);
       ctx.lineTo(-gap, 0);
@@ -150,86 +141,77 @@ function drawParticle(
       ctx.moveTo(0, gap);
       ctx.lineTo(0, len);
       ctx.stroke();
-      // Центральная точка пульсирует
       ctx.beginPath();
-      ctx.arc(0, 0, s * 0.12 * pulse, 0, Math.PI * 2);
+      ctx.arc(0, 0, s * 0.12 * pulse, 0, PI2);
       ctx.fill();
       break;
     }
 
     case "diamond": {
-      // Ромб с точкой, бегающей по рёбрам
       const d = s * 0.8;
-      // Вершины ромба
-      const diamondPoints = [
-        { x: 0, y: -d },
-        { x: d, y: 0 },
-        { x: 0, y: d },
-        { x: -d, y: 0 }
-      ];
       ctx.beginPath();
-      ctx.moveTo(diamondPoints[0].x, diamondPoints[0].y);
-      ctx.lineTo(diamondPoints[1].x, diamondPoints[1].y);
-      ctx.lineTo(diamondPoints[2].x, diamondPoints[2].y);
-      ctx.lineTo(diamondPoints[3].x, diamondPoints[3].y);
+      ctx.moveTo(0, -d);
+      ctx.lineTo(d, 0);
+      ctx.lineTo(0, d);
+      ctx.lineTo(-d, 0);
       ctx.closePath();
       ctx.stroke();
-      // Точка бегает по периметру (0-4 = полный цикл по 4 рёбрам)
       const diaProgress = ((time * 0.55 + particle.phase) % 4);
       const diaEdgeIndex = Math.floor(diaProgress);
       const diaEdgeProgress = diaProgress - diaEdgeIndex;
-      const dia1 = diamondPoints[diaEdgeIndex];
-      const dia2 = diamondPoints[(diaEdgeIndex + 1) % 4];
-      const diaDotX = dia1.x + (dia2.x - dia1.x) * diaEdgeProgress;
-      const diaDotY = dia1.y + (dia2.y - dia1.y) * diaEdgeProgress;
+      // Inline diamond vertex calculation
+      const diaX = diaEdgeIndex === 0 ? d * diaEdgeProgress :
+                   diaEdgeIndex === 1 ? d - d * diaEdgeProgress :
+                   diaEdgeIndex === 2 ? -d * diaEdgeProgress : -d + d * diaEdgeProgress;
+      const diaY = diaEdgeIndex === 0 ? -d + d * diaEdgeProgress :
+                   diaEdgeIndex === 1 ? d * diaEdgeProgress :
+                   diaEdgeIndex === 2 ? d - d * diaEdgeProgress : -d * diaEdgeProgress;
       ctx.beginPath();
-      ctx.arc(diaDotX, diaDotY, s * 0.18 * pulse, 0, Math.PI * 2);
+      ctx.arc(diaX, diaY, s * 0.18 * pulse, 0, PI2);
       ctx.fill();
       break;
     }
 
     case "circuit": {
-      // Треугольник с точкой, бегающей по рёбрам
       const ts = s * 0.8;
-      // Вершины треугольника
-      const triPoints = [
-        { x: 0, y: -ts },
-        { x: ts * 0.866, y: ts * 0.5 },
-        { x: -ts * 0.866, y: ts * 0.5 }
-      ];
+      const tsH = ts * 0.866;
+      const tsV = ts * 0.5;
       ctx.beginPath();
-      ctx.moveTo(triPoints[0].x, triPoints[0].y);
-      ctx.lineTo(triPoints[1].x, triPoints[1].y);
-      ctx.lineTo(triPoints[2].x, triPoints[2].y);
+      ctx.moveTo(0, -ts);
+      ctx.lineTo(tsH, tsV);
+      ctx.lineTo(-tsH, tsV);
       ctx.closePath();
       ctx.stroke();
-      // Точка бегает по периметру (0-3 = полный цикл по 3 рёбрам)
       const triProgress = ((time * 0.5 + particle.phase) % 3);
       const edgeIndex = Math.floor(triProgress);
       const edgeProgress = triProgress - edgeIndex;
-      const p1 = triPoints[edgeIndex];
-      const p2 = triPoints[(edgeIndex + 1) % 3];
-      const dotX = p1.x + (p2.x - p1.x) * edgeProgress;
-      const dotY = p1.y + (p2.y - p1.y) * edgeProgress;
+      // Inline triangle vertex calculation
+      let dotX: number, dotY: number;
+      if (edgeIndex === 0) {
+        dotX = tsH * edgeProgress;
+        dotY = -ts + (tsV + ts) * edgeProgress;
+      } else if (edgeIndex === 1) {
+        dotX = tsH - (tsH * 2) * edgeProgress;
+        dotY = tsV;
+      } else {
+        dotX = -tsH + tsH * edgeProgress;
+        dotY = tsV - (tsV + ts) * edgeProgress;
+      }
       ctx.beginPath();
-      ctx.arc(dotX, dotY, s * 0.2 * pulse, 0, Math.PI * 2);
+      ctx.arc(dotX, dotY, s * 0.2 * pulse, 0, PI2);
       ctx.fill();
       break;
     }
 
     case "orb": {
-      // Светящаяся сфера с кольцом
       const orbPulse = 0.7 + Math.sin(time * 2.5 + particle.phase) * 0.3;
-      // Внешнее кольцо
       ctx.beginPath();
-      ctx.arc(0, 0, s * 0.9, 0, Math.PI * 2);
+      ctx.arc(0, 0, s * 0.9, 0, PI2);
       ctx.stroke();
-      // Внутренняя заливка
-      ctx.globalAlpha = 0.4 * orbPulse;
+      ctx.globalAlpha = opacity * 0.4 * orbPulse;
       ctx.beginPath();
-      ctx.arc(0, 0, s * 0.5 * orbPulse, 0, Math.PI * 2);
+      ctx.arc(0, 0, s * 0.5 * orbPulse, 0, PI2);
       ctx.fill();
-      ctx.globalAlpha = 1;
       break;
     }
   }
@@ -241,22 +223,29 @@ export function ParticlesBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
   const animationRef = useRef<number>(0);
+  const isVisibleRef = useRef(true);
+  const isMobileRef = useRef(false);
+
+  // Mouse state refs
   const mousePosRef = useRef({ x: -1000, y: -1000 });
-  const prevMousePosRef = useRef({ x: -1000, y: -1000 });
   const mouseVelocityRef = useRef({ x: 0, y: 0 });
+  const lastMouseTimeRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
+
+    // Detect mobile
+    isMobileRef.current = window.innerWidth < 768 || 'ontouchstart' in window;
 
     let width = window.innerWidth;
     let height = window.innerHeight;
 
     const resizeCanvas = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2); // Cap DPR at 2 for performance
       width = window.innerWidth;
       height = window.innerHeight;
       canvas.width = width * dpr;
@@ -264,11 +253,16 @@ export function ParticlesBackground() {
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      isMobileRef.current = width < 768 || 'ontouchstart' in window;
     };
     resizeCanvas();
 
-    const targetParticleCount = Math.min(80, Math.max(35, Math.floor(width / 20)));
-    const initialParticleCount = 5;
+    // Reduce particle count on mobile
+    const baseCount = isMobileRef.current ? 25 : 35;
+    const maxCount = isMobileRef.current ? 50 : 80;
+    const targetParticleCount = Math.min(maxCount, Math.max(baseCount, Math.floor(width / (isMobileRef.current ? 30 : 20))));
+    const initialParticleCount = isMobileRef.current ? 3 : 5;
+
     particlesRef.current = Array.from({ length: initialParticleCount }, () =>
       createParticle(width, height)
     );
@@ -280,171 +274,184 @@ export function ParticlesBackground() {
         clearInterval(spawnInterval);
         return;
       }
-      const toSpawn = Math.min(3, targetParticleCount - spawnedCount);
+      const toSpawn = Math.min(isMobileRef.current ? 2 : 3, targetParticleCount - spawnedCount);
       for (let i = 0; i < toSpawn; i++) {
         particlesRef.current.push(createParticle(width, height));
       }
       spawnedCount += toSpawn;
-    }, 80);
+    }, isMobileRef.current ? 100 : 80);
 
+    // Visibility detection - pause animation when not visible
+    const observer = new IntersectionObserver(
+      (entries) => {
+        isVisibleRef.current = entries[0]?.isIntersecting ?? true;
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(canvas);
+
+    // Throttled resize handler
+    let resizeTimeout: ReturnType<typeof setTimeout>;
     const handleResize = () => {
-      resizeCanvas();
-      const newCount = Math.min(80, Math.max(35, Math.floor(width / 20)));
-      const currentCount = particlesRef.current.length;
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        resizeCanvas();
+        const newMax = isMobileRef.current ? 50 : 80;
+        const newBase = isMobileRef.current ? 25 : 35;
+        const newCount = Math.min(newMax, Math.max(newBase, Math.floor(width / (isMobileRef.current ? 30 : 20))));
+        const currentCount = particlesRef.current.length;
 
-      if (newCount > currentCount) {
-        for (let i = currentCount; i < newCount; i++) {
-          particlesRef.current.push(createParticle(width, height));
+        if (newCount > currentCount) {
+          for (let i = currentCount; i < newCount; i++) {
+            particlesRef.current.push(createParticle(width, height));
+          }
+        } else if (newCount < currentCount) {
+          particlesRef.current.length = newCount;
         }
-      } else if (newCount < currentCount) {
-        particlesRef.current = particlesRef.current.slice(0, newCount);
-      }
+      }, 150);
     };
 
+    // Throttled mouse handler - only update every 16ms (~60fps)
     const handleMouseMove = (e: MouseEvent) => {
-      const newPos = { x: e.clientX, y: e.clientY };
-      const prev = mousePosRef.current;
+      const now = performance.now();
+      if (now - lastMouseTimeRef.current < 16) return;
+      lastMouseTimeRef.current = now;
 
-      // Calculate velocity based on mouse movement
+      const prev = mousePosRef.current;
+      const newX = e.clientX;
+      const newY = e.clientY;
+
       if (prev.x > -500) {
-        mouseVelocityRef.current = {
-          x: newPos.x - prev.x,
-          y: newPos.y - prev.y
-        };
+        mouseVelocityRef.current.x = newX - prev.x;
+        mouseVelocityRef.current.y = newY - prev.y;
       }
 
-      prevMousePosRef.current = prev;
-      mousePosRef.current = newPos;
+      mousePosRef.current.x = newX;
+      mousePosRef.current.y = newY;
     };
 
-    window.addEventListener("resize", handleResize);
-    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("resize", handleResize, { passive: true });
+    window.addEventListener("mousemove", handleMouseMove, { passive: true });
 
-    const animate = () => {
+    // Animation loop with visibility check
+    let lastTime = 0;
+    const targetFPS = isMobileRef.current ? 30 : 60;
+    const frameInterval = 1000 / targetFPS;
+
+    const animate = (currentTime: number) => {
+      animationRef.current = requestAnimationFrame(animate);
+
+      // Skip if not visible
+      if (!isVisibleRef.current) return;
+
+      // Frame rate limiting for mobile
+      if (isMobileRef.current) {
+        const deltaTime = currentTime - lastTime;
+        if (deltaTime < frameInterval) return;
+        lastTime = currentTime - (deltaTime % frameInterval);
+      }
+
       ctx.clearRect(0, 0, width, height);
-      const time = Date.now() * 0.001;
+      const time = currentTime * 0.001;
       const mousePos = mousePosRef.current;
       const mouseVel = mouseVelocityRef.current;
 
-      // Calculate mouse speed for dynamic effect radius
-      const mouseSpeed = Math.sqrt(mouseVel.x * mouseVel.x + mouseVel.y * mouseVel.y);
+      // Calculate mouse speed (avoid sqrt when possible)
+      const mouseSpeedSq = mouseVel.x * mouseVel.x + mouseVel.y * mouseVel.y;
+      const mouseSpeed = mouseSpeedSq > 0 ? Math.sqrt(mouseSpeedSq) : 0;
       const effectRadius = Math.min(180, 80 + mouseSpeed * 3);
+      const effectRadiusSq = effectRadius * effectRadius;
 
-      // Decay mouse velocity over time for smoother effect
-      mouseVelocityRef.current = {
-        x: mouseVel.x * 0.92,
-        y: mouseVel.y * 0.92
-      };
+      // Decay mouse velocity
+      mouseVel.x *= 0.92;
+      mouseVel.y *= 0.92;
 
-      particlesRef.current.forEach((particle) => {
-        // Distance from mouse
+      const particles = particlesRef.current;
+      const len = particles.length;
+
+      for (let i = 0; i < len; i++) {
+        const particle = particles[i];
+
+        // Distance from mouse (squared first to avoid sqrt)
         const dx = particle.x - mousePos.x;
         const dy = particle.y - mousePos.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        const distanceSq = dx * dx + dy * dy;
 
-        if (distance < effectRadius && distance > 0) {
-          // Non-linear force falloff (stronger close, gentler far)
+        if (distanceSq < effectRadiusSq && distanceSq > 0) {
+          const distance = Math.sqrt(distanceSq);
           const normalizedDist = distance / effectRadius;
-          const force = Math.pow(1 - normalizedDist, 1.5) * 0.9;
+          const force = (1 - normalizedDist) * (1 - normalizedDist) * 0.9;
 
-          // Direction from mouse to particle
           const pushAngle = Math.atan2(dy, dx);
-
-          // Calculate perpendicular angle for swirl effect
           const swirlAngle = pushAngle + Math.PI * 0.5;
-
-          // Swirl strength based on mouse speed and proximity
           const swirlStrength = mouseSpeed * force * 0.08;
-
-          // Combine: radial push + velocity direction + perpendicular swirl
-          const radialPush = 2.0;
-          const velocityInfluence = 0.18;
           const swirlInfluence = Math.min(mouseSpeed * 0.04, 1.2);
 
-          const pushX =
-            Math.cos(pushAngle) * force * radialPush +
-            mouseVel.x * force * velocityInfluence +
-            Math.cos(swirlAngle) * swirlStrength * swirlInfluence;
-          const pushY =
-            Math.sin(pushAngle) * force * radialPush +
-            mouseVel.y * force * velocityInfluence +
-            Math.sin(swirlAngle) * swirlStrength * swirlInfluence;
+          particle.x += Math.cos(pushAngle) * force * 2.0 +
+                        mouseVel.x * force * 0.18 +
+                        Math.cos(swirlAngle) * swirlStrength * swirlInfluence;
+          particle.y += Math.sin(pushAngle) * force * 2.0 +
+                        mouseVel.y * force * 0.18 +
+                        Math.sin(swirlAngle) * swirlStrength * swirlInfluence;
 
-          particle.x += pushX;
-          particle.y += pushY;
-
-          // Enhanced spin - direction based on which side of mouse movement
           const crossProduct = dx * mouseVel.y - dy * mouseVel.x;
-          const spinDirection = crossProduct > 0 ? 1 : -1;
-          particle.rotationSpeed += force * mouseSpeed * 0.006 * spinDirection;
-
-          // Temporarily boost particle speed in swirl direction
+          particle.rotationSpeed += force * mouseSpeed * 0.006 * (crossProduct > 0 ? 1 : -1);
           particle.speedX += Math.cos(swirlAngle) * force * mouseSpeed * 0.003;
           particle.speedY += Math.sin(swirlAngle) * force * mouseSpeed * 0.003;
         }
 
-        // Gradually return rotation speed to original
+        // Physics update
         particle.rotationSpeed *= 0.96;
-        if (Math.abs(particle.rotationSpeed) < 0.001) {
-          particle.rotationSpeed = (Math.random() - 0.5) * 0.015;
-        }
-
-        // Gradually return particle speed to original (damping)
         particle.speedX *= 0.995;
         particle.speedY *= 0.995;
-        // Restore base drift
-        const baseSpeed = 0.2;
-        if (Math.abs(particle.speedX) < baseSpeed * 0.5) {
-          particle.speedX += (Math.random() - 0.5) * 0.01;
+
+        // Restore base drift occasionally
+        if (Math.abs(particle.speedX) < 0.1 && Math.random() < 0.1) {
+          particle.speedX += (Math.random() - 0.5) * 0.02;
         }
-        if (Math.abs(particle.speedY) < baseSpeed * 0.5) {
-          particle.speedY += (Math.random() - 0.5) * 0.01;
+        if (Math.abs(particle.speedY) < 0.1 && Math.random() < 0.1) {
+          particle.speedY += (Math.random() - 0.5) * 0.02;
         }
 
-        // Movement
         particle.x += particle.speedX;
         particle.y += particle.speedY;
         particle.rotation += particle.rotationSpeed;
 
         // Edge wrapping
         if (particle.x < -20) particle.x = width + 20;
-        if (particle.x > width + 20) particle.x = -20;
+        else if (particle.x > width + 20) particle.x = -20;
         if (particle.y < -20) particle.y = height + 20;
-        if (particle.y > height + 20) particle.y = -20;
+        else if (particle.y > height + 20) particle.y = -20;
 
-        // Calculate opacity with pulsing
+        // Calculate opacity
         let drawOpacity = particle.opacity;
         if (particle.glowing) {
-          const pulse = Math.sin(time * 1.5 + particle.phase) * 0.12 + 0.12;
-          drawOpacity = particle.opacity + pulse;
+          drawOpacity += Math.sin(time * 1.5 + particle.phase) * 0.12 + 0.12;
         }
 
-        // Glow effect
-        if (particle.glowing) {
+        // Glow effect (skip on mobile for performance)
+        if (particle.glowing && !isMobileRef.current) {
           ctx.shadowBlur = 12;
-          ctx.shadowColor = `rgba(16, 240, 160, ${drawOpacity * 0.8})`;
-        } else {
+          ctx.shadowColor = `rgba(16,240,160,${drawOpacity * 0.8})`;
+        }
+
+        drawParticle(ctx, particle, time, drawOpacity);
+
+        if (particle.glowing && !isMobileRef.current) {
           ctx.shadowBlur = 0;
         }
-
-        const color = `rgba(16, 240, 160, ${drawOpacity})`;
-        drawParticle(ctx, particle, color, time);
-
-        ctx.shadowBlur = 0;
-      });
-
-      animationRef.current = requestAnimationFrame(animate);
+      }
     };
 
-    animate();
+    animationRef.current = requestAnimationFrame(animate);
 
     return () => {
       clearInterval(spawnInterval);
+      clearTimeout(resizeTimeout);
+      observer.disconnect();
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("mousemove", handleMouseMove);
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      cancelAnimationFrame(animationRef.current);
     };
   }, []);
 

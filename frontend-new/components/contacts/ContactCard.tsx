@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Contact } from "@/lib/types";
 
 type ContactCardProps = {
@@ -61,7 +62,7 @@ const ContactIcons: Record<Contact["kind"] | "default", JSX.Element> = {
     >
       <text
         x="12"
-        y="17"  // оптический центр по высоте
+        y="17"
         textAnchor="middle"
         fontSize="14.5"
         fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
@@ -72,7 +73,20 @@ const ContactIcons: Record<Contact["kind"] | "default", JSX.Element> = {
         LC
       </text>
     </svg>
-  ),  
+  ),
+  other: (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-6 w-6"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+    >
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v8M8 12h8" />
+    </svg>
+  ),
   default: (
     <svg
       viewBox="0 0 24 24"
@@ -106,7 +120,7 @@ const ContactColors: Record<Contact["kind"] | "default", string> = {
     "border-[#00ffc3]/50 bg-accent/10 text-accent shadow-[0_0_12px_rgba(0,255,200,0.25)]",
 };
 
-export default function ContactCard({ contact }: ContactCardProps) {
+function ContactCard({ contact }: ContactCardProps) {
   const icon = ContactIcons[contact.kind] || ContactIcons.default;
   const colorClass = ContactColors[contact.kind] || ContactColors.default;
 
@@ -134,3 +148,5 @@ export default function ContactCard({ contact }: ContactCardProps) {
     </a>
   );
 }
+
+export default memo(ContactCard);
