@@ -108,14 +108,17 @@ Key modules:
 - Port: 3000
 
 Key structure:
-- `app/page.tsx` - Main landing page (fetches all data via API)
+- `app/page.tsx` - Main landing page (fetches all data via API, includes ParticlesBackground)
 - `app/layout.tsx` - Root layout with AgentDock
+- `app/globals.css` - Global styles including hero animations (glowDrift, hero-grid-pan, etc.)
 - `components/` - Modular components:
   - `agent/AgentDock.tsx` - Global floating chat with RAG agent
   - `agent/AgentChatWindow.tsx` - Chat window UI
   - `agent/AgentInput.tsx` - Message input
   - `agent/AgentMessageList.tsx` - Message display with streaming
-  - `hero/HeroIntro.tsx` - Hero section
+  - `hero/HeroIntro.tsx` - Hero section with profile card
+  - `hero/HeroScrollHint.tsx` - Scroll down button with animation
+  - `hero/ParticlesBackground.tsx` - Canvas-based animated cyberpunk particles
   - `about/AboutMeSection.tsx` - About section with stats
   - `experience/ExperienceSection.tsx` - Experience timeline
   - `tech/TechFocusSection.tsx` - Technology focus areas
@@ -312,6 +315,22 @@ The LangGraph agent (`services/rag-api/app/agent/graph.py`) uses ReAct pattern:
 - Tools: `portfolio_rag_tool`, `list_projects_tool`
 - Agent MUST call RAG tool for any portfolio-related questions
 
+### Hero Particles Animation
+The hero section includes an animated particles background (`frontend-new/components/hero/ParticlesBackground.tsx`):
+- Canvas-based rendering for 60fps performance
+- 35-80 particles (responsive to viewport width)
+- 8 cyberpunk-themed particle shapes: pulseRing, dataNode, scanLine, hexagon, crosshair, diamond, triangle, orb
+- All particles have pulsing animations with different phases
+- Mouse interaction: particles are repelled by cursor movement (vortex effect)
+- Glow effect on ~40% of particles
+- Particles wrap around screen edges
+- Animation area extends below hero section toward "About" section
+
+Key files:
+- `frontend-new/components/hero/ParticlesBackground.tsx` - Main canvas component
+- `frontend-new/app/page.tsx` - Integration point (inside hero background layer)
+- `frontend-new/app/globals.css` - Contains `glowDrift` keyframe for gradient blobs
+
 ### Database Models
 Key models and relationships (`services/content-api-new/app/models/`):
 
@@ -457,7 +476,7 @@ AI-Portfolio/
 │   │   └── experience/[company_slug]/ # Experience detail page
 │   ├── components/
 │   │   ├── agent/                  # RAG agent chat components
-│   │   ├── hero/                   # Hero section
+│   │   ├── hero/                   # Hero section (HeroIntro, HeroScrollHint, ParticlesBackground)
 │   │   ├── about/                  # About section with stats
 │   │   ├── experience/             # Experience timeline
 │   │   ├── tech/                   # Tech focus areas

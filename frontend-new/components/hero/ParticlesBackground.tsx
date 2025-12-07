@@ -3,14 +3,14 @@
 import { useEffect, useRef } from "react";
 
 type ParticleShape =
-  | "bracket"
-  | "hash"
-  | "slash"
-  | "pipe"
-  | "binary"
-  | "asterisk"
-  | "chevron"
-  | "dot";
+  | "pulseRing"
+  | "dataNode"
+  | "scanLine"
+  | "hexagon"
+  | "crosshair"
+  | "diamond"
+  | "circuit"
+  | "orb";
 
 interface Particle {
   x: number;
@@ -24,40 +24,12 @@ interface Particle {
   shape: ParticleShape;
   rotation: number;
   rotationSpeed: number;
-  charValue: string;
 }
 
 const SHAPES: ParticleShape[] = [
-  "bracket", "hash", "slash", "pipe", "binary",
-  "asterisk", "chevron", "dot"
+  "pulseRing", "dataNode", "scanLine", "hexagon",
+  "crosshair", "diamond", "circuit", "orb"
 ];
-
-const BRACKET_CHARS = ["{}", "[]", "()", "<>", "/*", "*/", "//"];
-const BINARY_CHARS = ["0", "1", "00", "01", "010", "011"];
-const CHEVRON_CHARS = ["<", ">", "<<", ">>", "</", "/>"];
-
-function getCharForShape(shape: ParticleShape): string {
-  switch (shape) {
-    case "bracket":
-      return BRACKET_CHARS[Math.floor(Math.random() * BRACKET_CHARS.length)];
-    case "hash":
-      return "#";
-    case "slash":
-      return Math.random() > 0.5 ? "/" : "\\";
-    case "pipe":
-      return Math.random() > 0.5 ? "|" : "||";
-    case "binary":
-      return BINARY_CHARS[Math.floor(Math.random() * BINARY_CHARS.length)];
-    case "asterisk":
-      return Math.random() > 0.5 ? "*" : "**";
-    case "chevron":
-      return CHEVRON_CHARS[Math.floor(Math.random() * CHEVRON_CHARS.length)];
-    case "dot":
-      return Math.random() > 0.7 ? "..." : "::";
-    default:
-      return "#";
-  }
-}
 
 function createParticle(width: number, height: number): Particle {
   const shapeIndex = Math.floor(Math.random() * SHAPES.length);
@@ -65,34 +37,202 @@ function createParticle(width: number, height: number): Particle {
   return {
     x: Math.random() * width,
     y: Math.random() * height,
-    size: Math.random() * 5 + 3,
+    size: Math.random() * 6 + 4,
     speedX: (Math.random() - 0.5) * 0.4,
     speedY: (Math.random() - 0.5) * 0.4,
-    opacity: Math.random() * 0.25 + 0.08,
-    glowing: Math.random() > 0.75,
+    opacity: Math.random() * 0.3 + 0.1,
+    glowing: Math.random() > 0.6,
     phase: Math.random() * Math.PI * 2,
     shape,
-    rotation: (Math.random() - 0.5) * 0.3,
-    rotationSpeed: (Math.random() - 0.5) * 0.008,
-    charValue: getCharForShape(shape)
+    rotation: Math.random() * Math.PI * 2,
+    rotationSpeed: (Math.random() - 0.5) * 0.015
   };
 }
 
 function drawParticle(
   ctx: CanvasRenderingContext2D,
   particle: Particle,
-  color: string
+  color: string,
+  time: number
 ) {
   ctx.save();
   ctx.translate(particle.x, particle.y);
   ctx.rotate(particle.rotation);
 
-  const fontSize = Math.max(10, particle.size * 2.2);
+  const s = particle.size;
+  const pulse = Math.sin(time * 2 + particle.phase) * 0.3 + 0.7;
+
+  ctx.strokeStyle = color;
   ctx.fillStyle = color;
-  ctx.font = `${fontSize}px "Space Grotesk", monospace`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(particle.charValue, 0, 0);
+  ctx.lineWidth = 1;
+
+  switch (particle.shape) {
+    case "pulseRing": {
+      // Пульсирующее кольцо с внутренней точкой
+      const ringSize = s * pulse;
+      ctx.beginPath();
+      ctx.arc(0, 0, ringSize, 0, Math.PI * 2);
+      ctx.stroke();
+      // Внутренняя точка
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+
+    case "dataNode": {
+      // Квадрат с точкой, бегающей по рёбрам
+      const hs = s * 0.6;
+      ctx.strokeRect(-hs, -hs, hs * 2, hs * 2);
+      // Вершины квадрата (по часовой стрелке)
+      const sqPoints = [
+        { x: -hs, y: -hs },
+        { x: hs, y: -hs },
+        { x: hs, y: hs },
+        { x: -hs, y: hs }
+      ];
+      // Точка бегает по периметру (0-4 = полный цикл по 4 рёбрам)
+      const sqProgress = ((time * 0.6 + particle.phase) % 4);
+      const sqEdgeIndex = Math.floor(sqProgress);
+      const sqEdgeProgress = sqProgress - sqEdgeIndex;
+      const sq1 = sqPoints[sqEdgeIndex];
+      const sq2 = sqPoints[(sqEdgeIndex + 1) % 4];
+      const sqDotX = sq1.x + (sq2.x - sq1.x) * sqEdgeProgress;
+      const sqDotY = sq1.y + (sq2.y - sq1.y) * sqEdgeProgress;
+      ctx.beginPath();
+      ctx.arc(sqDotX, sqDotY, s * 0.18 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+
+    case "scanLine": {
+      // Горизонтальная линия со "сканирующим" эффектом
+      const lineWidth = s * 1.5;
+      const scanPos = Math.sin(time * 3 + particle.phase) * lineWidth * 0.8;
+      ctx.beginPath();
+      ctx.moveTo(-lineWidth, 0);
+      ctx.lineTo(lineWidth, 0);
+      ctx.stroke();
+      // Яркая точка "сканера"
+      ctx.beginPath();
+      ctx.arc(scanPos, 0, s * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+
+    case "hexagon": {
+      // Шестиугольник
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (i * Math.PI) / 3;
+        const x = Math.cos(angle) * s * pulse;
+        const y = Math.sin(angle) * s * pulse;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    }
+
+    case "crosshair": {
+      // Прицел
+      const len = s * 0.8;
+      const gap = s * 0.25;
+      // Линии
+      ctx.beginPath();
+      ctx.moveTo(-len, 0);
+      ctx.lineTo(-gap, 0);
+      ctx.moveTo(gap, 0);
+      ctx.lineTo(len, 0);
+      ctx.moveTo(0, -len);
+      ctx.lineTo(0, -gap);
+      ctx.moveTo(0, gap);
+      ctx.lineTo(0, len);
+      ctx.stroke();
+      // Центральная точка пульсирует
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.12 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+
+    case "diamond": {
+      // Ромб с точкой, бегающей по рёбрам
+      const d = s * 0.8;
+      // Вершины ромба
+      const diamondPoints = [
+        { x: 0, y: -d },
+        { x: d, y: 0 },
+        { x: 0, y: d },
+        { x: -d, y: 0 }
+      ];
+      ctx.beginPath();
+      ctx.moveTo(diamondPoints[0].x, diamondPoints[0].y);
+      ctx.lineTo(diamondPoints[1].x, diamondPoints[1].y);
+      ctx.lineTo(diamondPoints[2].x, diamondPoints[2].y);
+      ctx.lineTo(diamondPoints[3].x, diamondPoints[3].y);
+      ctx.closePath();
+      ctx.stroke();
+      // Точка бегает по периметру (0-4 = полный цикл по 4 рёбрам)
+      const diaProgress = ((time * 0.55 + particle.phase) % 4);
+      const diaEdgeIndex = Math.floor(diaProgress);
+      const diaEdgeProgress = diaProgress - diaEdgeIndex;
+      const dia1 = diamondPoints[diaEdgeIndex];
+      const dia2 = diamondPoints[(diaEdgeIndex + 1) % 4];
+      const diaDotX = dia1.x + (dia2.x - dia1.x) * diaEdgeProgress;
+      const diaDotY = dia1.y + (dia2.y - dia1.y) * diaEdgeProgress;
+      ctx.beginPath();
+      ctx.arc(diaDotX, diaDotY, s * 0.18 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+
+    case "circuit": {
+      // Треугольник с точкой, бегающей по рёбрам
+      const ts = s * 0.8;
+      // Вершины треугольника
+      const triPoints = [
+        { x: 0, y: -ts },
+        { x: ts * 0.866, y: ts * 0.5 },
+        { x: -ts * 0.866, y: ts * 0.5 }
+      ];
+      ctx.beginPath();
+      ctx.moveTo(triPoints[0].x, triPoints[0].y);
+      ctx.lineTo(triPoints[1].x, triPoints[1].y);
+      ctx.lineTo(triPoints[2].x, triPoints[2].y);
+      ctx.closePath();
+      ctx.stroke();
+      // Точка бегает по периметру (0-3 = полный цикл по 3 рёбрам)
+      const triProgress = ((time * 0.5 + particle.phase) % 3);
+      const edgeIndex = Math.floor(triProgress);
+      const edgeProgress = triProgress - edgeIndex;
+      const p1 = triPoints[edgeIndex];
+      const p2 = triPoints[(edgeIndex + 1) % 3];
+      const dotX = p1.x + (p2.x - p1.x) * edgeProgress;
+      const dotY = p1.y + (p2.y - p1.y) * edgeProgress;
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, s * 0.2 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+
+    case "orb": {
+      // Светящаяся сфера с кольцом
+      const orbPulse = 0.7 + Math.sin(time * 2.5 + particle.phase) * 0.3;
+      // Внешнее кольцо
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.9, 0, Math.PI * 2);
+      ctx.stroke();
+      // Внутренняя заливка
+      ctx.globalAlpha = 0.4 * orbPulse;
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.5 * orbPulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      break;
+    }
+  }
 
   ctx.restore();
 }
@@ -127,10 +267,25 @@ export function ParticlesBackground() {
     };
     resizeCanvas();
 
-    const particleCount = Math.min(80, Math.max(35, Math.floor(width / 20)));
-    particlesRef.current = Array.from({ length: particleCount }, () =>
+    const targetParticleCount = Math.min(80, Math.max(35, Math.floor(width / 20)));
+    const initialParticleCount = 5;
+    particlesRef.current = Array.from({ length: initialParticleCount }, () =>
       createParticle(width, height)
     );
+
+    // Gradually spawn particles
+    let spawnedCount = initialParticleCount;
+    const spawnInterval = setInterval(() => {
+      if (spawnedCount >= targetParticleCount) {
+        clearInterval(spawnInterval);
+        return;
+      }
+      const toSpawn = Math.min(3, targetParticleCount - spawnedCount);
+      for (let i = 0; i < toSpawn; i++) {
+        particlesRef.current.push(createParticle(width, height));
+      }
+      spawnedCount += toSpawn;
+    }, 80);
 
     const handleResize = () => {
       resizeCanvas();
@@ -188,26 +343,62 @@ export function ParticlesBackground() {
         const distance = Math.sqrt(dx * dx + dy * dy);
 
         if (distance < effectRadius && distance > 0) {
-          const force = ((effectRadius - distance) / effectRadius) * 0.8;
+          // Non-linear force falloff (stronger close, gentler far)
+          const normalizedDist = distance / effectRadius;
+          const force = Math.pow(1 - normalizedDist, 1.5) * 0.9;
 
           // Direction from mouse to particle
           const pushAngle = Math.atan2(dy, dx);
 
-          // Combine radial push with velocity-based push
-          const pushX = Math.cos(pushAngle) * force * 2.5 + mouseVel.x * force * 0.12;
-          const pushY = Math.sin(pushAngle) * force * 2.5 + mouseVel.y * force * 0.12;
+          // Calculate perpendicular angle for swirl effect
+          const swirlAngle = pushAngle + Math.PI * 0.5;
+
+          // Swirl strength based on mouse speed and proximity
+          const swirlStrength = mouseSpeed * force * 0.08;
+
+          // Combine: radial push + velocity direction + perpendicular swirl
+          const radialPush = 2.0;
+          const velocityInfluence = 0.18;
+          const swirlInfluence = Math.min(mouseSpeed * 0.04, 1.2);
+
+          const pushX =
+            Math.cos(pushAngle) * force * radialPush +
+            mouseVel.x * force * velocityInfluence +
+            Math.cos(swirlAngle) * swirlStrength * swirlInfluence;
+          const pushY =
+            Math.sin(pushAngle) * force * radialPush +
+            mouseVel.y * force * velocityInfluence +
+            Math.sin(swirlAngle) * swirlStrength * swirlInfluence;
 
           particle.x += pushX;
           particle.y += pushY;
 
-          // Add spin based on mouse movement (vortex effect)
-          particle.rotationSpeed += force * mouseSpeed * 0.003 * (Math.random() > 0.5 ? 1 : -1);
+          // Enhanced spin - direction based on which side of mouse movement
+          const crossProduct = dx * mouseVel.y - dy * mouseVel.x;
+          const spinDirection = crossProduct > 0 ? 1 : -1;
+          particle.rotationSpeed += force * mouseSpeed * 0.006 * spinDirection;
+
+          // Temporarily boost particle speed in swirl direction
+          particle.speedX += Math.cos(swirlAngle) * force * mouseSpeed * 0.003;
+          particle.speedY += Math.sin(swirlAngle) * force * mouseSpeed * 0.003;
         }
 
         // Gradually return rotation speed to original
-        particle.rotationSpeed *= 0.98;
+        particle.rotationSpeed *= 0.96;
         if (Math.abs(particle.rotationSpeed) < 0.001) {
-          particle.rotationSpeed = (Math.random() - 0.5) * 0.02;
+          particle.rotationSpeed = (Math.random() - 0.5) * 0.015;
+        }
+
+        // Gradually return particle speed to original (damping)
+        particle.speedX *= 0.995;
+        particle.speedY *= 0.995;
+        // Restore base drift
+        const baseSpeed = 0.2;
+        if (Math.abs(particle.speedX) < baseSpeed * 0.5) {
+          particle.speedX += (Math.random() - 0.5) * 0.01;
+        }
+        if (Math.abs(particle.speedY) < baseSpeed * 0.5) {
+          particle.speedY += (Math.random() - 0.5) * 0.01;
         }
 
         // Movement
@@ -237,7 +428,7 @@ export function ParticlesBackground() {
         }
 
         const color = `rgba(16, 240, 160, ${drawOpacity})`;
-        drawParticle(ctx, particle, color);
+        drawParticle(ctx, particle, color, time);
 
         ctx.shadowBlur = 0;
       });
@@ -248,6 +439,7 @@ export function ParticlesBackground() {
     animate();
 
     return () => {
+      clearInterval(spawnInterval);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("mousemove", handleMouseMove);
       if (animationRef.current) {
