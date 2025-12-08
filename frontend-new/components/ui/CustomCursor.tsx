@@ -18,7 +18,8 @@ export default function CustomCursor() {
   const [isPointer, setIsPointer] = useState(false);
   const [isClicking, setIsClicking] = useState(false);
   const [trail, setTrail] = useState<TrailPoint[]>([]);
-  const [isTouchDevice, setIsTouchDevice] = useState(true);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [clickRipple, setClickRipple] = useState<{ x: number; y: number; id: number } | null>(null);
 
@@ -26,19 +27,9 @@ export default function CustomCursor() {
   const lastTimeRef = useRef(0);
   const rafRef = useRef<number>();
   const rippleIdRef = useRef(0);
-
-  // Detect touch device on mount
-  useEffect(() => {
-    const checkTouchDevice = () => {
-      const isTouchCapable =
-        "ontouchstart" in window ||
-        navigator.maxTouchPoints > 0 ||
-        window.matchMedia("(pointer: coarse)").matches;
-      setIsTouchDevice(isTouchCapable);
-    };
-
-    checkTouchDevice();
-  }, []);
+  const touchStartRef = useRef<Point | null>(null);
+  const touchMovedRef = useRef(false);
+  const touchHideTimeoutRef = useRef<number | null>(null);
 
   // Detect reduced motion preference
   useEffect(() => {
@@ -52,9 +43,22 @@ export default function CustomCursor() {
 
   // Mouse movement handler with velocity calculation
   useEffect(() => {
-    if (isTouchDevice) return;
+    const handlePointerMove = (e: PointerEvent) => {
+      const isTouchLike =
+        e.pointerType === "touch" ||
+        e.pointerType === "pen" ||
+        window.matchMedia("(pointer: coarse)").matches;
 
-    const handleMouseMove = (e: MouseEvent) => {
+      // On touch/pen we don't reposition cursor while moving (e.g., scrolling)
+      if (isTouchLike && touchStartRef.current) {
+        const dx = e.clientX - touchStartRef.current.x;
+        const dy = e.clientY - touchStartRef.current.y;
+        if (dx * dx + dy * dy > 12 * 12) {
+          touchMovedRef.current = true;
+        }
+        return;
+      }
+
       const now = performance.now();
       const dt = now - lastTimeRef.current;
 
@@ -69,6 +73,7 @@ export default function CustomCursor() {
       lastPosRef.current = { x: e.clientX, y: e.clientY };
       lastTimeRef.current = now;
 
+      setIsTouchDevice(isTouchLike);
       setPosition({ x: e.clientX, y: e.clientY });
       setVelocity(vel);
       setIsVisible(true);
@@ -85,25 +90,26 @@ export default function CustomCursor() {
       }
     };
 
-    const handleMouseEnter = () => setIsVisible(true);
-    const handleMouseLeave = () => setIsVisible(false);
+    const handlePointerEnter = () => setIsVisible(true);
+    const handlePointerLeave = () => {
+      if (isTouchDevice && hasInteracted) return;
+      setIsVisible(false);
+    };
 
-    window.addEventListener("mousemove", handleMouseMove, { passive: true });
-    document.addEventListener("mouseenter", handleMouseEnter);
-    document.addEventListener("mouseleave", handleMouseLeave);
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    document.addEventListener("pointerenter", handlePointerEnter);
+    document.addEventListener("pointerleave", handlePointerLeave);
 
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseenter", handleMouseEnter);
-      document.removeEventListener("mouseleave", handleMouseLeave);
+      window.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerenter", handlePointerEnter);
+      document.removeEventListener("pointerleave", handlePointerLeave);
     };
-  }, [isTouchDevice, reducedMotion]);
+  }, [reducedMotion, isTouchDevice, hasInteracted]);
 
   // Detect pointer cursor on elements
   useEffect(() => {
-    if (isTouchDevice) return;
-
-    const handleMouseOver = (e: MouseEvent) => {
+    const handlePointerOver = (e: PointerEvent) => {
       const target = e.target as HTMLElement;
       const isClickable =
         target.tagName === "A" ||
@@ -116,16 +122,35 @@ export default function CustomCursor() {
       setIsPointer(isClickable);
     };
 
-    window.addEventListener("mouseover", handleMouseOver, { passive: true });
-    return () => window.removeEventListener("mouseover", handleMouseOver);
-  }, [isTouchDevice]);
+    window.addEventListener("pointerover", handlePointerOver, { passive: true });
+    return () => window.removeEventListener("pointerover", handlePointerOver);
+  }, []);
 
   // Click handlers
   useEffect(() => {
-    if (isTouchDevice) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const isTouchLike =
+        e.pointerType === "touch" ||
+        e.pointerType === "pen" ||
+        window.matchMedia("(pointer: coarse)").matches;
 
-    const handleMouseDown = (e: MouseEvent) => {
+      if (touchHideTimeoutRef.current !== null) {
+        window.clearTimeout(touchHideTimeoutRef.current);
+        touchHideTimeoutRef.current = null;
+      }
+
+      setIsTouchDevice(isTouchLike);
+      setHasInteracted(true);
       setIsClicking(true);
+      setIsVisible(true);
+
+      if (isTouchLike) {
+        touchStartRef.current = { x: e.clientX, y: e.clientY };
+        touchMovedRef.current = false;
+        setPosition({ x: e.clientX, y: e.clientY });
+      } else {
+        setPosition({ x: e.clientX, y: e.clientY });
+      }
 
       // Add ripple effect
       if (!reducedMotion) {
@@ -138,20 +163,39 @@ export default function CustomCursor() {
       }
     };
 
-    const handleMouseUp = () => setIsClicking(false);
+    const handlePointerUp = (e: PointerEvent) => {
+      setIsClicking(false);
 
-    window.addEventListener("mousedown", handleMouseDown);
-    window.addEventListener("mouseup", handleMouseUp);
+      const isTouchLike =
+        e.pointerType === "touch" ||
+        e.pointerType === "pen" ||
+        window.matchMedia("(pointer: coarse)").matches;
+
+      if (isTouchLike) {
+        if (!touchMovedRef.current) {
+          setPosition({ x: e.clientX, y: e.clientY });
+          setIsVisible(true);
+          touchHideTimeoutRef.current = window.setTimeout(() => {
+            setIsVisible(false);
+          }, 450);
+        }
+        touchStartRef.current = null;
+        touchMovedRef.current = false;
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointerup", handlePointerUp);
 
     return () => {
-      window.removeEventListener("mousedown", handleMouseDown);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [isTouchDevice, reducedMotion]);
+  }, [reducedMotion]);
 
   // Trail cleanup animation loop
   useEffect(() => {
-    if (isTouchDevice || reducedMotion) return;
+    if (reducedMotion) return;
 
     const animate = () => {
       const now = performance.now();
@@ -165,9 +209,6 @@ export default function CustomCursor() {
     };
   }, [isTouchDevice, reducedMotion]);
 
-  // Don't render on touch devices
-  if (isTouchDevice) return null;
-
   const now = typeof performance !== "undefined" ? performance.now() : 0;
 
   return (
@@ -180,11 +221,11 @@ export default function CustomCursor() {
           style={{
             left: clickRipple.x,
             top: clickRipple.y,
-            width: 10,
-            height: 10,
+            width: 8,
+            height: 8,
             transform: "translate(-50%, -50%)",
-            border: "2px solid rgba(0, 255, 195, 0.7)",
-            boxShadow: "0 0 10px rgba(0, 255, 195, 0.5)",
+            border: "1.5px solid rgba(0, 255, 195, 0.55)",
+            boxShadow: "0 0 8px rgba(0, 255, 195, 0.35)",
           }}
         />
       )}
@@ -221,47 +262,51 @@ export default function CustomCursor() {
           );
         })}
 
-      {/* Main cursor ring */}
-      <div
-        className={`fixed pointer-events-none z-[9999] rounded-full border-2 ${
-          isVisible ? "opacity-100" : "opacity-0"
-        }`}
-        style={{
-          left: position.x,
-          top: position.y,
-          width: isPointer ? 24 : 20,
-          height: isPointer ? 24 : 20,
-          transform: `translate(-50%, -50%) scale(${isClicking ? 0.85 : 1})`,
-          borderColor: isClicking ? "rgba(0, 255, 195, 1)" : "rgba(0, 255, 195, 0.8)",
-          boxShadow: isClicking
-            ? "0 0 15px rgba(0, 255, 195, 0.7), 0 0 30px rgba(0, 255, 195, 0.4), inset 0 0 12px rgba(0, 255, 195, 0.2)"
-            : "0 0 10px rgba(0, 255, 195, 0.5), 0 0 20px rgba(0, 255, 195, 0.3), inset 0 0 10px rgba(0, 255, 195, 0.1)",
-          backgroundColor: isClicking
-            ? "rgba(0, 255, 195, 0.15)"
-            : isPointer
-              ? "rgba(0, 255, 195, 0.1)"
-              : "transparent",
-          transition: "width 0.1s ease-out, height 0.1s ease-out, transform 0.1s ease-out, background-color 0.1s ease-out, border-color 0.1s ease-out, box-shadow 0.1s ease-out",
-        }}
-      />
+      {(!isTouchDevice || (isTouchDevice && isVisible)) && (
+        <>
+          {/* Main cursor ring */}
+          <div
+            className={`fixed pointer-events-none z-[9999] rounded-full border-2 ${
+              isVisible ? "opacity-100" : "opacity-0"
+            }`}
+            style={{
+              left: position.x,
+              top: position.y,
+              width: isPointer ? 24 : 20,
+              height: isPointer ? 24 : 20,
+              transform: `translate(-50%, -50%) scale(${isClicking ? 0.85 : 1})`,
+              borderColor: isClicking ? "rgba(0, 255, 195, 1)" : "rgba(0, 255, 195, 0.8)",
+              boxShadow: isClicking
+                ? "0 0 15px rgba(0, 255, 195, 0.7), 0 0 30px rgba(0, 255, 195, 0.4), inset 0 0 12px rgba(0, 255, 195, 0.2)"
+                : "0 0 10px rgba(0, 255, 195, 0.5), 0 0 20px rgba(0, 255, 195, 0.3), inset 0 0 10px rgba(0, 255, 195, 0.1)",
+              backgroundColor: isClicking
+                ? "rgba(0, 255, 195, 0.15)"
+                : isPointer
+                  ? "rgba(0, 255, 195, 0.1)"
+                  : "transparent",
+              transition: "width 0.1s ease-out, height 0.1s ease-out, transform 0.1s ease-out, background-color 0.1s ease-out, border-color 0.1s ease-out, box-shadow 0.1s ease-out",
+            }}
+          />
 
-      {/* Center dot */}
-      <div
-        className={`fixed pointer-events-none z-[9999] rounded-full bg-[#00ffc3] ${
-          isVisible ? "opacity-100" : "opacity-0"
-        }`}
-        style={{
-          left: position.x,
-          top: position.y,
-          width: isClicking ? 6 : 4,
-          height: isClicking ? 6 : 4,
-          transform: "translate(-50%, -50%)",
-          boxShadow: isClicking
-            ? "0 0 10px rgba(0, 255, 195, 1), 0 0 20px rgba(0, 255, 195, 0.5)"
-            : "0 0 6px rgba(0, 255, 195, 0.8)",
-          transition: "width 0.1s ease-out, height 0.1s ease-out, box-shadow 0.1s ease-out",
-        }}
-      />
+          {/* Center dot */}
+          <div
+            className={`fixed pointer-events-none z-[9999] rounded-full bg-[#00ffc3] ${
+              isVisible ? "opacity-100" : "opacity-0"
+            }`}
+            style={{
+              left: position.x,
+              top: position.y,
+              width: isClicking ? 6 : 4,
+              height: isClicking ? 6 : 4,
+              transform: "translate(-50%, -50%)",
+              boxShadow: isClicking
+                ? "0 0 10px rgba(0, 255, 195, 1), 0 0 20px rgba(0, 255, 195, 0.5)"
+                : "0 0 6px rgba(0, 255, 195, 0.8)",
+              transition: "width 0.1s ease-out, height 0.1s ease-out, box-shadow 0.1s ease-out",
+            }}
+          />
+        </>
+      )}
     </>
   );
 }
