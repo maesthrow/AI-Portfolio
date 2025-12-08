@@ -268,7 +268,7 @@ export default function CustomCursor() {
           <div
             className={`fixed pointer-events-none z-[9999] rounded-full border-2 ${
               isVisible ? "opacity-100" : "opacity-0"
-            }`}
+            } ${!isClicking ? "cursor-breathe" : ""}`}
             style={{
               left: position.x,
               top: position.y,
@@ -309,4 +309,25 @@ export default function CustomCursor() {
       )}
     </>
   );
+}
+
+// Breathing effect for static cursor (desktop only)
+// Applied when not clicking to keep the glow subtle but alive.
+if (typeof window !== "undefined") {
+  const styleId = "custom-cursor-breathe-style";
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      @keyframes cursor-breathe {
+        0% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 12px rgba(0,255,195,0.55), 0 0 22px rgba(0,255,195,0.32), inset 0 0 12px rgba(0,255,195,0.12); }
+        50% { transform: translate(-50%, -50%) scale(1.06); box-shadow: 0 0 18px rgba(0,255,195,0.6), 0 0 30px rgba(0,255,195,0.4), inset 0 0 14px rgba(0,255,195,0.14); }
+        100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 12px rgba(0,255,195,0.55), 0 0 22px rgba(0,255,195,0.32), inset 0 0 12px rgba(0,255,195,0.12); }
+      }
+      .cursor-breathe {
+        animation: cursor-breathe 2.2s ease-in-out infinite;
+      }
+    `;
+    document.head.appendChild(style);
+  }
 }
