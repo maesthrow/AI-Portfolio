@@ -229,8 +229,8 @@ export default function CustomCursor() {
         style={{
           left: position.x,
           top: position.y,
-          width: isPointer ? 28 : 24,
-          height: isPointer ? 28 : 24,
+          width: isPointer ? 24 : 20,
+          height: isPointer ? 24 : 20,
           transform: `translate(-50%, -50%) scale(${isClicking ? 0.85 : 1})`,
           borderColor: isClicking ? "rgba(0, 255, 195, 1)" : "rgba(0, 255, 195, 0.8)",
           boxShadow: isClicking
