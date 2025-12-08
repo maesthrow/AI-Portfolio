@@ -7,15 +7,6 @@ import Shell from "@/components/layout/Shell";
 import { getProjectBySlug } from "@/lib/api";
 import { ProjectDetail } from "@/lib/types";
 
-const domainLabels: Record<string, { label: string; tone: string }> = {
-  cv: { label: "CV", tone: "border-accent/40 bg-accent/10 text-accent" },
-  rag: { label: "RAG", tone: "border-accent-alt/50 bg-accent-alt/15 text-accent-soft" },
-  llm: { label: "LLM", tone: "border-purple-400/50 bg-purple-400/10 text-purple-300" },
-  backend: { label: "Backend", tone: "border-slate-700 bg-slate-900/70 text-slate-100" },
-  mlops: { label: "MLOps", tone: "border-amber-200/50 bg-amber-200/10 text-amber-200" },
-  other: { label: "Other", tone: "border-slate-700/80 bg-slate-800/70 text-slate-100" }
-};
-
 function normalizeTech(value: string | { id?: string | number; name?: string }) {
   if (typeof value === "string") return value;
   if (value?.name) return value.name;
@@ -39,8 +30,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const domainKey = project.domain?.toString().toLowerCase();
-  const domain = domainKey ? domainLabels[domainKey] : null;
+  const domain = project.domain?.toString().trim() || null;
   const techTags = (project.technologies || [])
     .map((tech) => normalizeTech(tech as any))
     .filter(Boolean) as string[];
@@ -53,16 +43,14 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       <div className="mx-auto flex max-w-5xl flex-col gap-10 px-4 pb-16 pt-10 sm:px-6 lg:px-0">
         <div className="flex flex-col gap-6 rounded-3xl border border-[#00ffc3]/25 bg-gradient-to-br from-black/60 via-bg-panel/80 to-black/50 p-7 shadow-[0_0_30px_rgba(0,255,200,0.18)]">
           <div className="flex flex-wrap items-center gap-3">
-            {domain ? (
-              <span
-                className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide shadow-[0_0_12px_rgba(0,255,200,0.25)] ${domain.tone}`}
-              >
-                {domain.label}
-              </span>
-            ) : null}
             {project.featured ? (
               <span className="rounded-full border border-accent/60 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-accent shadow-[0_0_12px_rgba(0,255,200,0.25)]">
                 Избранный проект
+              </span>
+            ) : null}
+            {domain ? (
+              <span className="rounded-full border border-accent-alt/50 bg-accent-alt/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-accent-soft shadow-[0_0_12px_rgba(0,255,200,0.25)]">
+                {domain}
               </span>
             ) : null}
           </div>
