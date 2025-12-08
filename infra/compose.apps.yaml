@@ -138,6 +138,28 @@ services:
       - litellm
     ports: ["${RAG_PORT:-8004}:8000"]
 
+  rag-api-new:
+    build:
+      context: ../services/rag-api-new
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      litellm_base_url: http://litellm:4000/v1
+      litellm_api_key: ${LITELLM_MASTER_KEY}
+      chat_model: ${CHAT_MODEL}
+      embedding_model: ${EMBEDDING_MODEL}
+      giga_auth_data: ${GIGA_AUTH_DATA}
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+      chroma_collection: portfolio_new
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      FRONTEND_LOCAL_IP: ${FRONTEND_LOCAL_IP}
+      LOG_LEVEL: INFO
+    depends_on:
+      - chroma
+      - litellm
+    ports: ["${RAG_NEW_PORT:-8014}:8000"]
+
 volumes:
   tei_cache:
   chroma_data:
