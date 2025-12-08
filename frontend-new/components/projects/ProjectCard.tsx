@@ -4,14 +4,6 @@ import { Github } from "lucide-react";
 import { Project } from "@/lib/types";
 import TechTag from "@/components/ui/TechTag";
 
-const domainLabels: Record<string, { label: string; tone: string }> = {
-  cv: { label: "CV", tone: "border-accent/40 bg-accent/10 text-accent" },
-  rag: { label: "RAG", tone: "border-accent-alt/50 bg-accent-alt/15 text-accent-soft" },
-  backend: { label: "Backend", tone: "border-slate-700 bg-slate-900/70 text-slate-100" },
-  mlops: { label: "MLOps", tone: "border-amber-200/50 bg-amber-200/10 text-amber-200" },
-  other: { label: "Other", tone: "border-slate-700/80 bg-slate-800/70 text-slate-100" }
-};
-
 type ProjectCardProps = {
   project: Project;
 };
@@ -34,8 +26,7 @@ function shortDescription(md?: string | null) {
 }
 
 function ProjectCard({ project }: ProjectCardProps) {
-  const domainKey = project.domain?.toString().toLowerCase();
-  const domain = domainKey ? domainLabels[domainKey] : null;
+  const domain = project.domain?.toString().trim() || null;
   const techTags = (project.technologies || [])
     .map((tech) => normalizeTech(tech as any))
     .filter(Boolean)
@@ -47,8 +38,8 @@ function ProjectCard({ project }: ProjectCardProps) {
       <div className="absolute inset-px rounded-[22px] bg-gradient-to-r from-accent/10 via-transparent to-accent-alt/10 opacity-0 transition-opacity duration-500 group-hover/card:opacity-70" />
       <div className="relative flex flex-wrap items-center gap-2">
         {domain ? (
-          <TechTag variant="domain" domainTone={domain.tone}>
-            {domain.label}
+          <TechTag variant="domain" domainTone="border-accent-alt/50 bg-accent-alt/15 text-accent-soft">
+            {domain}
           </TechTag>
         ) : null}
         {techTags.map((tech) => (
