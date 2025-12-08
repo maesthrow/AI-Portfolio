@@ -20,10 +20,12 @@ export default function CustomCursor() {
   const [trail, setTrail] = useState<TrailPoint[]>([]);
   const [isTouchDevice, setIsTouchDevice] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [clickRipple, setClickRipple] = useState<{ x: number; y: number; id: number } | null>(null);
 
   const lastPosRef = useRef<Point>({ x: 0, y: 0 });
   const lastTimeRef = useRef(0);
   const rafRef = useRef<number>();
+  const rippleIdRef = useRef(0);
 
   // Detect touch device on mount
   useEffect(() => {
@@ -122,7 +124,20 @@ export default function CustomCursor() {
   useEffect(() => {
     if (isTouchDevice) return;
 
-    const handleMouseDown = () => setIsClicking(true);
+    const handleMouseDown = (e: MouseEvent) => {
+      setIsClicking(true);
+
+      // Add ripple effect
+      if (!reducedMotion) {
+        const id = rippleIdRef.current++;
+        setClickRipple({ x: e.clientX, y: e.clientY, id });
+
+        setTimeout(() => {
+          setClickRipple((current) => (current?.id === id ? null : current));
+        }, 400);
+      }
+    };
+
     const handleMouseUp = () => setIsClicking(false);
 
     window.addEventListener("mousedown", handleMouseDown);
@@ -132,7 +147,7 @@ export default function CustomCursor() {
       window.removeEventListener("mousedown", handleMouseDown);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isTouchDevice]);
+  }, [isTouchDevice, reducedMotion]);
 
   // Trail cleanup animation loop
   useEffect(() => {
@@ -157,6 +172,23 @@ export default function CustomCursor() {
 
   return (
     <>
+      {/* Click ripple effect */}
+      {clickRipple && (
+        <div
+          key={clickRipple.id}
+          className="fixed pointer-events-none z-[9997] rounded-full animate-cursor-ripple"
+          style={{
+            left: clickRipple.x,
+            top: clickRipple.y,
+            width: 10,
+            height: 10,
+            transform: "translate(-50%, -50%)",
+            border: "2px solid rgba(0, 255, 195, 0.7)",
+            boxShadow: "0 0 10px rgba(0, 255, 195, 0.5)",
+          }}
+        />
+      )}
+
       {/* Trail dots - opacity based on velocity and age */}
       {!reducedMotion &&
         trail.map((point, i) => {
@@ -191,37 +223,43 @@ export default function CustomCursor() {
 
       {/* Main cursor ring */}
       <div
-        className={`fixed pointer-events-none z-[9999] rounded-full border-2 border-[#00ffc3] transition-[width,height,background-color] duration-100 ease-out ${
+        className={`fixed pointer-events-none z-[9999] rounded-full border-2 ${
           isVisible ? "opacity-100" : "opacity-0"
-        } ${isClicking ? "scale-75" : "scale-100"}`}
+        }`}
         style={{
           left: position.x,
           top: position.y,
           width: isPointer ? 28 : 24,
           height: isPointer ? 28 : 24,
-          transform: "translate(-50%, -50%)",
-          boxShadow: `
-            0 0 10px rgba(0, 255, 195, 0.5),
-            0 0 20px rgba(0, 255, 195, 0.3),
-            inset 0 0 10px rgba(0, 255, 195, 0.1)
-          `,
-          backgroundColor: isPointer ? "rgba(0, 255, 195, 0.1)" : "transparent",
-          transition: "width 0.1s ease-out, height 0.1s ease-out, background-color 0.1s ease-out, transform 0.1s ease-out",
+          transform: `translate(-50%, -50%) scale(${isClicking ? 0.85 : 1})`,
+          borderColor: isClicking ? "rgba(0, 255, 195, 1)" : "rgba(0, 255, 195, 0.8)",
+          boxShadow: isClicking
+            ? "0 0 15px rgba(0, 255, 195, 0.7), 0 0 30px rgba(0, 255, 195, 0.4), inset 0 0 12px rgba(0, 255, 195, 0.2)"
+            : "0 0 10px rgba(0, 255, 195, 0.5), 0 0 20px rgba(0, 255, 195, 0.3), inset 0 0 10px rgba(0, 255, 195, 0.1)",
+          backgroundColor: isClicking
+            ? "rgba(0, 255, 195, 0.15)"
+            : isPointer
+              ? "rgba(0, 255, 195, 0.1)"
+              : "transparent",
+          transition: "width 0.1s ease-out, height 0.1s ease-out, transform 0.1s ease-out, background-color 0.1s ease-out, border-color 0.1s ease-out, box-shadow 0.1s ease-out",
         }}
       />
 
       {/* Center dot */}
       <div
-        className={`fixed pointer-events-none z-[9999] rounded-full bg-[#00ffc3] transition-transform duration-100 ease-out ${
+        className={`fixed pointer-events-none z-[9999] rounded-full bg-[#00ffc3] ${
           isVisible ? "opacity-100" : "opacity-0"
-        } ${isClicking ? "scale-150" : "scale-100"}`}
+        }`}
         style={{
           left: position.x,
           top: position.y,
-          width: 4,
-          height: 4,
+          width: isClicking ? 6 : 4,
+          height: isClicking ? 6 : 4,
           transform: "translate(-50%, -50%)",
-          boxShadow: "0 0 6px rgba(0, 255, 195, 0.8)",
+          boxShadow: isClicking
+            ? "0 0 10px rgba(0, 255, 195, 1), 0 0 20px rgba(0, 255, 195, 0.5)"
+            : "0 0 6px rgba(0, 255, 195, 0.8)",
+          transition: "width 0.1s ease-out, height 0.1s ease-out, box-shadow 0.1s ease-out",
         }}
       />
     </>
