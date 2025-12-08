@@ -10,8 +10,8 @@ export default function Footer() {
         <div className="hidden sm:block w-16 h-px bg-gradient-to-r from-transparent to-[#00ffc3]/20" />
 
         {/* Text with hover */}
-        <p className="text-[#00ffc3]/50 text-sm transition-all duration-500 hover:text-[#00ffc3]/70 hover:drop-shadow-[0_0_8px_rgba(0,255,200,0.3)] cursor-default">
-          <span className="text-[#00ffc3]/70">&gt;</span> Создано с использованием AI и киберпанк-эстетики | 2025
+        <p className="max-w-2xl px-4 text-center text-[#00ffc3]/65 text-sm transition-all duration-500 hover:text-[#00ffc3]/80 hover:drop-shadow-[0_0_8px_rgba(0,255,200,0.3)] cursor-default">
+          <span className="text-[#00ffc3]/75">&gt;</span> Создано с использованием AI и киберпанк-эстетики | 2025
         </p>
 
         {/* Right decorative line */}
