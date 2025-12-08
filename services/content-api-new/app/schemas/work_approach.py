@@ -12,6 +12,7 @@ class WorkApproachBulletOut(BaseModel):
 class WorkApproachOut(BaseModel):
     id: int
     title: str
+    icon: str | None = None
     order_index: int
     bullets: list[WorkApproachBulletOut] = []
 

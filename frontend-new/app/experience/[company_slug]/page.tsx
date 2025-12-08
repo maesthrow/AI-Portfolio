@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 
 import Shell from "@/components/layout/Shell";
+import TechTag from "@/components/ui/TechTag";
 import { getExperienceDetail } from "@/lib/api";
 import { ExperienceDetail } from "@/lib/types";
 
@@ -135,12 +136,9 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
             <h2 className="mb-4 text-xl font-semibold text-slate-50">Технологии</h2>
             <div className="flex flex-wrap gap-3">
               {companyTechs.map((tech) => (
-                <span
-                  key={tech}
-                  className="rounded-full border border-[#00ffc3]/40 bg-accent/10 px-4 py-1.5 text-sm font-medium text-slate-100 shadow-[0_0_10px_rgba(0,255,200,0.2)]"
-                >
+                <TechTag key={tech} variant="stack">
                   {tech}
-                </span>
+                </TechTag>
               ))}
             </div>
           </div>

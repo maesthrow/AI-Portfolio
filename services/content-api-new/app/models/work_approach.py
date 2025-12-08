@@ -9,6 +9,7 @@ class WorkApproach(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
+    icon: Mapped[str | None] = mapped_column(String, nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     bullets: Mapped[list["WorkApproachBullet"]] = relationship(

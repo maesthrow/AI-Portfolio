@@ -1,5 +1,6 @@
 import Section from "@/components/layout/Section";
 import { SectionMeta, TechFocusItem } from "@/lib/types";
+import TechTag from "@/components/ui/TechTag";
 
 type TechFocusSectionProps = {
   items: TechFocusItem[];
@@ -40,12 +41,9 @@ export default function TechFocusSection({ items, sectionMeta }: TechFocusSectio
             </div>
             <div className="mt-5 flex flex-wrap gap-3">
               {item.tags.map((tag) => (
-                <span
-                  key={normalizeTag(tag)}
-                  className="rounded-full border border-[#00ffc3]/40 bg-accent/10 px-3 py-1 text-xs text-slate-100 shadow-[0_0_8px_rgba(0,255,200,0.25)]"
-                >
+                <TechTag key={normalizeTag(tag)} variant="stack">
                   {normalizeTag(tag)}
-                </span>
+                </TechTag>
               ))}
             </div>
           </div>

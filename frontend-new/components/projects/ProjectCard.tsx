@@ -2,6 +2,7 @@ import { memo } from "react";
 import Link from "next/link";
 import { Github } from "lucide-react";
 import { Project } from "@/lib/types";
+import TechTag from "@/components/ui/TechTag";
 
 const domainLabels: Record<string, { label: string; tone: string }> = {
   cv: { label: "CV", tone: "border-accent/40 bg-accent/10 text-accent" },
@@ -46,19 +47,12 @@ function ProjectCard({ project }: ProjectCardProps) {
       <div className="absolute inset-px rounded-[22px] bg-gradient-to-r from-accent/10 via-transparent to-accent-alt/10 opacity-0 transition-opacity duration-500 group-hover/card:opacity-70" />
       <div className="relative flex flex-wrap items-center gap-2">
         {domain ? (
-          <span
-            className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide shadow-[0_0_12px_rgba(0,255,200,0.25)] ${domain.tone}`}
-          >
+          <TechTag variant="domain" domainTone={domain.tone}>
             {domain.label}
-          </span>
+          </TechTag>
         ) : null}
         {techTags.map((tech) => (
-          <span
-            key={tech}
-            className="rounded-full border border-[#00ffc3]/30 bg-black/60 px-3 py-1 text-[11px] text-slate-200 shadow-[0_0_8px_rgba(0,255,200,0.2)]"
-          >
-            {tech}
-          </span>
+          <TechTag key={tech}>{tech}</TechTag>
         ))}
       </div>
 

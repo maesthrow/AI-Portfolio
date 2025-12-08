@@ -125,6 +125,7 @@ export type WorkApproachBullet = {
 export type WorkApproach = {
   id: number;
   title: string;
+  icon?: string | null;
   order_index: number;
   bullets: WorkApproachBullet[];
 };

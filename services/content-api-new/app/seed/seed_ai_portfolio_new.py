@@ -586,6 +586,7 @@ FOCUS_AREAS_DATA = [
 WORK_APPROACHES_DATA = [
     {
         "title": "Product-first дизайн AI",
+        "icon": "lightbulb",
         "order_index": 10,
         "bullets": [
             "Начинаю с бизнес-задачи, а не с технологии",
@@ -595,6 +596,7 @@ WORK_APPROACHES_DATA = [
     },
     {
         "title": "Архитектура и интеграции",
+        "icon": "blocks",
         "order_index": 20,
         "bullets": [
             "Проектирую агентные сценарии: LLM как оркестратор инструментов и сервисов (ReAct, LangChain/LangGraph)",
@@ -604,6 +606,7 @@ WORK_APPROACHES_DATA = [
     },
     {
         "title": "Запуск и поддержка",
+        "icon": "rocket",
         "order_index": 30,
         "bullets": [
             "Выстраиваю пайплайны обучения/дообучения (Celery, MLflow, очереди), CI/CD для моделей и backend-сервисов",
@@ -937,6 +940,7 @@ def seed_work_approaches(session):
         identity = {"id": idx}
         payload = {
             "title": data["title"],
+            "icon": data.get("icon"),
             "order_index": data.get("order_index", idx * 10),
         }
         approach: WorkApproach = upsert_one(session, WorkApproach, identity, payload)
