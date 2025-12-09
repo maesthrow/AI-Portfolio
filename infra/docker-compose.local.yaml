@@ -1,0 +1,161 @@
+services:
+  # ===== FRONTEND (Next.js) =====
+  frontend:
+    build:
+      context: ../frontend-new        # проверь путь и имя Dockerfile при необходимости
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Эти переменные сейчас требуются фронтом
+      # Будут проброшены в браузер как NEXT_PUBLIC_*
+      NEXT_PUBLIC_CONTENT_API_BASE: ${NEXT_PUBLIC_CONTENT_API_BASE:-http://localhost:8003/api/v1}
+      NEXT_PUBLIC_AGENT_API_BASE: ${NEXT_PUBLIC_AGENT_API_BASE:-http://localhost:8004}
+      NEXT_PUBLIC_CHARS_PER_SECOND: ${NEXT_PUBLIC_CHARS_PER_SECOND:-60}
+      NEXT_PUBLIC_MAX_CHARS_PER_TICK: ${NEXT_PUBLIC_MAX_CHARS_PER_TICK:-4}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - content-api
+      - rag-api
+
+  content-api:
+    build:
+      context: ../services/content-api-new
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Локально продолжаем ходить в Postgres на хосте (как у тебя было)
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:${POSTGRES_PORT}/${POSTGRES_DB}
+      # Теперь по умолчанию фронт — localhost:3000
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: INFO
+      APP_ENV: dev
+    command: >
+      sh -lc "alembic upgrade head &&
+              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports: [ "${CONTENT_PORT:-8003}:8000" ]
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://localhost:8000/healthz" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  rag-api:
+    build:
+      context: ../services/rag-api-new
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      litellm_base_url: http://litellm:4000/v1
+      litellm_api_key: ${LITELLM_MASTER_KEY}
+      chat_model: ${CHAT_MODEL}
+      embedding_model: ${EMBEDDING_MODEL}
+      giga_auth_data: ${GIGA_AUTH_DATA}
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+      chroma_collection: portfolio_new
+      # Аналогично: по умолчанию фронт — localhost:3000
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      # Для локалки можно использовать тот же origin
+      FRONTEND_LOCAL_IP: ${FRONTEND_LOCAL_IP:-http://localhost:3000}
+      LOG_LEVEL: INFO
+    depends_on:
+      - chroma
+      - litellm
+    ports: ["${RAG_NEW_PORT:-8004}:8000"]
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: [ "5433:5432" ]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init/postgres-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    restart: unless-stopped
+    environment:
+      CHROMA_SERVER_AUTH_ENABLED: "false"
+    ports: [ "${CHROMA_PORT:-8001}:8000" ]
+    command: [ "run", "--host", "0.0.0.0", "--port", "8000" ]
+    volumes:
+      - chroma_data:/data
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://localhost:8000/api/v1/heartbeat" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # Embeddings сервер (OpenAI-совместимый endpoint /v1/embeddings)
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    restart: unless-stopped
+    environment:
+      MODEL_ID: /data/model
+      HF_ENDPOINT: ""
+      HUGGINGFACE_HUB_BASE_URL: ""
+      HF_HUB_ENABLE_HF_TRANSFER: "0"
+    ports:
+      - "${TEI_PORT:-8006}:80"
+    volumes:
+      - ./models/intfloat/multilingual-e5-base:/data/model:ro
+
+  # ЕДИНЫЙ ПРОКСИ — LiteLLM
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    restart: unless-stopped
+    ports: [ "${LITELLM_PORT:-8005}:4000" ]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # сюда при необходимости добавишь ключи внешних провайдеров (OpenAI, GigaChat и т.п.)
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: [ "--config", "/app/config.yaml", "--port", "4000" ]
+    depends_on:
+      - vllm
+      - tei
+
+  # vLLM (опционально: если есть CUDA/GPU)
+  vllm:
+    image: vllm/vllm-openai:latest
+    restart: unless-stopped
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      VLLM_WORKER_USE_STDOUT: "1"
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
+    ports: [ "${VLLM_PORT:-8002}:8000" ]
+    runtime: nvidia        # <- используйте вместо gpus:all, если нужно в WSL/старом докере
+    command: >
+      --model Qwen/Qwen2.5-7B-Instruct-AWQ
+      --host 0.0.0.0 --port 8000
+      --dtype auto
+      --quantization awq_marlin
+      --max-model-len 16384
+      --gpu-memory-utilization 0.90
+      --download-dir /root/.cache/hf
+      --max-num-batched-tokens 8192
+      --served-model-name qwen2.5-7b-instruct
+      --trust-remote-code
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+    volumes:
+      - hf_cache:/root/.cache/hf
+
+volumes:
+  chroma_data:
+  hf_cache:
+  tei_cache:
+  pg_data:

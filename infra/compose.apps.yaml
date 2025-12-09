@@ -17,7 +17,7 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
-  # ЛОКАЛЬНЫЙ vLLM (опционально: если есть CUDA/GPU)
+  # vLLM (опционально: если есть CUDA/GPU)
   vllm:
     image: vllm/vllm-openai:latest
     restart: unless-stopped
