@@ -97,15 +97,17 @@ def _profile_docs(profile: ProfileExport) -> Iterable[NormalizedDoc]:
 def _experience_docs(exp: CompanyExperienceExport) -> Iterable[NormalizedDoc]:
     period = _period_line(exp.start_date, exp.end_date, exp.is_current)
     project_names = [_fix_text(p.name) for p in exp.projects]
+    title_line = f"Опыт: {exp.role} @ {exp.company_name}" if exp.company_name else f"Опыт: {exp.role}"
     text = _join_lines(
         [
-            f"{exp.role} @ {exp.company_name}" if exp.company_name else exp.role,
+            title_line,
             period,
-            exp.company_summary_md,
-            exp.company_role_md,
-            exp.summary_md,
-            exp.achievements_md,
-            f"Проекты: {', '.join(project_names)}" if project_names else "",
+            f"Компания: {_fix_text(exp.company_name)}" if exp.company_name else None,
+            f"О проекте/компании:\n{_fix_text(exp.company_summary_md)}" if exp.company_summary_md else None,
+            f"Роль:\n{_fix_text(exp.company_role_md)}" if exp.company_role_md else None,
+            f"Описание:\n{_fix_text(exp.summary_md)}" if exp.summary_md else None,
+            f"Достижения:\n{_fix_text(exp.achievements_md)}" if exp.achievements_md else None,
+            f"Проекты: {', '.join([p for p in project_names if p])}" if project_names else None,
         ]
     )
     if not text:
@@ -131,11 +133,11 @@ def _experience_project_docs(
 ) -> Iterable[NormalizedDoc]:
     text = _join_lines(
         [
-            proj.name,
-            proj.period,
-            exp.company_name,
-            proj.description_md,
-            proj.achievements_md,
+            f"Проект: {_fix_text(proj.name)}" if proj.name else None,
+            f"Компания: {_fix_text(exp.company_name)}" if exp.company_name else None,
+            f"Период: {_fix_text(proj.period)}" if proj.period else None,
+            f"Описание:\n{_fix_text(proj.description_md)}" if proj.description_md else None,
+            f"Достижения:\n{_fix_text(proj.achievements_md)}" if proj.achievements_md else None,
         ]
     )
     if not text:
@@ -143,6 +145,7 @@ def _experience_project_docs(
     meta = {
         "name": _fix_text(proj.name),
         "project_slug": proj.slug,
+        "project_id": proj.id,
         "experience_id": exp.id,
         "company_name": exp.company_name,
         "company_slug": exp.company_slug,

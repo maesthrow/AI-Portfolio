@@ -17,7 +17,19 @@ def _kw_bonus(text: str, keys: list[str]) -> float:
 
 def _meta_join(md: dict) -> str:
     parts: list[str] = []
-    for k in ("title", "name", "technologies", "technology_names", "tags", "doc_type", "kind", "project_name", "company_name"):
+    for k in (
+        "title",
+        "name",
+        "slug",
+        "project_slug",
+        "technologies",
+        "technology_names",
+        "tags",
+        "doc_type",
+        "kind",
+        "project_name",
+        "company_name",
+    ):
         v = md.get(k)
         if isinstance(v, str):
             parts.append(v)
