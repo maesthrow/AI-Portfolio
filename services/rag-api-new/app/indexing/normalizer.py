@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
+import hashlib
 from typing import Any, Iterable, Tuple
 
 from .chunker import split_text
@@ -22,6 +23,10 @@ from ..schemas.export import (
 from ..utils.metadata import chunk_doc
 
 NormalizedDoc = Tuple[str, str, dict[str, Any]]
+
+
+def _stable_id(value: str) -> str:
+    return hashlib.sha1((value or "").encode("utf-8")).hexdigest()[:12]
 
 
 def _fix_text(value: str | None) -> str:
@@ -316,6 +321,93 @@ def _contact_docs(contact: ContactExport) -> Iterable[NormalizedDoc]:
     return chunk_doc("contact", contact.id, text, meta, split_text)
 
 
+def _catalog_docs(
+    payload: ExportPayload,
+    projects_by_tech: dict[str, list[ProjectExport]],
+    tech_label_by_key: dict[str, str],
+) -> Iterable[NormalizedDoc]:
+    # --- Catalog: all technologies with per-project usage count ---
+    known_keys: set[str] = set()
+    entries: list[tuple[str, int]] = []
+
+    for tech in payload.technologies:
+        name = _fix_text(tech.name)
+        if not name:
+            continue
+        key = name.casefold()
+        known_keys.add(key)
+        if tech.slug:
+            known_keys.add(_fix_text(tech.slug).casefold())
+        usage = projects_by_tech.get(key, [])
+        if not usage and tech.slug:
+            usage = projects_by_tech.get(_fix_text(tech.slug).casefold(), [])
+        entries.append((name, len(usage)))
+
+    for key, projs in projects_by_tech.items():
+        if key in known_keys:
+            continue
+        label = tech_label_by_key.get(key) or key
+        label = _fix_text(label)
+        if label:
+            entries.append((label, len(projs)))
+
+    entries = [e for e in entries if e[0] and e[1] >= 0]
+    entries.sort(key=lambda x: (-x[1], x[0].casefold()))
+
+    lines = ["Сводка технологий (всего):"]
+    counts: dict[str, int] = {}
+    for name, cnt in entries:
+        if cnt <= 0:
+            continue
+        lines.append(f"- {name} — в {cnt} проектах")
+        counts[name] = cnt
+    text = "\n".join(lines)
+
+    meta = {
+        "catalog_kind": "technologies_all",
+        "technology_names": list(counts.keys()),
+        "technology_counts": counts,
+    }
+    yield from chunk_doc("catalog", "tech:all", text, meta, split_text)
+
+    # --- Catalog: technologies by company (featured projects) ---
+    projects_by_company: dict[str, list[ProjectExport]] = defaultdict(list)
+    company_label_by_key: dict[str, str] = {}
+    for proj in payload.projects:
+        company_label = _fix_text(proj.company_name)
+        if not company_label:
+            continue
+        ckey = company_label.casefold()
+        projects_by_company[ckey].append(proj)
+        company_label_by_key.setdefault(ckey, company_label)
+
+    for ckey, projs in projects_by_company.items():
+        tech_counter: dict[str, int] = {}
+        for proj in projs:
+            for t in proj.technologies or []:
+                t_label = _fix_text(t)
+                if not t_label:
+                    continue
+                tech_counter[t_label] = tech_counter.get(t_label, 0) + 1
+        if not tech_counter:
+            continue
+
+        ordered = sorted(tech_counter.items(), key=lambda kv: (-kv[1], kv[0].casefold()))
+        company_label = company_label_by_key.get(ckey) or ckey
+        lines = [f"Сводка технологий по проектам компании: {company_label}"]
+        for name, cnt in ordered:
+            lines.append(f"- {name} — в {cnt} проектах")
+        text = "\n".join(lines)
+
+        meta = {
+            "catalog_kind": "technologies_by_company",
+            "company_name": company_label,
+            "technology_names": [name for name, _ in ordered],
+            "technology_counts": dict(tech_counter),
+        }
+        yield from chunk_doc("catalog", f"tech:company:{_stable_id(ckey)}", text, meta, split_text)
+
+
 def normalize_export(payload: ExportPayload) -> Iterable[NormalizedDoc]:
     if payload.profile:
         yield from _profile_docs(payload.profile)
@@ -325,10 +417,15 @@ def normalize_export(payload: ExportPayload) -> Iterable[NormalizedDoc]:
         for proj in exp.projects:
             yield from _experience_project_docs(exp, proj)
 
+    tech_label_by_key: dict[str, str] = {}
     projects_by_tech: dict[str, list[ProjectExport]] = defaultdict(list)
     for proj in payload.projects:
         for tech in proj.technologies or []:
-            key = tech.casefold()
+            label = _fix_text(tech)
+            if not label:
+                continue
+            key = label.casefold()
+            tech_label_by_key.setdefault(key, label)
             projects_by_tech[key].append(proj)
         yield from _project_docs(proj)
 
@@ -355,3 +452,5 @@ def normalize_export(payload: ExportPayload) -> Iterable[NormalizedDoc]:
 
     for contact in payload.contacts:
         yield from _contact_docs(contact)
+
+    yield from _catalog_docs(payload, projects_by_tech, tech_label_by_key)

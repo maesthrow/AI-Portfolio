@@ -38,4 +38,18 @@ def md_get_dict(md: dict, key: str) -> dict:
 
 def doc_id_of(d) -> str | None:
     md = getattr(d, "metadata", None) or {}
-    return md.get("ref_id") or md.get("id") or md.get("source")
+    doc_id = md.get("doc_id")
+    if isinstance(doc_id, str) and doc_id.strip():
+        return doc_id.strip()
+
+    t = md.get("type")
+    ref = md.get("ref_id") or md.get("id") or md.get("source")
+    if t and ref is not None:
+        ref_s = str(ref)
+        if ref_s.startswith(f"{t}:"):
+            return ref_s
+        return f"{t}:{ref_s}"
+
+    if ref is None:
+        return None
+    return str(ref)

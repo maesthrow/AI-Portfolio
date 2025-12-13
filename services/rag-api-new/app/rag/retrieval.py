@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Tuple
+from typing import Any, List, Tuple
 from .types import Doc, Retriever
 from .utils import doc_id_of
 from ..indexing import bm25
@@ -9,12 +9,29 @@ def fetch_by_ids(vs, ids: list[str], question: str) -> list[Doc]:
     if not ids:
         return []
     try:
-        docs = vs.similarity_search(question, k=len(ids), filter={"ref_id": {"$in": ids}})
+        # Prefer direct Chroma get-by-ids (stable for hybrid merge) over metadata filters.
+        data: dict[str, Any] | None = None
+        coll = getattr(vs, "_collection", None)
+        if coll is not None and hasattr(coll, "get"):
+            data = coll.get(ids=ids, include=["documents", "metadatas"])
+        elif hasattr(vs, "get"):
+            data = vs.get(ids=ids, include=["documents", "metadatas"])
+        if not isinstance(data, dict):
+            return []
     except Exception:
         return []
-    by_id = {doc_id_of(d): d for d in docs}
-    out = [by_id.get(i) for i in ids if by_id.get(i)]
-    return [Doc(page_content=d.page_content, metadata=d.metadata or {}) for d in out]
+
+    got_ids = data.get("ids") or []
+    docs = data.get("documents") or []
+    metas = data.get("metadatas") or []
+    by_id: dict[str, Doc] = {}
+    for did, txt, md in zip(got_ids, docs, metas):
+        if not did:
+            continue
+        by_id[str(did)] = Doc(page_content=txt or "", metadata=md or {})
+
+    out = [by_id.get(str(i)) for i in ids if by_id.get(str(i))]
+    return [d for d in out if d]
 
 
 class DenseRetriever(Retriever):

@@ -14,8 +14,10 @@ def make_doc(
     doc_type: str, ref_id: str | int, text: str, metadata: dict[str, Any] | None = None
 ) -> tuple[str, str, dict[str, Any]]:
     md = dict(metadata or {})
+    doc_id = f"{doc_type}:{ref_id}"
     md["type"] = doc_type
     md["ref_id"] = ref_id
+    md["doc_id"] = doc_id
     md["content_hash"] = _sha1(
         {
             "type": doc_type,
@@ -24,7 +26,7 @@ def make_doc(
             "metadata": md,
         }
     )
-    return f"{doc_type}:{ref_id}", text, md
+    return doc_id, text, md
 
 
 def chunk_doc(

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import re
 
-# Rough target: keep chunks ~150-200 words to balance recall/precision and reduce noise.
-MAX_CHARS = 600
+# Эмбед-модель даёт ~512 токенов; грубая оценка ~4 символа на токен для RU.
+# Держим чанки в районе ~230–300 токенов, чтобы не размывать релевантность.
+MAX_CHARS = 900
 _SENT_SPLITTER = re.compile(r"(?<=[\.\!\?])\s+")
 
 

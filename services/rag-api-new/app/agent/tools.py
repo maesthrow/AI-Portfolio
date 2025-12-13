@@ -46,4 +46,4 @@ def list_projects_tool(limit: int = 10) -> str:
     if not lines:
         return "У меня нет информации о проектах в базе портфолио."
 
-    return "Некоторые из моих проектов:\n" + "\n".join(lines)
+    return "Некоторые проекты Дмитрия Каргина:\n" + "\n".join(lines)

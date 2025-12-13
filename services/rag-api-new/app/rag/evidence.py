@@ -33,6 +33,7 @@ def _type_weight(md: dict) -> float:
         "experience_project": 1.15,
         "project": 1.1,
         "technology": 1.0,
+        "catalog": 0.98,
         "publication": 0.95,
         "focus_area": 0.95,
         "work_approach": 0.95,
@@ -51,7 +52,15 @@ def _composite_score(sd: ScoredDoc, keys: list[str]) -> float:
 
 def _dedup_key(d: Doc) -> Tuple[str | None, str | None]:
     md = d.metadata or {}
-    return (md.get("parent_id") or md.get("ref_id") or md.get("id") or md.get("source")), md.get("part")
+    base = md.get("parent_id") or md.get("doc_id")
+    if not base:
+        t = md.get("type")
+        ref = md.get("ref_id") or md.get("id") or md.get("source")
+        if t and ref is not None:
+            base = f"{t}:{ref}"
+        else:
+            base = ref
+    return (str(base) if base is not None else None), md.get("part")
 
 
 def _diversified_top(scored: list[ScoredDoc], keys: list[str], limit: int) -> list[ScoredDoc]:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import asdict
 from typing import Any
 
@@ -54,13 +55,38 @@ def _detect_intent(question: str) -> tuple[set[str] | None, str | None]:
         allowed = {"experience", "experience_project", "project"}
         style = "LIST"
     elif any(t in q for t in stack_tokens):
-        allowed = {"technology", "project", "tech_focus"}
+        allowed = {"technology", "project", "tech_focus", "catalog"}
         style = "LIST"
     elif any(t in q for t in rag_tokens):
         allowed = {"project", "tech_focus", "technology", "experience_project"}
         style = "LIST"
 
     return allowed, style
+
+
+def _compute_confidence(evidence: list[ScoredDoc], k: int) -> float:
+    """
+    Heuristic confidence score in [0..1] based on reranker scores of selected evidence.
+    """
+    if not evidence:
+        return 0.0
+    take = max(1, min(len(evidence), k))
+    scores = [float(sd.score) for sd in evidence[:take]]
+    avg = sum(scores) / len(scores)
+    mx = max(scores)
+    raw = 0.6 * avg + 0.4 * mx
+
+    if 0.0 <= raw <= 1.0:
+        base = raw
+    else:
+        try:
+            base = 1.0 / (1.0 + math.exp(-raw))
+        except OverflowError:
+            base = 1.0 if raw > 0 else 0.0
+
+    coverage = min(1.0, len(evidence) / max(1, k))
+    conf = base * coverage
+    return float(max(0.0, min(1.0, conf)))
 
 
 def portfolio_rag_answer(
@@ -92,6 +118,7 @@ def portfolio_rag_answer(
         return {
             "answer": out.content,
             "sources": [],
+            "confidence": 0.0,
             "found": 0,
             "collection": coll,
             "model": cfg.chat_model,
@@ -99,9 +126,10 @@ def portfolio_rag_answer(
 
     scored: list[ScoredDoc] = rerank(rr, question, candidates_all)
     base = select_evidence(scored, question, k=k, min_k=max(k, 8))
+    confidence = _compute_confidence(base, k=k)
     context = pack_context(base, token_budget=900)
 
-    out = llm.invoke(build_messages_for_answer(sys_prompt, question, context, style_hint))
+    out = llm.invoke(build_messages_for_answer(sys_prompt, question, context, style_hint, confidence=confidence))
 
     sources = _build_sources(base)
     sources_payload = [asdict(s) for s in sources]
@@ -109,6 +137,7 @@ def portfolio_rag_answer(
     result = {
         "answer": out.content,
         "sources": sources_payload,
+        "confidence": confidence,
         "found": len(candidates_all),
         "collection": coll,
         "model": cfg.chat_model,

@@ -16,6 +16,7 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     sources: list[dict[str, Any]]
+    confidence: float
     found: int
     collection: str
     model: str

@@ -13,6 +13,8 @@ BASE_PROMPT = (
     "Формат по умолчанию: короткая вводная + список ключевых пунктов (если уместно)."
 )
 
+LOW_CONFIDENCE_THRESHOLD = 0.35
+
 
 def make_system_prompt(extra: str | None = None) -> str:
     return BASE_PROMPT if not extra else f"{BASE_PROMPT}\nДоп. инструкции: {extra.strip()}"
@@ -39,11 +41,26 @@ def classify_intent(llm, question: str) -> str:
         return "GENERAL"
 
 
-def build_messages_for_answer(system_prompt: str, question: str, context: str, style_hint: str | None = None):
+def build_messages_for_answer(
+    system_prompt: str,
+    question: str,
+    context: str,
+    style_hint: str | None = None,
+    confidence: float | None = None,
+):
     """
     style_hint (опционально): 'ULTRASHORT', 'LIST', 'DEFAULT'.
     """
     style_line = ""
+    caution_line = ""
+    if confidence is not None and confidence < LOW_CONFIDENCE_THRESHOLD:
+        caution_line = (
+            "Уверенность низкая: отвечай осторожно, коротко и без категоричности; "
+            "если данных может быть недостаточно — попроси уточнить."
+        )
+        if style_hint != "LIST":
+            style_hint = "ULTRASHORT"
+
     if style_hint == "ULTRASHORT":
         style_line = "Отвечай максимально кратко: 1-2 предложения, без перечислений и примеров."
     elif style_hint == "LIST":
@@ -52,7 +69,10 @@ def build_messages_for_answer(system_prompt: str, question: str, context: str, s
     return [
         SystemMessage(content=system_prompt),
         HumanMessage(
-            content=f"Вопрос: {question}\n\nДанные о Дмитрии:\n{context}\n\n{style_line}\nОтвечай только по этим данным."
+            content=(
+                f"Вопрос: {question}\n\nДанные о Дмитрии:\n{context}\n\n{caution_line}\n{style_line}\n"
+                "Отвечай только по этим данным."
+            )
         ),
     ]
 

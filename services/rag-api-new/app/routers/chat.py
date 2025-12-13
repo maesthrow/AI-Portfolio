@@ -10,12 +10,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
-from app.deps import chat_llm, reranker, settings, vectorstore
-from app.rag.evidence import pack_context, select_evidence
-from app.rag.prompting import build_messages_for_answer, build_messages_when_empty, make_system_prompt
-from app.rag.rank import rerank
-from app.rag.retrieval import HybridRetriever
-from app.rag.core import _detect_intent
+from app.deps import agent_app
 from app.schemas.chat import ChatRequest
 
 logger = logging.getLogger(__name__)
@@ -37,77 +32,136 @@ def _format_usage(raw: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
-def _prepare_messages(req: ChatRequest):
-    cfg = settings()
-    collection = req.collection or cfg.chroma_collection
-    vs = vectorstore(collection)
-    rr = reranker()
-    sys_prompt = make_system_prompt(req.system_prompt)
-    allowed_types, style_hint = _detect_intent(req.question)
+def _extract_text(obj: Any) -> str:
+    if obj is None:
+        return ""
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, bytes):
+        try:
+            return obj.decode("utf-8", errors="ignore")
+        except Exception:
+            return ""
 
-    hybrid = HybridRetriever(vs, collection=collection)
-    candidates_all = hybrid.retrieve(
-        req.question,
-        k_dense=max(req.k * 4, 40),
-        k_bm=max(req.k * 4, 40),
-        k_final=max(req.k * 3, req.k),
-        allowed_types=allowed_types,
-    )
+    content = getattr(obj, "content", None)
+    if content is not None:
+        return _extract_text(content)
 
-    if not candidates_all:
-        return build_messages_when_empty(sys_prompt, req.question, style_hint), {"collection": collection, "found": 0}
+    if isinstance(obj, dict):
+        if "answer" in obj and isinstance(obj.get("answer"), str):
+            return str(obj["answer"])
+        if "content" in obj:
+            return _extract_text(obj.get("content"))
+        if "text" in obj:
+            return _extract_text(obj.get("text"))
+        if "output" in obj:
+            return _extract_text(obj.get("output"))
+        if "message" in obj:
+            return _extract_text(obj.get("message"))
+        if "messages" in obj:
+            msgs = obj.get("messages") or []
+            if isinstance(msgs, list) and msgs:
+                return _extract_text(msgs[-1])
+        if "generations" in obj:
+            return _extract_text(obj.get("generations"))
+        if "choices" in obj:
+            return _extract_text(obj.get("choices"))
+        return ""
 
-    scored = rerank(rr, req.question, candidates_all)
-    base = select_evidence(scored, req.question, k=req.k, min_k=max(req.k, 8))
-    context = pack_context(base, token_budget=900)
-    messages = build_messages_for_answer(sys_prompt, req.question, context, style_hint)
-    return messages, {"collection": collection, "found": len(candidates_all)}
+    if isinstance(obj, (list, tuple)):
+        parts = [_extract_text(x) for x in obj]
+        parts = [p for p in parts if p]
+        return "".join(parts)
+
+    return ""
 
 
-async def _iterate_llm_chunks(llm, messages) -> AsyncIterator[Any]:
-    if hasattr(llm, "astream"):
-        async for chunk in llm.astream(messages):
-            yield chunk
+async def _iterate_agent_events(agent, state: dict[str, Any], config: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+    """
+    Prefer LangChain Runnable events (LangGraph/agents), but keep a safe fallback.
+    """
+    if hasattr(agent, "astream_events"):
+        async for event in agent.astream_events(state, config=config, version="v2"):
+            yield event
         return
-    if hasattr(llm, "stream"):
-        for chunk in llm.stream(messages):
-            yield chunk
-        return
-    yield llm.invoke(messages)
 
+    if hasattr(agent, "ainvoke"):
+        result = await agent.ainvoke(state, config=config)
+    else:
+        result = agent.invoke(state, config=config)
 
-async def llm_stream(req: ChatRequest) -> AsyncIterator[dict[str, Any]]:
-    llm = chat_llm()
-    messages, _ = _prepare_messages(req)
-
-    async for chunk in _iterate_llm_chunks(llm, messages):
-        text = getattr(chunk, "content", "") or ""
-        usage = getattr(chunk, "usage_metadata", None) if hasattr(chunk, "usage_metadata") else None
-        yield {"content": text, "usage": usage}
+    last = (result.get("messages") or [])[-1] if isinstance(result, dict) else None
+    content = getattr(last, "content", None) if last is not None else None
+    if content:
+        yield {"event": "on_chat_model_stream", "data": {"chunk": type("Chunk", (), {"content": content})()}}
 
 
 @router.post("/agent/chat/stream")
 async def chat_stream(req: ChatRequest):
+    agent = agent_app()
+
     message_id = str(uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 
+    thread_id = req.session_id or "anon"
+    config = {"configurable": {"thread_id": thread_id}}
+
+    question = req.question
+    if req.system_prompt:
+        question = f"{question}\n\nДоп. инструкции: {req.system_prompt.strip()}"
+
+    state = {
+        "messages": [HumanMessage(content=question)],
+        "user_id": req.session_id,
+    }
+
     async def event_generator():
         usage = None
-        yield json.dumps({"type": "start", "message_id": message_id, "created_at": created_at}) + "\n"
+        sent_delta = False
+        final_text = ""
+        yield json.dumps(
+            {"type": "start", "message_id": message_id, "created_at": created_at},
+            ensure_ascii=False,
+        ) + "\n"
         try:
-            async for item in llm_stream(req):
-                if item.get("usage"):
-                    usage = item["usage"]
-                content = item.get("content") or ""
-                if content:
-                    yield json.dumps({"type": "delta", "content": content}) + "\n"
+            async for event in _iterate_agent_events(agent, state, config):
+                kind = event.get("event")
+
+                if kind == "on_chat_model_stream":
+                    chunk = (event.get("data") or {}).get("chunk")
+                    content = _extract_text(chunk)
+                    if hasattr(chunk, "usage_metadata") and getattr(chunk, "usage_metadata", None):
+                        usage = getattr(chunk, "usage_metadata", None)
+                    if content:
+                        sent_delta = True
+                        final_text += content
+                        yield json.dumps({"type": "delta", "content": content}, ensure_ascii=False) + "\n"
+
+                elif kind in ("on_chat_model_end", "on_chain_end"):
+                    data = event.get("data") or {}
+                    output = data.get("output") if isinstance(data, dict) else None
+                    text = _extract_text(output or data)
+                    if text and not sent_delta:
+                        final_text = text
+
+                elif kind == "on_tool_start":
+                    tool_name = event.get("name") or (event.get("data") or {}).get("name") or "tool"
+                    yield json.dumps({"type": "tool_start", "tool": tool_name}, ensure_ascii=False) + "\n"
+
+                elif kind == "on_tool_end":
+                    yield json.dumps({"type": "tool_end"}, ensure_ascii=False) + "\n"
+
         except Exception as exc:
-            logger.exception("Streaming chat failed")
-            yield json.dumps({"type": "error", "message": str(exc)}) + "\n"
+            logger.exception("Agent streaming failed")
+            yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False) + "\n"
             return
 
+        if not sent_delta and final_text:
+            yield json.dumps({"type": "delta", "content": final_text}, ensure_ascii=False) + "\n"
+
         yield json.dumps(
-            {"type": "end", "message_id": message_id, "usage": _format_usage(usage)}
+            {"type": "end", "message_id": message_id, "usage": _format_usage(usage)},
+            ensure_ascii=False,
         ) + "\n"
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
