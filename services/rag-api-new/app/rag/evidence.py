@@ -5,20 +5,19 @@ from .types import Doc, ScoredDoc
 
 
 def _kw_bonus(text: str, keys: list[str]) -> float:
-    """Мягкий бонус за совпадения ключей (и в тексте, и в метаданных). Без жёстких отсечек."""
+    """Мягкий бонус за совпадения ключевых слов."""
     if not keys:
         return 0.0
     tl = (text or "").lower()
     hits = sum(1 for k in keys if k in tl)
     if hits == 0:
         return 0.0
-    # убывающая отдача: 1 ключ = +10%, 2 = +16%, 3+ = +20% …
     return min(0.20, 0.10 + 0.06 * (hits - 1))
 
 
 def _meta_join(md: dict) -> str:
     parts: list[str] = []
-    for k in ("title","name","technologies","technology_names","tags","doc_type","kind","project_name","company_name"):
+    for k in ("title", "name", "technologies", "technology_names", "tags", "doc_type", "kind", "project_name", "company_name"):
         v = md.get(k)
         if isinstance(v, str):
             parts.append(v)
@@ -27,12 +26,26 @@ def _meta_join(md: dict) -> str:
     return " ".join(parts)
 
 
+def _type_weight(md: dict) -> float:
+    order = {
+        "profile": 1.3,
+        "experience": 1.2,
+        "experience_project": 1.15,
+        "project": 1.1,
+        "technology": 1.0,
+        "publication": 0.95,
+        "focus_area": 0.95,
+        "work_approach": 0.95,
+    }
+    t = (md or {}).get("type")
+    return order.get(t, 1.0)
+
+
 def _composite_score(sd: ScoredDoc, keys: list[str]) -> float:
-    """Итоговый балл: reranker + бонусы за ключи в тексте и метаданных."""
-    base = float(sd.score)
+    base = float(sd.score) * _type_weight(sd.doc.metadata or {})
     bonus = 0.0
     bonus += _kw_bonus(sd.doc.page_content or "", keys)
-    bonus += 0.5 * _kw_bonus(_meta_join(sd.doc.metadata or {}), keys)  # метаданные учитываем слабее
+    bonus += 0.5 * _kw_bonus(_meta_join(sd.doc.metadata or {}), keys)
     return base * (1.0 + bonus)
 
 
@@ -42,7 +55,6 @@ def _dedup_key(d: Doc) -> Tuple[str | None, str | None]:
 
 
 def _diversified_top(scored: list[ScoredDoc], keys: list[str], limit: int) -> list[ScoredDoc]:
-    """Greedy-подбор по композитному скору с диверсификацией по parent/ref_id."""
     pool = [(sd, _composite_score(sd, keys)) for sd in scored]
     pool.sort(key=lambda x: x[1], reverse=True)
 
@@ -60,28 +72,19 @@ def _diversified_top(scored: list[ScoredDoc], keys: list[str], limit: int) -> li
 
 
 def select_evidence(scored: list[ScoredDoc], question: str, k: int, min_k: int | None = None) -> list[ScoredDoc]:
-    """
-    Универсальный отбор:
-      - без жёсткого keyword-gate;
-      - композитный ско́р (rerank + мягкий бонус ключей);
-      - диверсификация по parent_id/ref_id;
-      - гарантируем минимум источников min_k (если указано).
-    """
     if not scored:
         return []
 
     keys = keywords(question)
     primary = _diversified_top(scored, keys, k)
 
-    # если после отбора мало источников — добираем следующее по композитному баллу, не нарушая диверсификацию
     target = min_k if (min_k is not None) else k
     if len(primary) >= target:
         return primary
 
-    # добор
     pool = [(sd, _composite_score(sd, keys)) for sd in scored]
     pool.sort(key=lambda x: x[1], reverse=True)
-    seen = { _dedup_key(sd.doc) for sd in primary }
+    seen = {_dedup_key(sd.doc) for sd in primary}
     out = list(primary)
     for sd, _cs in pool:
         key = _dedup_key(sd.doc)
@@ -96,29 +99,38 @@ def select_evidence(scored: list[ScoredDoc], question: str, k: int, min_k: int |
 
 def pack_context(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
     """
-    Бюджетная упаковка контекста. Берём по 1–2 предложения каждого источника,
-    пока не исчерпали бюджет символов (~4 симв/токен).
+    Формируем компактный контекст: заголовок [type] title и 1–2 предложения текста.
     """
-
-    # импорт локально, чтобы не тянуть лишнее при старте
     import re
 
     def _sents(text: str) -> list[str]:
-        sents = re.split(r'(?<=[\.\!\?])\s+', text or "")
+        sents = re.split(r"(?<=[\.\!\?])\s+", text or "")
         sents = [s.strip() for s in sents if s and s.strip()]
         return sents or ([text.strip()] if text else [])
+
+    def _title(md: dict) -> str:
+        title = md.get("name") or md.get("title") or md.get("label") or md.get("kind") or md.get("type")
+        ttype = md.get("type")
+        if title and ttype:
+            return f"[{ttype}] {title}"
+        if title:
+            return str(title)
+        return f"[{ttype}]" if ttype else ""
 
     char_budget = token_budget * 4
     out_parts: list[str] = []
     used = 0
     for sd in evidence:
+        md = sd.doc.metadata or {}
         sents = _sents(sd.doc.page_content)
         chunk = " ".join(sents[:2]).strip()
         if not chunk:
             continue
-        add = len(chunk) + 2
+        header = _title(md)
+        block = f"{header}: {chunk}" if header else chunk
+        add = len(block) + 2
         if used + add > char_budget:
             break
-        out_parts.append(chunk)
+        out_parts.append(block)
         used += add
     return "\n\n".join(out_parts)

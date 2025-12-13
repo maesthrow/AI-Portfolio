@@ -4,16 +4,12 @@ import logging
 from dataclasses import asdict
 from typing import Any
 
-from ..deps import vectorstore, reranker, chat_llm, settings
-from .prompting import (
-    make_system_prompt,
-    build_messages_for_answer,
-    build_messages_when_empty,
-)
+from ..deps import reranker, settings, vectorstore, chat_llm
+from .prompting import make_system_prompt, build_messages_for_answer, build_messages_when_empty
 from .retrieval import HybridRetriever
 from .rank import rerank
 from .evidence import select_evidence, pack_context
-from .types import ScoredDoc, SourceInfo, Doc
+from .types import ScoredDoc, SourceInfo
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -38,42 +34,61 @@ def _build_sources(evidence: list[ScoredDoc]) -> list[SourceInfo]:
     return srcs
 
 
+def _detect_intent(question: str) -> tuple[set[str] | None, str | None]:
+    """
+    Very lightweight intent routing to prefer правильные типы документов.
+    """
+    q = (question or "").lower()
+    allowed = None
+    style = None
+
+    job_tokens = ("где работаешь", "где работает", "текущ", "сейчас работаешь", "current position")
+    ach_tokens = ("достижен", "что сделал", "чем занимался", "результат")
+    stack_tokens = ("стек", "технолог", "languages", "языки программирован", "какие бд", "какие базы")
+    rag_tokens = ("rag", "агент", "agent", "retrieval", "langgraph")
+
+    if any(t in q for t in job_tokens):
+        allowed = {"profile", "experience", "experience_project"}
+        style = "LIST"
+    elif any(t in q for t in ach_tokens):
+        allowed = {"experience", "experience_project", "project"}
+        style = "LIST"
+    elif any(t in q for t in stack_tokens):
+        allowed = {"technology", "project", "tech_focus"}
+        style = "LIST"
+    elif any(t in q for t in rag_tokens):
+        allowed = {"project", "tech_focus", "technology", "experience_project"}
+        style = "LIST"
+
+    return allowed, style
+
+
 def portfolio_rag_answer(
     question: str,
     k: int = 8,
     collection: str | None = None,
     extra_system: str | None = None,
 ) -> dict[str, Any]:
-    """
-    Универсальный RAG-пайплайн портфолио:
-    - hybrid retrieval (dense + BM25 через HybridRetriever)
-    - rerank (CrossEncoder)
-    - evidence filtering + упаковка контекста
-    - LLM-ответ по системному промпту
-
-    Возвращает dict, совместимый с текущим /ask.
-    """
     cfg = settings()
     coll = collection or cfg.chroma_collection
     vs = vectorstore(coll)
     llm = chat_llm()
     rr = reranker()
 
+    allowed_types, style_hint = _detect_intent(question)
     sys_prompt = make_system_prompt(extra_system)
 
-    # 1) retrieval
     hybrid = HybridRetriever(vs, collection=coll)
     candidates_all = hybrid.retrieve(
         question,
         k_dense=max(k * 4, 40),
         k_bm=max(k * 4, 40),
         k_final=max(k * 3, k),
+        allowed_types=allowed_types,
     )
 
     if not candidates_all:
-        out = llm.invoke(
-            build_messages_when_empty(sys_prompt, question)
-        )
+        out = llm.invoke(build_messages_when_empty(sys_prompt, question, style_hint))
         return {
             "answer": out.content,
             "sources": [],
@@ -82,17 +97,11 @@ def portfolio_rag_answer(
             "model": cfg.chat_model,
         }
 
-    # 2) rerank
     scored: list[ScoredDoc] = rerank(rr, question, candidates_all)
-
-    # 3) evidence selection + упаковка контекста
     base = select_evidence(scored, question, k=k, min_k=max(k, 8))
     context = pack_context(base, token_budget=900)
 
-    # 4) генерация ответа
-    out = llm.invoke(
-        build_messages_for_answer(sys_prompt, question, context)
-    )
+    out = llm.invoke(build_messages_for_answer(sys_prompt, question, context, style_hint))
 
     sources = _build_sources(base)
     sources_payload = [asdict(s) for s in sources]
@@ -106,10 +115,9 @@ def portfolio_rag_answer(
     }
 
     logger.info(
-        "portfolio_rag_answer:\n\nanswer=%s\n\nsources=%s\n\nfound=%s\n",
-        result["answer"],
-        result["sources"],
+        "portfolio_rag_answer: found=%s, allowed_types=%s, sources_count=%s",
         result["found"],
+        allowed_types,
+        len(sources_payload),
     )
-
     return result

@@ -14,7 +14,6 @@ def fetch_by_ids(vs, ids: list[str], question: str) -> list[Doc]:
         return []
     by_id = {doc_id_of(d): d for d in docs}
     out = [by_id.get(i) for i in ids if by_id.get(i)]
-    # normalize to our Doc type
     return [Doc(page_content=d.page_content, metadata=d.metadata or {}) for d in out]
 
 
@@ -39,15 +38,9 @@ def rrf_merge(dense: List[Tuple[str, float]], bm25_hits: List[Tuple[str, float]]
     return [did for did, _ in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)][:k]
 
 
-def cosine(a: list[float], b: list[float]) -> float:
-    # placeholder, но мы используем MMR по текстам — значит применим прокси-сим векторизации через vs по id.
-    return 0.0
-
-
 def mmr_order(docs: list[Doc], question: str, k: int, diversity: float = 0.3) -> list[Doc]:
     """
-    Simplified MMR на уровне текста: приближённо используем эвристику «неповторности» по хэшу и ref_id.
-    Для реальной косинусной меры можно хранить эмбеддинги (если доступно).
+    Simplified MMR: уникализируем по parent_id/ref_id + part, затем обрезаем.
     """
     seen_parent = set()
     out: list[Doc] = []
@@ -75,14 +68,15 @@ def expand_by_project(vs, question: str, base_docs: list[Doc], k_related: int = 
         return list(base_docs)
     try:
         related = vs.similarity_search(
-            question, k=k_related,
-            filter={"type": {"$in": ["project", "achievement", "document"]}, "project_id": {"$in": proj_ids}},
+            question,
+            k=k_related,
+            filter={"type": {"$in": ["project", "experience_project"]}, "project_id": {"$in": proj_ids}},
         )
     except Exception:
         return list(base_docs)
     out = list(base_docs)
     for d in related:
-        md = (d.metadata or {})
+        md = d.metadata or {}
         md["expanded"] = True
         out.append(Doc(d.page_content, md))
     return out
@@ -90,14 +84,34 @@ def expand_by_project(vs, question: str, base_docs: list[Doc], k_related: int = 
 
 class HybridRetriever:
     """
-    Объединяет dense и BM25 через RRF, подтягивает «пропущенные» документы по id, далее MMR и expand_by_project.
+    Объединяет dense и BM25 через RRF, подтягивает пропущенные документы по id, далее MMR и expand_by_project.
     """
+
     def __init__(self, vs, collection: str):
         self.vs = vs
         self.collection = collection
 
-    def retrieve(self, question: str, k_dense: int, k_bm: int, k_final: int) -> list[Doc]:
-        dense_docs = self.vs.similarity_search(question, k=k_dense)  # без фильтра
+    def _filter_types(self, docs: list[Doc], allowed: set[str] | None) -> list[Doc]:
+        if not allowed:
+            return docs
+        out: list[Doc] = []
+        for d in docs:
+            t = (d.metadata or {}).get("type")
+            if t is None or t in allowed:
+                out.append(d)
+        return out
+
+    def retrieve(
+        self,
+        question: str,
+        k_dense: int,
+        k_bm: int,
+        k_final: int,
+        allowed_types: set[str] | None = None,
+    ) -> list[Doc]:
+        where = {"type": {"$in": list(allowed_types)}} if allowed_types else None
+        dense_docs = self.vs.similarity_search(question, k=k_dense, filter=where) if where else \
+                     self.vs.similarity_search(question, k=k_dense)
         dense_pairs = []
         for i, d in enumerate(dense_docs):
             did = doc_id_of(d) or f"doc:{i}"
@@ -115,9 +129,8 @@ class HybridRetriever:
         if miss:
             candidates += fetch_by_ids(self.vs, miss, question)
 
-        # normalize -> Doc
         docs = [Doc(d.page_content, d.metadata or {}) for d in candidates]
-        # MMR (approx) и расширение по проекту
+        docs = self._filter_types(docs, allowed_types)
         docs = mmr_order(docs, question, k=max(k_final * 2, k_final))
         docs = expand_by_project(self.vs, question, docs, k_related=max(48, k_final * 6))
         return docs

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 
-# Rough target: keep chunks ~200-300 words to balance recall/precision.
-MAX_CHARS = 900
+# Rough target: keep chunks ~150-200 words to balance recall/precision and reduce noise.
+MAX_CHARS = 600
 _SENT_SPLITTER = re.compile(r"(?<=[\.\!\?])\s+")
 
 

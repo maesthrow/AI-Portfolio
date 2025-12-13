@@ -15,6 +15,7 @@ from app.rag.evidence import pack_context, select_evidence
 from app.rag.prompting import build_messages_for_answer, build_messages_when_empty, make_system_prompt
 from app.rag.rank import rerank
 from app.rag.retrieval import HybridRetriever
+from app.rag.core import _detect_intent
 from app.schemas.chat import ChatRequest
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ def _prepare_messages(req: ChatRequest):
     vs = vectorstore(collection)
     rr = reranker()
     sys_prompt = make_system_prompt(req.system_prompt)
+    allowed_types, style_hint = _detect_intent(req.question)
 
     hybrid = HybridRetriever(vs, collection=collection)
     candidates_all = hybrid.retrieve(
@@ -49,15 +51,16 @@ def _prepare_messages(req: ChatRequest):
         k_dense=max(req.k * 4, 40),
         k_bm=max(req.k * 4, 40),
         k_final=max(req.k * 3, req.k),
+        allowed_types=allowed_types,
     )
 
     if not candidates_all:
-        return build_messages_when_empty(sys_prompt, req.question), {"collection": collection, "found": 0}
+        return build_messages_when_empty(sys_prompt, req.question, style_hint), {"collection": collection, "found": 0}
 
     scored = rerank(rr, req.question, candidates_all)
     base = select_evidence(scored, req.question, k=req.k, min_k=max(req.k, 8))
     context = pack_context(base, token_budget=900)
-    messages = build_messages_for_answer(sys_prompt, req.question, context)
+    messages = build_messages_for_answer(sys_prompt, req.question, context, style_hint)
     return messages, {"collection": collection, "found": len(candidates_all)}
 
 

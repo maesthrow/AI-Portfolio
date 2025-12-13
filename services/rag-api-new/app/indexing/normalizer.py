@@ -2,30 +2,52 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
-from typing import Iterable, Tuple, Any
+from typing import Any, Iterable, Tuple
 
 from .chunker import split_text
 from ..schemas.export import (
-    ExportPayload,
-    ProfileExport,
     CompanyExperienceExport,
-    ExperienceProjectExport,
-    ProjectExport,
-    TechnologyExport,
-    PublicationExport,
-    FocusAreaExport,
-    WorkApproachExport,
-    TechFocusExport,
-    StatExport,
     ContactExport,
+    ExperienceProjectExport,
+    ExportPayload,
+    FocusAreaExport,
+    ProfileExport,
+    ProjectExport,
+    PublicationExport,
+    StatExport,
+    TechFocusExport,
+    TechnologyExport,
+    WorkApproachExport,
 )
 from ..utils.metadata import chunk_doc
 
 NormalizedDoc = Tuple[str, str, dict[str, Any]]
 
 
+def _fix_text(value: str | None) -> str:
+    """
+    Defensive decoding against mojibake: try latin1->utf-8 if it looks broken.
+    """
+    if not value:
+        return ""
+    text = str(value)
+    if "�" in text or "\ufffd" in text:
+        try:
+            text = text.encode("latin1").decode("utf-8")
+        except Exception:
+            pass
+    return text.strip()
+
+
 def _join_lines(parts: list[str | None]) -> str:
-    return "\n".join([p.strip() for p in parts if p and str(p).strip()])
+    cleaned: list[str] = []
+    for p in parts:
+        if p is None:
+            continue
+        txt = _fix_text(p)
+        if txt:
+            cleaned.append(txt)
+    return "\n".join(cleaned)
 
 
 def _period_line(start: date | None, end: date | None, is_current: bool) -> str:
@@ -57,18 +79,19 @@ def _profile_docs(profile: ProfileExport) -> Iterable[NormalizedDoc]:
     if not text:
         return []
     meta = {
-        "name": profile.full_name,
+        "name": _fix_text(profile.full_name),
         "full_name": profile.full_name,
         "title": profile.title,
         "subtitle": profile.subtitle,
         "current_position": profile.current_position,
+        "priority": "high",
     }
     return chunk_doc("profile", profile.id, text, meta, split_text)
 
 
 def _experience_docs(exp: CompanyExperienceExport) -> Iterable[NormalizedDoc]:
     period = _period_line(exp.start_date, exp.end_date, exp.is_current)
-    project_names = [p.name for p in exp.projects]
+    project_names = [_fix_text(p.name) for p in exp.projects]
     text = _join_lines(
         [
             f"{exp.role} @ {exp.company_name}" if exp.company_name else exp.role,
@@ -83,7 +106,7 @@ def _experience_docs(exp: CompanyExperienceExport) -> Iterable[NormalizedDoc]:
     if not text:
         return []
     meta = {
-        "name": exp.company_name or exp.role,
+        "name": _fix_text(exp.company_name or exp.role),
         "company_name": exp.company_name,
         "company_slug": exp.company_slug,
         "company_url": exp.company_url,
@@ -93,6 +116,7 @@ def _experience_docs(exp: CompanyExperienceExport) -> Iterable[NormalizedDoc]:
         "kind": exp.kind,
         "project_ids": [p.id for p in exp.projects],
         "project_slugs": [p.slug for p in exp.projects if p.slug],
+        "priority": "high",
     }
     return chunk_doc("experience", exp.id, text, meta, split_text)
 
@@ -112,7 +136,7 @@ def _experience_project_docs(
     if not text:
         return []
     meta = {
-        "name": proj.name,
+        "name": _fix_text(proj.name),
         "project_slug": proj.slug,
         "experience_id": exp.id,
         "company_name": exp.company_name,
@@ -123,7 +147,7 @@ def _experience_project_docs(
 
 
 def _project_docs(proj: ProjectExport) -> Iterable[NormalizedDoc]:
-    techs = proj.technologies or []
+    techs = [_fix_text(t) for t in (proj.technologies or [])]
     text = _join_lines(
         [
             proj.name,
@@ -140,7 +164,7 @@ def _project_docs(proj: ProjectExport) -> Iterable[NormalizedDoc]:
     if not text:
         return []
     meta = {
-        "name": proj.name,
+        "name": _fix_text(proj.name),
         "slug": proj.slug,
         "domain": proj.domain,
         "technologies": techs,
@@ -155,7 +179,7 @@ def _project_docs(proj: ProjectExport) -> Iterable[NormalizedDoc]:
 def _technology_docs(
     tech: TechnologyExport, projects_using: list[ProjectExport]
 ) -> Iterable[NormalizedDoc]:
-    proj_names = [p.name for p in projects_using]
+    proj_names = [_fix_text(p.name) for p in projects_using]
     text = _join_lines(
         [
             tech.name,
@@ -166,7 +190,7 @@ def _technology_docs(
     if not text:
         return []
     meta = {
-        "name": tech.name,
+        "name": _fix_text(tech.name),
         "slug": tech.slug,
         "category": tech.category,
         "project_ids": [p.id for p in projects_using],
@@ -188,7 +212,7 @@ def _publication_docs(pub: PublicationExport) -> Iterable[NormalizedDoc]:
     if not text:
         return []
     meta = {
-        "title": pub.title,
+        "title": _fix_text(pub.title),
         "year": pub.year,
         "source": pub.source,
         "url": pub.url,
@@ -198,7 +222,7 @@ def _publication_docs(pub: PublicationExport) -> Iterable[NormalizedDoc]:
 
 
 def _focus_area_docs(fa: FocusAreaExport) -> Iterable[NormalizedDoc]:
-    bullets = [b.text for b in fa.bullets]
+    bullets = [_fix_text(b.text) for b in fa.bullets]
     text = _join_lines(
         [
             fa.title,
@@ -209,7 +233,7 @@ def _focus_area_docs(fa: FocusAreaExport) -> Iterable[NormalizedDoc]:
     if not text:
         return []
     meta = {
-        "title": fa.title,
+        "title": _fix_text(fa.title),
         "is_primary": fa.is_primary,
         "bullet_count": len(bullets),
     }
@@ -217,7 +241,7 @@ def _focus_area_docs(fa: FocusAreaExport) -> Iterable[NormalizedDoc]:
 
 
 def _work_approach_docs(wa: WorkApproachExport) -> Iterable[NormalizedDoc]:
-    bullets = [b.text for b in wa.bullets]
+    bullets = [_fix_text(b.text) for b in wa.bullets]
     text = _join_lines(
         [
             wa.title,
@@ -227,7 +251,7 @@ def _work_approach_docs(wa: WorkApproachExport) -> Iterable[NormalizedDoc]:
     if not text:
         return []
     meta = {
-        "title": wa.title,
+        "title": _fix_text(wa.title),
         "icon": getattr(wa, "icon", None),
         "bullet_count": len(bullets),
     }
@@ -235,7 +259,7 @@ def _work_approach_docs(wa: WorkApproachExport) -> Iterable[NormalizedDoc]:
 
 
 def _tech_focus_docs(tf: TechFocusExport) -> Iterable[NormalizedDoc]:
-    tags = [t.name for t in getattr(tf, "tags", [])]
+    tags = [_fix_text(t.name) for t in getattr(tf, "tags", [])]
     text = _join_lines(
         [
             tf.label,
@@ -246,7 +270,7 @@ def _tech_focus_docs(tf: TechFocusExport) -> Iterable[NormalizedDoc]:
     if not text:
         return []
     meta = {
-        "label": tf.label,
+        "label": _fix_text(tf.label),
         "tags": tags,
     }
     return chunk_doc("tech_focus", tf.id, text, meta, split_text)
@@ -264,7 +288,7 @@ def _stat_docs(stat: StatExport) -> Iterable[NormalizedDoc]:
     if not text:
         return []
     meta = {
-        "label": stat.label,
+        "label": _fix_text(stat.label),
         "key": stat.key,
         "group_name": stat.group_name,
     }
@@ -292,25 +316,6 @@ def _contact_docs(contact: ContactExport) -> Iterable[NormalizedDoc]:
     return chunk_doc("contact", contact.id, text, meta, split_text)
 
 
-def _catalog_docs(
-    projects_by_tech: dict[str, list[ProjectExport]], tech_names: dict[str, str]
-) -> Iterable[NormalizedDoc]:
-    if not projects_by_tech:
-        return []
-
-    tech_counts = {tech_names.get(tn, tn): len(projects) for tn, projects in projects_by_tech.items()}
-    ordered = sorted(tech_counts.items(), key=lambda kv: (-kv[1], kv[0].casefold()))
-    lines = [f"Технологии по проектам ({len(ordered)}):"]
-    for name, cnt in ordered:
-        lines.append(f"- {name}: {cnt}")
-
-    meta = {
-        "catalog_kind": "technologies_all",
-        "technology_counts": tech_counts,
-    }
-    return chunk_doc("catalog", "tech:all", "\n".join(lines), meta, split_text)
-
-
 def normalize_export(payload: ExportPayload) -> Iterable[NormalizedDoc]:
     if payload.profile:
         yield from _profile_docs(payload.profile)
@@ -321,12 +326,10 @@ def normalize_export(payload: ExportPayload) -> Iterable[NormalizedDoc]:
             yield from _experience_project_docs(exp, proj)
 
     projects_by_tech: dict[str, list[ProjectExport]] = defaultdict(list)
-    tech_display: dict[str, str] = {}
     for proj in payload.projects:
         for tech in proj.technologies or []:
             key = tech.casefold()
             projects_by_tech[key].append(proj)
-            tech_display.setdefault(key, tech)
         yield from _project_docs(proj)
 
     for tech in payload.technologies:
@@ -352,5 +355,3 @@ def normalize_export(payload: ExportPayload) -> Iterable[NormalizedDoc]:
 
     for contact in payload.contacts:
         yield from _contact_docs(contact)
-
-    yield from _catalog_docs(projects_by_tech, tech_display)
