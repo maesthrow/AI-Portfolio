@@ -98,7 +98,7 @@ services/rag-api-new/
 
 ## Фаза 3: Новые схемы (schemas/)
 
-### 3.1 schemas/export.py — НОВЫЙ ExportPayload
+### 3.1 schemas/export.py - НОВЫЙ ExportPayload
 
 Адаптировать под модели content-api-new:
 
@@ -132,6 +132,12 @@ class ExportPayload:
 ### 3.2 schemas/ask.py, chat.py, ingest.py, admin.py
 - Скопировать структуры из текущего rag-api
 - Разделить по файлам для удобства
+
+**ДОП. требование из ТЗ (обязательно):**
+- `schemas/ask.py`: в `AskResponse` добавить поле `confidence: float`
+  - **Назначение:** индикатор уверенности ответа (для UX/логирования/авто-поведения при низкой уверенности).
+  - **Рекомендуемый расчёт:** агрегировать скоринг top-k после rerank (например, среднее/медиана top-k), затем привести к диапазону `[0..1]` (например, через `sigmoid` или простую нормализацию/клиппинг).
+  - **Поведение при низком confidence:** отвечать осторожнее, короче, предлагать уточнение (но без выдумывания фактов).
 
 ---
 
@@ -180,6 +186,31 @@ class ExportPayload:
 
 Адаптировать из текущих `api_*.py` файлов.
 
+### 5.1 Требование из ТЗ: chat stream через LangGraph Agent
+**Обязательно:** эндпоинт `POST /api/v1/agent/chat/stream` должен стримить ответ **через LangGraph/ReAct-агента**, а не напрямую через `chat_llm()` + RAG.
+
+**Ожидаемая логика:**
+1. В `deps.py` определить зависимость `agent_app()` (LangGraph graph с memory/checkpointer) и использовать её в роутере chat.
+2. В `routers/chat.py`:
+   - Сформировать `thread_id` (например, из `session_id`/`thread_id` в теле запроса; если отсутствует — `"anon"`).
+   - Вызвать `agent.astream_events(...)` и транслировать события:
+     - `on_chat_model_stream` → отдавать токены/дельты
+     - `on_tool_start` → отдавать событие `tool_start` (название инструмента)
+     - `on_tool_end` → отдавать `tool_end` (при необходимости — краткий результат)
+     - ошибки → `error`
+     - завершение → `end`
+3. Формат стрима:
+   - **Рекомендация для совместимости с текущим фронтом:** NDJSON (`application/x-ndjson`) с событиями вида:
+     - `{ "type": "start", ... }`
+     - `{ "type": "delta", "content": "..." }`
+     - `{ "type": "tool_start", "tool": "portfolio_rag_tool" }`
+     - `{ "type": "tool_end" }`
+     - `{ "type": "end", "usage": {...} }`
+     - `{ "type": "error", "message": "..." }`
+4. Инструменты агента:
+   - Агент **обязан** уметь вызывать `portfolio_rag_tool` (инструмент, который внутри использует `portfolio_rag_answer`) и `list_projects_tool`.
+   - В промпте агента закрепить: всегда пользоваться инструментом `portfolio_rag_tool` для вопросов о портфолио; не выдумывать факты; говорить о Дмитрии в третьем лице.
+
 ---
 
 ## Фаза 6: Main и deps
@@ -187,6 +218,7 @@ class ExportPayload:
 ### 6.1 deps.py
 - Скопировать структуру из текущего rag-api
 - Изменить default collection на `portfolio_new`
+- Убедиться, что DI включает `agent_app()` и что он реально используется в `routers/chat.py` (см. Фаза 5.1).
 
 ### 6.2 main.py
 - CORS middleware
@@ -314,7 +346,7 @@ RAG_NEW_PORT=8014
 
 ### Блок 3: Схемы
 - [ ] Создать schemas/export.py (новый ExportPayload)
-- [ ] Создать schemas/ask.py, chat.py, ingest.py, admin.py
+- [ ] Создать schemas/ask.py (включая `AskResponse.confidence`), chat.py, ingest.py, admin.py
 
 ### Блок 4: Normalizer
 - [ ] Создать indexing/normalizer.py с поддержкой всех типов
@@ -325,7 +357,7 @@ RAG_NEW_PORT=8014
 
 ### Блок 6: Routers
 - [ ] Создать routers/ask.py
-- [ ] Создать routers/chat.py
+- [ ] Создать routers/chat.py **через LangGraph Agent** (astream_events + tool events)
 - [ ] Создать routers/ingest.py, ingest_batch.py
 - [ ] Создать routers/admin.py
 
