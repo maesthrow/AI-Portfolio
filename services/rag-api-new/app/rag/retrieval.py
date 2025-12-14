@@ -5,6 +5,18 @@ from .utils import doc_id_of
 from ..indexing import bm25
 
 
+def _to_chroma_where(where: dict | None) -> dict | None:
+    """
+    Chroma v2 strict where format: если условий > 1, требуется явный `$and`.
+    Иначе сервер возвращает: "Expected where to have exactly one operator".
+    """
+    if not where:
+        return None
+    if len(where) <= 1:
+        return where
+    return {"$and": [{k: v} for k, v in where.items()]}
+
+
 def fetch_by_ids(vs, ids: list[str], question: str) -> list[Doc]:
     if not ids:
         return []
@@ -40,7 +52,8 @@ class DenseRetriever(Retriever):
         self.where = where
 
     def retrieve(self, question: str, k: int) -> list[Doc]:
-        docs = self.vs.similarity_search(question, k=k, filter=self.where) if self.where else \
+        where = _to_chroma_where(self.where)
+        docs = self.vs.similarity_search(question, k=k, filter=where) if where else \
                self.vs.similarity_search(question, k=k)
         return [Doc(d.page_content, d.metadata or {}) for d in docs]
 
@@ -84,10 +97,11 @@ def expand_by_project(vs, question: str, base_docs: list[Doc], k_related: int = 
     if not proj_ids:
         return list(base_docs)
     try:
+        where = _to_chroma_where({"type": {"$in": ["project", "experience_project"]}, "project_id": {"$in": proj_ids}})
         related = vs.similarity_search(
             question,
             k=k_related,
-            filter={"type": {"$in": ["project", "experience_project"]}, "project_id": {"$in": proj_ids}},
+            filter=where,
         )
     except Exception:
         return list(base_docs)
@@ -140,8 +154,9 @@ class HybridRetriever:
             else:
                 where_final["type"] = {"$in": list(allowed_types)}
         where_final = where_final or None
+        where_filter = _to_chroma_where(where_final)
 
-        dense_docs = self.vs.similarity_search(question, k=k_dense, filter=where_final) if where_final else \
+        dense_docs = self.vs.similarity_search(question, k=k_dense, filter=where_filter) if where_filter else \
                      self.vs.similarity_search(question, k=k_dense)
         dense_pairs = []
         for i, d in enumerate(dense_docs):

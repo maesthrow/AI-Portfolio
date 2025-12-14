@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-from typing import List
-
-from langchain_core.messages import SystemMessage, BaseMessage, HumanMessage
 from langchain.agents import create_agent
 from langgraph.checkpoint.memory import MemorySaver
 
 from ..rag.prompting import make_system_prompt
 
-# ⚙️ Специальный промпт именно для АГЕНТА-ОРКЕСТРАТОРА (не для финального ответа)
-AGENT_SYSTEM_PROMPT = """
+# Промпт для агента-оркестратора (не для RAG-ответа): управляет вызовом инструментов и формированием ответа.
+AGENT_SYSTEM_PROMPT_LEGACY = """
 ТВОЯ РОЛЬ:
 - Планировать и вызывать инструменты.
 - Никогда не придумывать факты о проектах, компаниях, деятельности, технологиях, достижениях и документах.
@@ -45,22 +42,70 @@ AGENT_SYSTEM_PROMPT = """
 """
 
 
+AGENT_SYSTEM_PROMPT_FACT = """
+ТВОЯ РОЛЬ:
+- Планировать и вызывать инструменты.
+- Никогда не придумывать факты о проектах, компаниях, деятельности, технологиях, достижениях и документах.
+
+ЖЁСТКИЕ ПРАВИЛА:
+1) Если вопрос касается:
+   - разработчика Дмитрия
+   - проектов,
+   - компаний,
+   - деятельности,
+   - обязанностей,
+   - достижений,
+   - технологий/стека,
+   - резюме/опыта работы,
+   - документации по проектам,
+   ТЫ ОБЯЗАН сначала вызвать инструмент `portfolio_search_tool`.
+   Отвечать на такие вопросы без обращения к `portfolio_search_tool` строго запрещено.
+
+2) Финальный ответ формируй ТОЛЬКО на основе того, что вернул `portfolio_search_tool`.
+   Запрещено добавлять любые факты, которых нет в tool-output.
+
+2.1) Если в tool-output есть поле `answer_instructions`, учитывай его при формировании ответа.
+2.2) Если tool-output содержит `ok=false` или поле `error`, сообщи о технической ошибке и предложи повторить запрос.
+
+3) Не добавляй фразы вида «не найдено/не удалось найти упоминание X» для сущностей/проектов,
+   которые пользователь не называл в вопросе.
+
+4) Если данных недостаточно или `confidence` низкий:
+   - скажи об этом коротко и нейтрально,
+   - попроси уточнить (какой проект/компания/период/что именно интересует).
+
+5) Если вопрос списковый (достижения/контакты/теги/пункты):
+   - отвечай пунктами,
+   - не смешивай разные компании/проекты в одну кучу,
+   - при наличии `achievements`/`items` выводи их детерминированно.
+
+6) Без инструментов можно отвечать только на:
+   - приветствия ("привет", "здравствуй", "как дела"),
+   - вопросы идентичности ("кто ты", "что ты умеешь", "зачем ты нужен").
+   В этих случаях дай короткий ответ и не используй инструменты.
+
+Всегда строго следуй этим правилам, даже если тебе кажется, что ты и так знаешь ответ.
+"""
+
+
 def build_agent_graph():
     """
-    ReAct-агент с памятью по thread_id (session_id) и жёстким требованием звать RAG-tool.
+    ReAct-агент с памятью по thread_id (session_id) и жёстким требованием звать tool для фактов.
     """
-    from .tools import portfolio_rag_tool, list_projects_tool
-    from ..deps import chat_llm
+    from ..deps import chat_llm, settings
+    from .tools import list_projects_tool, portfolio_rag_tool, portfolio_search_tool
 
-    llm = chat_llm()
-    system_prompt = f"{make_system_prompt(None)}\n\n{AGENT_SYSTEM_PROMPT}"
-    checkpointer = MemorySaver()
+    cfg = settings()
+    use_fact_tool = bool(getattr(cfg, "agent_fact_tool", False))
 
-    agent = create_agent(
-        model=llm,  # голая модель, tools ей передаст сам create_react_agent
-        tools=[portfolio_rag_tool, list_projects_tool],
+    agent_rules = AGENT_SYSTEM_PROMPT_FACT if use_fact_tool else AGENT_SYSTEM_PROMPT_LEGACY
+    system_prompt = f"{make_system_prompt(None)}\n\n{agent_rules}"
+
+    tools = [portfolio_search_tool, list_projects_tool] if use_fact_tool else [portfolio_rag_tool, list_projects_tool]
+
+    return create_agent(
+        model=chat_llm(),
+        tools=tools,
         system_prompt=system_prompt,
-        checkpointer=checkpointer
+        checkpointer=MemorySaver(),
     )
-
-    return agent
