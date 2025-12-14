@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date
 import hashlib
+import re
 from typing import Any, Iterable, Tuple
 
 from .chunker import split_text
@@ -20,13 +21,81 @@ from ..schemas.export import (
     TechnologyExport,
     WorkApproachExport,
 )
-from ..utils.metadata import chunk_doc
+from ..utils.metadata import chunk_doc, make_doc
 
 NormalizedDoc = Tuple[str, str, dict[str, Any]]
 
 
 def _stable_id(value: str) -> str:
     return hashlib.sha1((value or "").encode("utf-8")).hexdigest()[:12]
+
+
+_KEY_CLEAN_RE = re.compile(r"[^\w]+", re.UNICODE)
+_MD_BULLET_RE = re.compile(r"^\s*(?:[-•–—]|\d+[.)])\s+(.*)$", re.UNICODE)
+
+
+def _normalize_key(value: str | None) -> str | None:
+    txt = _fix_text(value)
+    if not txt:
+        return None
+    txt = txt.casefold()
+    txt = _KEY_CLEAN_RE.sub(" ", txt)
+    txt = " ".join(txt.split()).strip()
+    return txt or None
+
+
+def _extract_markdown_bullets(text: str | None) -> list[str]:
+    """
+    Extract bullet-like items from markdown/plain text lists.
+    Supports "-", "•", "—", "–", and numbered lists like "1." / "1)".
+    Keeps multi-line bullets (indented continuations) merged into one item.
+    """
+    raw = _fix_text(text)
+    if not raw:
+        return []
+
+    items: list[str] = []
+    for line in raw.splitlines():
+        ln = line.rstrip()
+        if not ln.strip():
+            continue
+        m = _MD_BULLET_RE.match(ln)
+        if m:
+            val = _fix_text(m.group(1))
+            if val:
+                items.append(val)
+            continue
+
+        # Continuation line for the previous bullet.
+        if items and ln.startswith(("  ", "\t")):
+            cont = _fix_text(ln)
+            if cont:
+                items[-1] = f"{items[-1]} {cont}".strip()
+
+    return [i for i in items if i]
+
+
+def _make_item_doc(
+    *,
+    item_kind: str,
+    parent_type: str,
+    parent_id: int | str,
+    item_id: int | str,
+    text: str,
+    metadata: dict[str, Any],
+    order_index: int = 0,
+    source_field: str | None = None,
+) -> NormalizedDoc:
+    ref_id = f"{item_kind}:{parent_type}:{parent_id}:{item_id}"
+    md = dict(metadata)
+    md["item_kind"] = item_kind
+    md["parent_type"] = parent_type
+    md["parent_id"] = parent_id
+    md["parent_doc_id"] = f"{parent_type}:{parent_id}"
+    md["order_index"] = int(order_index or 0)
+    if source_field:
+        md["source_field"] = source_field
+    return make_doc("item", ref_id, _fix_text(text), md)
 
 
 def _fix_text(value: str | None) -> str:
@@ -154,6 +223,103 @@ def _experience_project_docs(
     return chunk_doc("experience_project", proj.id, text, meta, split_text)
 
 
+def _achievement_items_for_experience(
+    exp: CompanyExperienceExport,
+    *,
+    seen_hashes: set[str],
+) -> Iterable[NormalizedDoc]:
+    bullets = _extract_markdown_bullets(exp.achievements_md)
+    if not bullets:
+        return []
+
+    out: list[NormalizedDoc] = []
+    parent_type = "experience"
+    parent_id = exp.id
+    company_name = _fix_text(exp.company_name)
+    company_slug = _fix_text(exp.company_slug)
+
+    for idx, bullet in enumerate(bullets, 1):
+        content_h = _stable_id(bullet)
+        if content_h in seen_hashes:
+            continue
+        seen_hashes.add(content_h)
+        item_h = _stable_id(f"{parent_type}:{parent_id}:{bullet}")
+        text = f"Компания: {company_name}. Достижение: {bullet}" if company_name else f"Достижение: {bullet}"
+        out.append(
+            _make_item_doc(
+                item_kind="achievement",
+                parent_type=parent_type,
+                parent_id=parent_id,
+                item_id=item_h,
+                order_index=idx,
+                source_field="achievements_md",
+                text=text,
+                metadata={
+                    "company_name": company_name or None,
+                    "company_name_key": _normalize_key(company_name),
+                    "company_slug": company_slug or None,
+                    "company_slug_key": _normalize_key(company_slug),
+                    "experience_id": exp.id,
+                },
+            )
+        )
+
+    return out
+
+
+def _achievement_items_for_experience_project(
+    exp: CompanyExperienceExport, proj: ExperienceProjectExport
+) -> Iterable[NormalizedDoc]:
+    bullets = _extract_markdown_bullets(proj.achievements_md)
+    if not bullets:
+        return []
+
+    out: list[NormalizedDoc] = []
+    parent_type = "experience_project"
+    parent_id = proj.id
+
+    project_name = _fix_text(proj.name)
+    project_slug = _fix_text(proj.slug)
+    company_name = _fix_text(exp.company_name)
+    company_slug = _fix_text(exp.company_slug)
+
+    for idx, bullet in enumerate(bullets, 1):
+        h = _stable_id(f"{parent_type}:{parent_id}:{bullet}")
+        text_parts = []
+        if project_name:
+            text_parts.append(f"Проект: {project_name}.")
+        if company_name:
+            text_parts.append(f"Компания: {company_name}.")
+        text_parts.append(f"Достижение: {bullet}")
+        text = " ".join(text_parts)
+        out.append(
+            _make_item_doc(
+                item_kind="achievement",
+                parent_type=parent_type,
+                parent_id=parent_id,
+                item_id=h,
+                order_index=idx,
+                source_field="achievements_md",
+                text=text,
+                metadata={
+                    "project_name": project_name or None,
+                    "project_name_key": _normalize_key(project_name),
+                    "project_slug": project_slug or None,
+                    "project_slug_key": _normalize_key(project_slug),
+                    "project_id": proj.id,
+                    "experience_id": exp.id,
+                    "company_name": company_name or None,
+                    "company_name_key": _normalize_key(company_name),
+                    "company_slug": company_slug or None,
+                    "company_slug_key": _normalize_key(company_slug),
+                    "period": _fix_text(proj.period) or None,
+                },
+            )
+        )
+
+    return out
+
+
 def _project_docs(proj: ProjectExport) -> Iterable[NormalizedDoc]:
     techs = [_fix_text(t) for t in (proj.technologies or [])]
     text = _join_lines(
@@ -248,6 +414,35 @@ def _focus_area_docs(fa: FocusAreaExport) -> Iterable[NormalizedDoc]:
     return chunk_doc("focus_area", fa.id, text, meta, split_text)
 
 
+def _focus_area_items(fa: FocusAreaExport) -> Iterable[NormalizedDoc]:
+    title = _fix_text(fa.title)
+    title_key = _normalize_key(title)
+    out: list[NormalizedDoc] = []
+    for b in fa.bullets:
+        bullet_text = _fix_text(b.text)
+        if not bullet_text:
+            continue
+        out.append(
+            _make_item_doc(
+                item_kind="focus_bullet",
+                parent_type="focus_area",
+                parent_id=fa.id,
+                item_id=b.id,
+                order_index=getattr(b, "order_index", 0) or 0,
+                source_field="bullets",
+                text=f"Фокус: {title}. Пункт: {bullet_text}" if title else f"Пункт: {bullet_text}",
+                metadata={
+                    "focus_area_id": fa.id,
+                    "focus_title": title or None,
+                    "focus_title_key": title_key,
+                    "is_primary": fa.is_primary,
+                    "bullet_id": b.id,
+                },
+            )
+        )
+    return out
+
+
 def _work_approach_docs(wa: WorkApproachExport) -> Iterable[NormalizedDoc]:
     bullets = [_fix_text(b.text) for b in wa.bullets]
     text = _join_lines(
@@ -266,6 +461,35 @@ def _work_approach_docs(wa: WorkApproachExport) -> Iterable[NormalizedDoc]:
     return chunk_doc("work_approach", wa.id, text, meta, split_text)
 
 
+def _work_approach_items(wa: WorkApproachExport) -> Iterable[NormalizedDoc]:
+    title = _fix_text(wa.title)
+    title_key = _normalize_key(title)
+    out: list[NormalizedDoc] = []
+    for b in wa.bullets:
+        bullet_text = _fix_text(b.text)
+        if not bullet_text:
+            continue
+        out.append(
+            _make_item_doc(
+                item_kind="work_bullet",
+                parent_type="work_approach",
+                parent_id=wa.id,
+                item_id=b.id,
+                order_index=getattr(b, "order_index", 0) or 0,
+                source_field="bullets",
+                text=f"Подход: {title}. Пункт: {bullet_text}" if title else f"Пункт: {bullet_text}",
+                metadata={
+                    "work_approach_id": wa.id,
+                    "work_title": title or None,
+                    "work_title_key": title_key,
+                    "icon": getattr(wa, "icon", None),
+                    "bullet_id": b.id,
+                },
+            )
+        )
+    return out
+
+
 def _tech_focus_docs(tf: TechFocusExport) -> Iterable[NormalizedDoc]:
     tags = [_fix_text(t.name) for t in getattr(tf, "tags", [])]
     text = _join_lines(
@@ -282,6 +506,35 @@ def _tech_focus_docs(tf: TechFocusExport) -> Iterable[NormalizedDoc]:
         "tags": tags,
     }
     return chunk_doc("tech_focus", tf.id, text, meta, split_text)
+
+
+def _tech_focus_tag_items(tf: TechFocusExport) -> Iterable[NormalizedDoc]:
+    label = _fix_text(tf.label)
+    label_key = _normalize_key(label)
+    out: list[NormalizedDoc] = []
+    for tag in getattr(tf, "tags", []) or []:
+        tag_name = _fix_text(getattr(tag, "name", None))
+        if not tag_name:
+            continue
+        out.append(
+            _make_item_doc(
+                item_kind="tech_tag",
+                parent_type="tech_focus",
+                parent_id=tf.id,
+                item_id=getattr(tag, "id", _stable_id(tag_name)),
+                order_index=getattr(tag, "order_index", 0) or 0,
+                source_field="tags",
+                text=f"Фокус: {label}. Тег: {tag_name}" if label else f"Тег: {tag_name}",
+                metadata={
+                    "tech_focus_id": tf.id,
+                    "tech_focus_label": label or None,
+                    "tech_focus_label_key": label_key,
+                    "tag_name": tag_name,
+                    "tag_name_key": _normalize_key(tag_name),
+                },
+            )
+        )
+    return out
 
 
 def _stat_docs(stat: StatExport) -> Iterable[NormalizedDoc]:
@@ -303,6 +556,34 @@ def _stat_docs(stat: StatExport) -> Iterable[NormalizedDoc]:
     return chunk_doc("stat", stat.id, text, meta, split_text)
 
 
+def _stat_item(stat: StatExport) -> Iterable[NormalizedDoc]:
+    label = _fix_text(stat.label)
+    value = _fix_text(stat.value)
+    hint = _fix_text(stat.hint)
+    text = " ".join([p for p in [f"{label}: {value}" if label and value else None, hint or None] if p])
+    if not text:
+        return []
+    return [
+        _make_item_doc(
+            item_kind="stat",
+            parent_type="stat",
+            parent_id=stat.id,
+            item_id=stat.id,
+            order_index=getattr(stat, "order_index", 0) or 0,
+            source_field="stat",
+            text=f"Статистика: {text}",
+            metadata={
+                "stat_id": stat.id,
+                "key": stat.key,
+                "group_name": stat.group_name,
+                "label": label or None,
+                "label_key": _normalize_key(label),
+                "value": value or None,
+            },
+        )
+    ]
+
+
 def _contact_docs(contact: ContactExport) -> Iterable[NormalizedDoc]:
     text = _join_lines(
         [
@@ -322,6 +603,49 @@ def _contact_docs(contact: ContactExport) -> Iterable[NormalizedDoc]:
         "is_primary": contact.is_primary,
     }
     return chunk_doc("contact", contact.id, text, meta, split_text)
+
+
+def _contact_item(contact: ContactExport) -> Iterable[NormalizedDoc]:
+    kind = _fix_text(contact.kind)
+    label = _fix_text(contact.label)
+    value = _fix_text(contact.value)
+    url = _fix_text(contact.url)
+
+    parts = []
+    if label and value:
+        parts.append(f"{label}: {value}")
+    elif kind and value:
+        parts.append(f"{kind}: {value}")
+    elif value:
+        parts.append(value)
+    if url:
+        parts.append(url)
+
+    text = " ".join([p for p in parts if p])
+    if not text:
+        return []
+
+    return [
+        _make_item_doc(
+            item_kind="contact",
+            parent_type="contact",
+            parent_id=contact.id,
+            item_id=contact.id,
+            order_index=getattr(contact, "order_index", 0) or 0,
+            source_field="contact",
+            text=f"Контакт: {text}",
+            metadata={
+                "contact_id": contact.id,
+                "kind": kind or None,
+                "kind_key": _normalize_key(kind),
+                "label": label or None,
+                "label_key": _normalize_key(label),
+                "value": value or None,
+                "url": url or None,
+                "is_primary": contact.is_primary,
+            },
+        )
+    ]
 
 
 def _catalog_docs(
@@ -411,14 +735,25 @@ def _catalog_docs(
         yield from chunk_doc("catalog", f"tech:company:{_stable_id(ckey)}", text, meta, split_text)
 
 
-def normalize_export(payload: ExportPayload) -> Iterable[NormalizedDoc]:
+def normalize_export(payload: ExportPayload, *, enable_atomic: bool = False) -> Iterable[NormalizedDoc]:
     if payload.profile:
         yield from _profile_docs(payload.profile)
 
     for exp in payload.experiences:
         yield from _experience_docs(exp)
+
+        if enable_atomic:
+            # Dedup: do not duplicate the same bullet both on experience and on nested projects.
+            seen_achievement_contents: set[str] = set()
         for proj in exp.projects:
             yield from _experience_project_docs(exp, proj)
+            if enable_atomic:
+                yield from _achievement_items_for_experience_project(exp, proj)
+                for bullet in _extract_markdown_bullets(proj.achievements_md):
+                    seen_achievement_contents.add(_stable_id(bullet))
+
+        if enable_atomic:
+            yield from _achievement_items_for_experience(exp, seen_hashes=seen_achievement_contents)
 
     tech_label_by_key: dict[str, str] = {}
     projects_by_tech: dict[str, list[ProjectExport]] = defaultdict(list)
@@ -443,17 +778,27 @@ def normalize_export(payload: ExportPayload) -> Iterable[NormalizedDoc]:
 
     for fa in payload.focus_areas:
         yield from _focus_area_docs(fa)
+        if enable_atomic:
+            yield from _focus_area_items(fa)
 
     for wa in payload.work_approaches:
         yield from _work_approach_docs(wa)
+        if enable_atomic:
+            yield from _work_approach_items(wa)
 
     for tf in payload.tech_focus:
         yield from _tech_focus_docs(tf)
+        if enable_atomic:
+            yield from _tech_focus_tag_items(tf)
 
     for stat in payload.stats:
         yield from _stat_docs(stat)
+        if enable_atomic:
+            yield from _stat_item(stat)
 
     for contact in payload.contacts:
         yield from _contact_docs(contact)
+        if enable_atomic:
+            yield from _contact_item(contact)
 
     yield from _catalog_docs(payload, projects_by_tech, tech_label_by_key)
