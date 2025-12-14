@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # === Feature flags (quality rollouts) ===
     rag_router_v2: bool = False  # Включить intent/entity-aware retrieval (план запроса, фильтры/буст по сущностям)
     rag_atomic_docs: bool = True  # Генерировать атомарные документы `type=item` для списков (achievements/tags/bullets/contacts/stats)
-    rag_context_packer_v2: bool = False  # Упаковщик контекста v2: для списков сохранять пункты, для остальных — компактно
+    rag_context_packer_v2: bool = True  # Упаковщик контекста v2: для списков сохранять пункты, для остальных — компактно
     agent_fact_tool: bool = False  # Агент использует инструмент факт-поиска (структурированные данные), а не готовый сгенерированный текст
     agent_memory_v2: bool = False  # Память диалога v2: follow-up детектор + summary (без “хвостов” из истории)
 

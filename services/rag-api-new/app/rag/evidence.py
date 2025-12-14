@@ -64,6 +64,9 @@ def _composite_score(sd: ScoredDoc, keys: list[str]) -> float:
 
 def _dedup_key(d: Doc) -> Tuple[str | None, str | None]:
     md = d.metadata or {}
+    if md.get("type") == "item":
+        base = md.get("doc_id") or md.get("ref_id")
+        return (str(base) if base is not None else None), None
     base = md.get("parent_id") or md.get("doc_id")
     if not base:
         t = md.get("type")
