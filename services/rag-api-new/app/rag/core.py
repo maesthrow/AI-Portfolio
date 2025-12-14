@@ -11,6 +11,7 @@ from .retrieval import HybridRetriever
 from .rank import rerank
 from .evidence import select_evidence, pack_context
 from .context import pack_context_v2
+from .search import portfolio_search
 from .types import ScoredDoc, SourceInfo
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,67 @@ def portfolio_rag_answer(
     vs = vectorstore(coll)
     llm = chat_llm()
     rr = reranker()
+
+    if cfg.rag_router_v2:
+        try:
+            search_res = portfolio_search(question, k=k, collection=coll)
+        except Exception:
+            logger.exception("portfolio_search failed, fallback to v1")
+            search_res = None
+
+        if search_res is not None:
+            merged_extra = extra_system
+            if search_res.plan.answer_instructions:
+                merged_extra = (
+                    f"{extra_system.strip()}\n{search_res.plan.answer_instructions}"
+                    if extra_system and extra_system.strip()
+                    else search_res.plan.answer_instructions
+                )
+            sys_prompt = make_system_prompt(merged_extra)
+            style_hint = search_res.plan.style_hint
+
+            if search_res.found <= 0 or not search_res.candidates:
+                out = llm.invoke(build_messages_when_empty(sys_prompt, question, style_hint))
+                return {
+                    "answer": out.content,
+                    "sources": [],
+                    "confidence": 0.0,
+                    "found": 0,
+                    "collection": coll,
+                    "model": cfg.chat_model,
+                }
+
+            base = search_res.evidence
+            confidence = float(search_res.confidence)
+            if cfg.rag_context_packer_v2:
+                context = pack_context_v2(
+                    question,
+                    base,
+                    char_budget=cfg.rag_pack_budget_chars,
+                    max_items=cfg.rag_list_max_items,
+                )
+            else:
+                context = pack_context(base, token_budget=900)
+
+            out = llm.invoke(build_messages_for_answer(sys_prompt, question, context, style_hint, confidence=confidence))
+
+            sources_payload = [asdict(s) for s in search_res.sources]
+            result = {
+                "answer": out.content,
+                "sources": sources_payload,
+                "confidence": confidence,
+                "found": int(search_res.found),
+                "collection": coll,
+                "model": cfg.chat_model,
+            }
+
+            logger.info(
+                "portfolio_rag_answer(v2): intent=%s, found=%s, sources_count=%s",
+                search_res.plan.intent.value,
+                result["found"],
+                len(sources_payload),
+            )
+            return result
 
     allowed_types, style_hint = _detect_intent(question)
     sys_prompt = make_system_prompt(extra_system)

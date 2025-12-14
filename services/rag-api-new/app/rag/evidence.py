@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Iterable, Tuple
 from .nlp import keywords
 from .types import Doc, ScoredDoc
+from .entities import normalize_key, EntityMatch
 
 
 def _kw_bonus(text: str, keys: list[str]) -> float:
@@ -44,6 +45,7 @@ def _type_weight(md: dict) -> float:
         "experience": 1.2,
         "experience_project": 1.15,
         "project": 1.1,
+        "item": 1.12,
         "technology": 1.0,
         "catalog": 0.98,
         "publication": 0.95,
@@ -158,3 +160,119 @@ def pack_context(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
         out_parts.append(block)
         used += add
     return "\n\n".join(out_parts)
+
+
+def _md_str_values(md: dict, keys: tuple[str, ...]) -> list[str]:
+    out: list[str] = []
+    for k in keys:
+        v = md.get(k)
+        if isinstance(v, str) and v.strip():
+            out.append(v.strip())
+        elif isinstance(v, list):
+            out.extend([str(x).strip() for x in v if str(x).strip()])
+    return out
+
+
+def _entity_match_score(md: dict, ent: EntityMatch) -> float:
+    kind = ent.kind
+    slug = (ent.slug or "").strip()
+    key = ent.key
+
+    if kind == "project":
+        slug_vals = _md_str_values(md, ("project_slug", "slug"))
+        key_vals = _md_str_values(md, ("project_slug_key", "project_name_key"))
+        name_vals = _md_str_values(md, ("project_name", "name", "title"))
+    elif kind == "company":
+        slug_vals = _md_str_values(md, ("company_slug",))
+        key_vals = _md_str_values(md, ("company_slug_key", "company_name_key"))
+        name_vals = _md_str_values(md, ("company_name", "company", "name"))
+    elif kind == "technology":
+        slug_vals = _md_str_values(md, ("slug",))
+        key_vals = _md_str_values(md, ("slug", "name"))
+        name_vals = _md_str_values(md, ("name", "title"))
+    else:
+        return 0.0
+
+    if slug:
+        slug_norm = normalize_key(slug)
+        for v in slug_vals:
+            if normalize_key(v) == slug_norm:
+                return 1.0
+        for v in key_vals:
+            if normalize_key(v) == slug_norm:
+                return 1.0
+
+    if key:
+        for v in key_vals:
+            if normalize_key(v) == key:
+                return 0.9
+        for v in name_vals:
+            vn = normalize_key(v)
+            if vn == key:
+                return 0.75
+            if key and vn and (key in vn or vn in key):
+                return 0.55
+
+    return 0.0
+
+
+def apply_entity_policy(
+    scored: list[ScoredDoc],
+    *,
+    entities: list[EntityMatch] | None,
+    policy: str,
+    scope_types: set[str] | None = None,
+) -> list[ScoredDoc]:
+    """
+    Entity-aware post-processing поверх reranker-скоринга.
+
+    - strict: отфильтровать документы "вне сущности" (но не трогать типы вне scope_types).
+    - boost: слегка поднять score документам, которые матчятся по сущности.
+
+    Всегда safe: если strict отрезал всё — вернуть исходный список.
+    """
+    if not scored or not entities or policy == "none":
+        return scored
+
+    scope = set(scope_types) if scope_types else None
+
+    def in_scope(md: dict) -> bool:
+        if not scope:
+            return True
+        t = md.get("type")
+        return t in scope
+
+    def match_score(md: dict) -> float:
+        best = 0.0
+        for e in entities:
+            best = max(best, _entity_match_score(md, e) * float(e.score or 1.0))
+        return best
+
+    if policy == "strict":
+        filtered: list[ScoredDoc] = []
+        for sd in scored:
+            md = sd.doc.metadata or {}
+            if not in_scope(md):
+                filtered.append(sd)
+                continue
+            if match_score(md) > 0.0:
+                filtered.append(sd)
+        return filtered if filtered else scored
+
+    if policy == "boost":
+        boosted: list[ScoredDoc] = []
+        for sd in scored:
+            md = sd.doc.metadata or {}
+            if not in_scope(md):
+                boosted.append(sd)
+                continue
+            m = match_score(md)
+            if m <= 0.0:
+                boosted.append(sd)
+                continue
+            factor = 1.0 + min(0.35, 0.18 + 0.25 * m)
+            boosted.append(ScoredDoc(sd.doc, float(sd.score) * factor))
+        boosted.sort(key=lambda x: x.score, reverse=True)
+        return boosted
+
+    return scored

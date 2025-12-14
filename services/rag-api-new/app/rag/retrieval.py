@@ -125,9 +125,23 @@ class HybridRetriever:
         k_bm: int,
         k_final: int,
         allowed_types: set[str] | None = None,
+        where: dict | None = None,
+        *,
+        strict: bool = False,
     ) -> list[Doc]:
-        where = {"type": {"$in": list(allowed_types)}} if allowed_types else None
-        dense_docs = self.vs.similarity_search(question, k=k_dense, filter=where) if where else \
+        where_final = dict(where or {})
+        if allowed_types:
+            prev = where_final.get("type")
+            if isinstance(prev, dict) and isinstance(prev.get("$in"), list):
+                allow = set(allowed_types)
+                where_final["type"] = {"$in": [t for t in prev["$in"] if t in allow]}
+            elif isinstance(prev, str):
+                where_final["type"] = prev if prev in allowed_types else {"$in": list(allowed_types)}
+            else:
+                where_final["type"] = {"$in": list(allowed_types)}
+        where_final = where_final or None
+
+        dense_docs = self.vs.similarity_search(question, k=k_dense, filter=where_final) if where_final else \
                      self.vs.similarity_search(question, k=k_dense)
         dense_pairs = []
         for i, d in enumerate(dense_docs):
@@ -148,6 +162,42 @@ class HybridRetriever:
 
         docs = [Doc(d.page_content, d.metadata or {}) for d in candidates]
         docs = self._filter_types(docs, allowed_types)
+        if where_final:
+            docs = _filter_where(docs, where_final)
         docs = mmr_order(docs, question, k=max(k_final * 2, k_final))
         docs = expand_by_project(self.vs, question, docs, k_related=max(48, k_final * 6))
+        if strict:
+            docs = self._filter_types(docs, allowed_types)
+            if where_final:
+                docs = _filter_where(docs, where_final)
         return docs
+
+
+def _match_where_value(value: Any, cond: Any) -> bool:
+    if isinstance(cond, dict) and "$in" in cond and isinstance(cond["$in"], list):
+        target = set(map(str, cond["$in"]))
+        if isinstance(value, list):
+            return any(str(v) in target for v in value)
+        return str(value) in target
+    if isinstance(value, list):
+        return any(str(v) == str(cond) for v in value)
+    return str(value) == str(cond)
+
+
+def _filter_where(docs: list[Doc], where: dict) -> list[Doc]:
+    out: list[Doc] = []
+    for d in docs:
+        md = d.metadata or {}
+        ok = True
+        for k, cond in where.items():
+            if k == "type":
+                continue  # already applied by allowed_types and _filter_types
+            if k not in md:
+                ok = False
+                break
+            if not _match_where_value(md.get(k), cond):
+                ok = False
+                break
+        if ok:
+            out.append(d)
+    return out

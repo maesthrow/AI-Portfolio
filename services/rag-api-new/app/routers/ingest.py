@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from app.deps import settings, vectorstore
 from app.indexing import bm25
 from app.indexing.persistence import bm25_try_load, bm25_try_save
+from app.rag.entities import clear_entity_registry_cache
 from app.schemas.ingest import IngestItem, IngestRequest, IngestResult
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,7 @@ def upsert_documents(collection: str, items: list[IngestItem]) -> IngestResult:
     except Exception:
         logger.warning("bm25 snapshot save failed", exc_info=True)
 
+    clear_entity_registry_cache()
     return IngestResult(ok=True, upserted=upserted, collection=collection)
 
 

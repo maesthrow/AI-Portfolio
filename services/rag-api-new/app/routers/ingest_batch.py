@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.deps import settings
 from app.indexing.normalizer import normalize_export
+from app.rag.entities import clear_entity_registry_cache
 from app.schemas.export import ExportPayload
 from app.schemas.ingest import IngestBatchResult, IngestItem
 from .ingest import upsert_documents
@@ -23,4 +24,5 @@ def ingest_batch(payload: ExportPayload):
         return IngestBatchResult(added=0, collection=coll)
 
     res = upsert_documents(coll, items)
+    clear_entity_registry_cache()
     return IngestBatchResult(added=res.upserted, collection=res.collection)

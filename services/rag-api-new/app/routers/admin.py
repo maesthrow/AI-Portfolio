@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from app.deps import chroma_client, settings, vectorstore
 from app.indexing import bm25
 from app.schemas.admin import ClearResult, StatsResult
+from app.rag.entities import clear_entity_registry_cache
 
 router = APIRouter(prefix="/api/v1", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -27,6 +28,10 @@ def clear_collection():
             bm25.reset(collection_name)
         except Exception:
             logger.warning("BM25 reset failed", exc_info=True)
+        try:
+            clear_entity_registry_cache()
+        except Exception:
+            logger.warning("Entity registry cache clear failed", exc_info=True)
 
     vectorstore(collection_name)
     return ClearResult(ok=True, collection=collection_name, recreated=True)
