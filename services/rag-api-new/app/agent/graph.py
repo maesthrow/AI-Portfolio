@@ -97,6 +97,7 @@ def build_agent_graph():
 
     cfg = settings()
     use_fact_tool = bool(getattr(cfg, "agent_fact_tool", False))
+    use_memory_v2 = bool(getattr(cfg, "agent_memory_v2", False))
 
     agent_rules = AGENT_SYSTEM_PROMPT_FACT if use_fact_tool else AGENT_SYSTEM_PROMPT_LEGACY
     system_prompt = f"{make_system_prompt(None)}\n\n{agent_rules}"
@@ -107,5 +108,5 @@ def build_agent_graph():
         model=chat_llm(),
         tools=tools,
         system_prompt=system_prompt,
-        checkpointer=MemorySaver(),
+        checkpointer=None if use_memory_v2 else MemorySaver(),
     )

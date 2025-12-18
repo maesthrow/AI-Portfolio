@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -10,7 +11,9 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
-from app.deps import agent_app
+from app.agent.followup import FollowUpContext, detect_follow_up
+from app.agent.memory import build_memory_messages, generate_summary, memory_store
+from app.deps import agent_app, chat_llm, settings
 from app.schemas.chat import ChatRequest
 
 logger = logging.getLogger(__name__)
@@ -96,6 +99,24 @@ async def _iterate_agent_events(agent, state: dict[str, Any], config: dict[str, 
         yield {"event": "on_chat_model_stream", "data": {"chunk": type("Chunk", (), {"content": content})()}}
 
 
+async def _run_summary_job(job) -> None:
+    try:
+        llm = chat_llm()
+        summary = await generate_summary(
+            llm,
+            previous_summary=job.previous_summary,
+            turns=job.turns,
+            max_chars=job.max_chars,
+        )
+        await memory_store.apply_summary(job, summary)
+    except Exception:
+        logger.warning("Summary job failed", exc_info=True)
+        try:
+            await memory_store.cancel_summary_job(job.session_id)
+        except Exception:
+            pass
+
+
 @router.post("/agent/chat/stream")
 async def chat_stream(req: ChatRequest):
     agent = agent_app()
@@ -103,17 +124,41 @@ async def chat_stream(req: ChatRequest):
     message_id = str(uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 
+    cfg = settings()
     thread_id = req.session_id or "anon"
     config = {"configurable": {"thread_id": thread_id}}
 
+    use_memory_v2 = bool(getattr(cfg, "agent_memory_v2", False))
+
+    user_question = req.question
     question = req.question
     if req.system_prompt:
         question = f"{question}\n\nДоп. инструкции: {req.system_prompt.strip()}"
 
-    state = {
-        "messages": [HumanMessage(content=question)],
-        "user_id": req.session_id,
-    }
+    followup_result = None
+    if use_memory_v2:
+        snapshot = await memory_store.snapshot(thread_id, recent_turns=cfg.agent_recent_turns)
+        ctx = FollowUpContext(summary=snapshot.summary, recent_turns=snapshot.recent_turns, entity_ids=snapshot.entity_ids)
+        followup_result = detect_follow_up(user_question, ctx, collection=cfg.chroma_collection)
+
+        if not followup_result.is_follow_up:
+            await memory_store.reset(thread_id)
+            snapshot = await memory_store.snapshot(thread_id, recent_turns=cfg.agent_recent_turns)
+
+        messages = []
+        if followup_result.is_follow_up and not snapshot.is_empty:
+            messages.extend(build_memory_messages(snapshot))
+        messages.append(HumanMessage(content=question))
+
+        state = {
+            "messages": messages,
+            "user_id": thread_id,
+        }
+    else:
+        state = {
+            "messages": [HumanMessage(content=question)],
+            "user_id": req.session_id,
+        }
 
     async def event_generator():
         usage = None
@@ -158,6 +203,22 @@ async def chat_stream(req: ChatRequest):
 
         if not sent_delta and final_text:
             yield json.dumps({"type": "delta", "content": final_text}, ensure_ascii=False) + "\n"
+
+        if use_memory_v2 and final_text:
+            try:
+                job = await memory_store.record_turn(
+                    thread_id,
+                    user=user_question,
+                    assistant=final_text,
+                    user_entity_ids=getattr(followup_result, "question_entity_ids", None),
+                    recent_turns=cfg.agent_recent_turns,
+                    summary_trigger_turns=cfg.agent_summary_trigger_turns,
+                    summary_max_chars=cfg.agent_summary_max_chars,
+                )
+                if job is not None:
+                    asyncio.create_task(_run_summary_job(job))
+            except Exception:
+                logger.warning("Memory v2 update failed", exc_info=True)
 
         yield json.dumps(
             {"type": "end", "message_id": message_id, "usage": _format_usage(usage)},
