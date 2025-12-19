@@ -378,6 +378,7 @@ docker compose -f compose.apps.yaml up -d --build content-api
 - TypeScript/React: `PascalCase.tsx` для компонентов, `useX.ts` для хуков, `camelCase.ts` для утилит
 
 ### Изменения кода
+- Всегда соблюдайте принципы чистого кода: SOLID, DRY, KISS
 - Меняйте только явные файлы из задачи
 - Соблюдайте текущую структуру проекта
 - Не допускайте циклических импортов в backend

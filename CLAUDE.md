@@ -378,6 +378,7 @@ Currently no test suite is configured. When adding tests, use:
 - TypeScript/React: `PascalCase.tsx` for components, `useX.ts` for hooks, `camelCase.ts` for utilities
 
 ### Code Changes
+- Always follow the principles of clean code: SOLID, DRY, KISS
 - Only modify files explicitly mentioned in the task
 - Maintain existing project structure
 - No circular imports in backend
