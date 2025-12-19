@@ -182,7 +182,7 @@ EXPERIENCE_DATA = [
         "project_name": "F3 TAIL",
         "project_slug": "f3-tail",
         "project_url": None,
-        "start_date": date(2023, 9, 4),
+        "start_date": date(2023, 8, 4),
         "end_date": date(2024, 5, 10),
         "is_current": False,
         "kind": "commercial",
@@ -207,8 +207,8 @@ EXPERIENCE_DATA = [
         "project_name": "СКИО",
         "project_slug": "skio",
         "project_url": None,
-        "start_date": date(2022, 8, 1),
-        "end_date": date(2023, 9, 1),
+        "start_date": date(2021, 9, 1),
+        "end_date": date(2023, 8, 1),
         "is_current": False,
         "kind": "commercial",
         "company_role_md": "Проектировал и реализовывал систему учета и контроля испытательного оборудования для ракетно‑космического центра.",
@@ -321,7 +321,7 @@ PROJECTS_DATA = [
             "Серверная часть и БД системы контроля испытательного оборудования (СКИО): "
             "проектирование схемы БД, отчёты CSV/COPY, автоматизация выгрузок."
         ),
-        "period": "2022–2023",
+        "period": "2021–2023",
         "company_name": "АО «РКЦ «Прогресс»",
         "company_website": "https://samspace.ru",
         "domain": "industrial",
@@ -464,14 +464,14 @@ STATS_DATA = [
     {
         "key": "experience_years",
         "label": "Опыт в разработке",
-        "value": "3+ года",
-        "hint": "Python + .NET, backend и ML",
+        "value": "4+ года",
+        "hint": "Python / .NET, Backend / ML / AI",
         "group_name": "about",
         "order_index": 20,
     },
     {
         "key": "ml_projects",
-        "label": "ML / CV / RAG проекты",
+        "label": "ML-проекты",
         "value": "5+",
         "hint": "",
         "group_name": "about",
@@ -482,35 +482,37 @@ STATS_DATA = [
 TECH_FOCUS_DATA = [
     {
         "label": "RAG, агенты и LLM",
-        "description": "RAG-системы, агентные пайплайны, работа с векторными хранилищами.",
+        "description": "AI-агенты, RAG-системы, работа с векторными хранилищами.",
         "order_index": 10,
         "tags": [
             "LangChain",
             "LangGraph",
             "RAG",
-            "Vector stores",
-            "GigaChat / Qwen",
-            "vLLM",
-            "LiteLLM",
-            "TEI",
             "ReAct",
+            "ChromaDB",
+            "Qdrant",
+            "OpenAI API",
+            "GigaChat",
+            "Qwen",
+            "DeepSeek",
         ],
     },
     {
-        "label": "CV и детекция объектов",
-        "description": "Компьютерное зрение для реальных бизнес-процессов.",
+        "label": "ML и CV",
+        "description": "Машинное обучение, компьютерное зрение.",
         "order_index": 20,
         "tags": [
+            "Ultralytics"
             "YOLO",
             "Detectron2",
-            "Logo detection",
-            "Segmentation",
-            "Image pipelines",
+            "OpenCV",
+            "NumPy",
+            "Pandas",
         ],
     },
     {
         "label": "Backend и интеграции",
-        "description": "Python/.NET backend, API, брокеры сообщений, интеграции.",
+        "description": "Python/.NET backend, API, брокеры сообщений, фоновые задачи.",
         "order_index": 30,
         "tags": [
             "FastAPI",
@@ -529,7 +531,8 @@ TECH_FOCUS_DATA = [
             "Docker",
             "MLflow",
             "vLLM",
-            "GitLab CI",
+            "LiteLLM",
+            "GitLab",
         ],
     },
 ]
@@ -620,7 +623,7 @@ SECTION_META_DATA = [
     {
         "section_key": "experience",
         "title": "Коммерческий опыт",
-        "subtitle": "Коммерческие проекты и компании: ML/LLM-решения, RAG-системы и устойчивые backend-сервисы.",
+        "subtitle": "Коммерческие проекты и компании: AI-продукты, backend-сервисы и интеграционные решения",
     },
     {
         "section_key": "contacts",
@@ -630,7 +633,7 @@ SECTION_META_DATA = [
     {
         "section_key": "projects",
         "title": "Избранные проекты",
-        "subtitle": "Проекты, в которых я участвовал или создавал с нуля.",
+        "subtitle": "Проекты, которые я создал и продолжаю развивать",
     },
     {
         "section_key": "tech_focus",
