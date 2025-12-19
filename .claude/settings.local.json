@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc --noEmit)",
-      "Bash(alembic revision:*)"
+      "Bash(alembic revision:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

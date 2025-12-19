@@ -98,3 +98,13 @@ def agent_app():
     LangGraph-приложение (ReAct-агент) с памятью.
     """
     return build_agent_graph()
+
+
+def graph_store():
+    """
+    Получить хранилище графа знаний.
+
+    Не кэшируется через lru_cache, т.к. граф может перестраиваться при инжесте.
+    """
+    from .graph.store import get_graph_store
+    return get_graph_store()

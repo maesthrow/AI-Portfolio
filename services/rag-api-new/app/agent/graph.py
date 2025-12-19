@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import List
 
 from langchain_core.messages import SystemMessage, BaseMessage, HumanMessage
@@ -7,6 +8,8 @@ from langchain.agents import create_agent
 from langgraph.checkpoint.memory import MemorySaver
 
 from ..rag.prompting import make_system_prompt
+
+logger = logging.getLogger(__name__)
 
 # ⚙️ Специальный промпт именно для АГЕНТА-ОРКЕСТРАТОРА (не для финального ответа)
 AGENT_SYSTEM_PROMPT = """
@@ -45,20 +48,64 @@ AGENT_SYSTEM_PROMPT = """
 """
 
 
+AGENT_GRAPH_TOOL_PROMPT = """
+ДОПОЛНИТЕЛЬНЫЙ ИНСТРУМЕНТ - graph_query_tool:
+Используй для быстрого получения структурированных фактов:
+- intent='achievements' - список достижений (entity_key = slug проекта/компании)
+- intent='current_job' - текущее место работы
+- intent='contacts' - контактная информация
+- intent='languages' - языки программирования
+- intent='technologies' - технологии (entity_key = slug проекта)
+- intent='project_details', entity_key='<slug>' - детали конкретного проекта
+- intent='experience' - опыт работы
+
+Если graph_query_tool не нашёл данные (found=false), используй portfolio_rag_tool для полного поиска.
+Предпочитай graph_query_tool для вопросов с конкретным проектом/компанией.
+"""
+
+
 def build_agent_graph():
     """
     ReAct-агент с памятью по thread_id (session_id) и жёстким требованием звать RAG-tool.
+
+    При включённых feature flags:
+    - rag_router_v2: использует portfolio_rag_tool_v2 вместо portfolio_rag_tool
+    - agent_fact_tool + graph_rag_enabled: добавляет graph_query_tool
     """
     from .tools import portfolio_rag_tool, list_projects_tool
-    from ..deps import chat_llm
+    from ..deps import chat_llm, settings
 
+    cfg = settings()
     llm = chat_llm()
-    system_prompt = f"{make_system_prompt(None)}\n\n{AGENT_SYSTEM_PROMPT}"
     checkpointer = MemorySaver()
 
+    # Базовые инструменты
+    tools = [portfolio_rag_tool, list_projects_tool]
+    extra_prompt = ""
+
+    # === Feature flags ===
+
+    # rag_router_v2: заменяем portfolio_rag_tool на v2
+    if cfg.rag_router_v2:
+        from .tools_v2 import portfolio_rag_tool_v2
+        tools = [portfolio_rag_tool_v2, list_projects_tool]
+        logger.info("Agent using portfolio_rag_tool_v2 (rag_router_v2=true)")
+
+    # agent_fact_tool + graph_rag_enabled: добавляем graph_query_tool
+    if cfg.agent_fact_tool and cfg.graph_rag_enabled:
+        from .tools_v2 import graph_query_tool
+        tools.append(graph_query_tool)
+        extra_prompt = AGENT_GRAPH_TOOL_PROMPT
+        logger.info("Agent using graph_query_tool (agent_fact_tool=true, graph_rag_enabled=true)")
+
+    # Формируем системный промпт
+    system_prompt = f"{make_system_prompt(None)}\n\n{AGENT_SYSTEM_PROMPT}"
+    if extra_prompt:
+        system_prompt += extra_prompt
+
     agent = create_agent(
-        model=llm,  # голая модель, tools ей передаст сам create_react_agent
-        tools=[portfolio_rag_tool, list_projects_tool],
+        model=llm,
+        tools=tools,
         system_prompt=system_prompt,
         checkpointer=checkpointer
     )
