@@ -24,6 +24,7 @@ _INTENT_RULES: List[Tuple[Intent, List[str], Set[str] | None, str | None]] = [
             "где работает",
             "текущ",
             "сейчас работаешь",
+            "сейчас работает",
             "current position",
             "current job",
             "текущее место",

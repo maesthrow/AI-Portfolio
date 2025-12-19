@@ -6,7 +6,7 @@ from fastapi import APIRouter
 
 from app.deps import chroma_client, settings, vectorstore
 from app.indexing import bm25
-from app.schemas.admin import ClearResult, StatsResult
+from app.schemas.admin import ClearResult, StatsResult, GraphStats
 
 router = APIRouter(prefix="/api/v1", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -49,4 +49,21 @@ def collection_stats():
             counts[t] = counts.get(t, 0) + 1
         by_type = counts
 
-    return StatsResult(collection=cfg.chroma_collection, total=total, by_type=by_type)
+    # === Graph-RAG: статистика графа ===
+    graph_stats = None
+    if cfg.graph_rag_enabled:
+        from app.graph.store import get_graph_store
+        store = get_graph_store()
+        stats = store.stats()
+        graph_stats = GraphStats(
+            nodes=stats["nodes"],
+            edges=stats["edges"],
+            nodes_by_type=stats["nodes_by_type"],
+        )
+
+    return StatsResult(
+        collection=cfg.chroma_collection,
+        total=total,
+        by_type=by_type,
+        graph_stats=graph_stats,
+    )

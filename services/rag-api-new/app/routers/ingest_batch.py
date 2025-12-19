@@ -22,4 +22,11 @@ def ingest_batch(payload: ExportPayload):
         return IngestBatchResult(added=0, collection=coll)
 
     res = upsert_documents(coll, items)
+
+    # === Graph-RAG: построение графа знаний ===
+    cfg = settings()
+    if cfg.graph_rag_enabled:
+        from app.graph.builder import build_graph_from_export
+        build_graph_from_export(payload)
+
     return IngestBatchResult(added=res.upserted, collection=res.collection)

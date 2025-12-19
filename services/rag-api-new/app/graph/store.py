@@ -152,7 +152,7 @@ class GraphStore:
         return {
             "nodes": len(self._nodes),
             "edges": len(self._edges),
-            "by_type": {t.value: len(ids) for t, ids in self._by_type.items() if ids},
+            "nodes_by_type": {t.name: len(ids) for t, ids in self._by_type.items() if ids},
         }
 
 

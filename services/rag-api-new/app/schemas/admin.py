@@ -11,7 +11,15 @@ class ClearResult(BaseModel):
     recreated: bool
 
 
+class GraphStats(BaseModel):
+    """Статистика графа знаний."""
+    nodes: int
+    edges: int
+    nodes_by_type: dict[str, int]
+
+
 class StatsResult(BaseModel):
     collection: str
     total: int
     by_type: dict[str, Any] | None = None
+    graph_stats: GraphStats | None = None
