@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter
 
 from app.deps import settings
+
+logger = logging.getLogger(__name__)
 from app.indexing.normalizer import normalize_export
 from app.schemas.export import ExportPayload
 from app.schemas.ingest import IngestBatchResult, IngestItem
@@ -25,8 +29,10 @@ def ingest_batch(payload: ExportPayload):
 
     # === Graph-RAG: построение графа знаний ===
     cfg = settings()
+    logger.info("graph_rag_enabled=%s", cfg.graph_rag_enabled)
     if cfg.graph_rag_enabled:
         from app.graph.builder import build_graph_from_export
-        build_graph_from_export(payload)
+        store = build_graph_from_export(payload)
+        logger.info("Graph built: %s", store.stats())
 
     return IngestBatchResult(added=res.upserted, collection=res.collection)

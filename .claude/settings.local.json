@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npx tsc --noEmit)",
       "Bash(alembic revision:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(python -m pytest tests/test_smoke.py -v)"
     ],
     "deny": [],
     "ask": []
