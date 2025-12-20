@@ -6,6 +6,7 @@ Portfolio Search - оркестратор поиска.
 """
 from __future__ import annotations
 
+import re
 import logging
 from dataclasses import asdict
 from typing import Any, List
@@ -13,7 +14,7 @@ from typing import Any, List
 from ..deps import settings, vectorstore, reranker
 from ..graph.query import graph_query
 from .query_plan import plan_query
-from .search_types import SearchResult, Intent, EntityPolicy, Entity
+from .search_types import SearchResult, Intent, EntityPolicy, Entity, EntityType
 from .retrieval import HybridRetriever
 from .rank import rerank
 from .evidence import select_evidence, pack_context
@@ -55,6 +56,35 @@ def _apply_entity_filter(docs: List[Doc], entities: List[Entity], policy: Entity
     entity_slugs = {e.slug.lower() for e in entities}
     entity_names = {e.name.lower() for e in entities}
 
+    def _token_match(text: str, token: str) -> bool:
+        token = (token or "").strip().lower()
+        if not token:
+            return False
+        tl = (text or "").lower()
+        if not tl:
+            return False
+        if len(token) <= 3 and token.isalnum():
+            return re.search(rf"(?<![\\w-]){re.escape(token)}(?![\\w-])", tl) is not None
+        return token in tl
+
+    def _value_matches(val: Any) -> bool:
+        if val is None:
+            return False
+        if isinstance(val, (list, tuple, set)):
+            return any(_value_matches(v) for v in val)
+        if not isinstance(val, str):
+            val = str(val)
+        val_lower = val.lower()
+        if val_lower in entity_slugs or val_lower in entity_names:
+            return True
+        for tok in entity_slugs:
+            if _token_match(val_lower, tok):
+                return True
+        for tok in entity_names:
+            if _token_match(val_lower, tok):
+                return True
+        return False
+
     def matches_entity(doc: Doc) -> bool:
         md = doc.metadata or {}
         for key in ["slug", "project_slug", "company_slug", "name", "title", "ref_id"]:
@@ -69,14 +99,38 @@ def _apply_entity_filter(docs: List[Doc], entities: List[Entity], policy: Entity
                         return True
         return False
 
+    def matches_entity_ext(doc: Doc) -> bool:
+        md = doc.metadata or {}
+        for key in [
+            "slug",
+            "project_slug",
+            "company_slug",
+            "name",
+            "title",
+            "ref_id",
+            "technologies",
+            "technologies_csv",
+            "tags",
+            "tags_csv",
+            "project_names",
+            "project_names_csv",
+        ]:
+            if _value_matches(md.get(key)):
+                return True
+        return _value_matches(doc.page_content or "")
+
     if policy == EntityPolicy.STRICT:
-        filtered = [d for d in docs if matches_entity(d)]
+        filtered = [d for d in docs if matches_entity_ext(d)]
         # Если STRICT вернул пусто, возвращаем исходные (fallback)
-        return filtered if filtered else docs
+        if filtered:
+            return filtered
+        if any(e.type == EntityType.TECHNOLOGY for e in entities):
+            return []
+        return docs
 
     # BOOST: matching первыми
-    matching = [d for d in docs if matches_entity(d)]
-    non_matching = [d for d in docs if not matches_entity(d)]
+    matching = [d for d in docs if matches_entity_ext(d)]
+    non_matching = [d for d in docs if not matches_entity_ext(d)]
     return matching + non_matching
 
 
@@ -199,6 +253,11 @@ def portfolio_search(
         confidence = min(1.0, max(0.0, avg))
     else:
         confidence = 0.0
+
+    logger.info(
+        "evidence_docs: %s",
+        [f'{e}\n' for e in evidence_docs],
+    )
 
     # === Pack Context ===
     context = pack_context(evidence_docs, token_budget=900)

@@ -16,7 +16,6 @@ class Intent(str, Enum):
     ACHIEVEMENTS = "achievements"
     CURRENT_JOB = "current_job"
     LANGUAGES = "languages"
-    RAG_USAGE = "rag_usage"
     CONTACTS = "contacts"
     PROJECT_DETAILS = "project_details"
     TECHNOLOGIES = "technologies"

@@ -199,7 +199,6 @@ _NOT_FOUND_RESPONSES: dict[Intent, str] = {
     Intent.CURRENT_JOB: "Информации о текущем месте работы нет в портфолио.",
     Intent.EXPERIENCE: "Такого опыта работы в портфолио нет.",
     Intent.LANGUAGES: "Информации об этом языке программирования нет.",
-    Intent.RAG_USAGE: "Информации по этой теме нет в портфолио.",
     Intent.GENERAL: "Такой информации в портфолио нет.",
 }
 

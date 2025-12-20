@@ -5,11 +5,34 @@ Query Planning - планирование запросов.
 и формирует QueryPlan для оптимального поиска.
 """
 from __future__ import annotations
-
 from typing import List, Set, Tuple
 
-from .search_types import Intent, QueryPlan, Entity, EntityPolicy
+from .search_types import Intent, QueryPlan, Entity, EntityPolicy, EntityType
 from .entities import get_entity_registry
+
+
+_USAGE_PHRASES: tuple[str, ...] = (
+    # RU
+    "где примен",
+    "где использ",
+    "в каких проектах",
+    "на каких проектах",
+    "проекты с использованием",
+    "проекты с применением",
+    "с использованием",
+    "с применением",
+    "используется в",
+    "использовал",
+    "применял",
+    # EN
+    "where used",
+    "used in",
+)
+
+
+def _looks_like_usage_query(question: str) -> bool:
+    q = (question or "").lower()
+    return any(p in q for p in _USAGE_PHRASES)
 
 
 # === Intent classification rules ===
@@ -82,7 +105,7 @@ _INTENT_RULES: List[Tuple[Intent, List[str], Set[str] | None, str | None]] = [
     ),
     # RAG и связанные технологии
     (
-        Intent.RAG_USAGE,
+        Intent.TECHNOLOGIES,
         [
             "rag",
             "агент",
@@ -95,7 +118,7 @@ _INTENT_RULES: List[Tuple[Intent, List[str], Set[str] | None, str | None]] = [
             "gpt",
             "нейросет",
         ],
-        {"project", "tech_focus", "technology", "experience_project"},
+        {"technology", "project", "tech_focus", "experience_project", "catalog"},
         "LIST",
     ),
     # Контакты
@@ -200,7 +223,7 @@ def _determine_entity_policy(intent: Intent, entities: List[Entity]) -> EntityPo
         return EntityPolicy.STRICT
 
     # Для достижений и технологий - повышение, но не исключение
-    if intent in {Intent.ACHIEVEMENTS, Intent.TECHNOLOGIES, Intent.RAG_USAGE}:
+    if intent in {Intent.ACHIEVEMENTS, Intent.TECHNOLOGIES}:
         return EntityPolicy.BOOST
 
     return EntityPolicy.NONE
@@ -231,7 +254,18 @@ def plan_query(question: str, use_graph_feature: bool = True) -> QueryPlan:
     registry = get_entity_registry()
     entities = registry.extract_entities(question)
 
+    # Общий кейс "где применял/использовал <технология>": это всё ещё TECHNOLOGIES (без частных intent'ов),
+    # но с более узкими типами документов и более строгой фильтрацией.
+    is_usage_query = _looks_like_usage_query(question)
+    has_tech_entity = any(e.type == EntityType.TECHNOLOGY for e in entities)
+    if is_usage_query and has_tech_entity:
+        intent = Intent.TECHNOLOGIES
+        allowed_types = {"technology", "project", "experience_project"}
+        style_hint = "LIST"
+
     entity_policy = _determine_entity_policy(intent, entities)
+    if is_usage_query and has_tech_entity:
+        entity_policy = EntityPolicy.STRICT
     use_graph = use_graph_feature and _should_use_graph(intent, entities)
 
     # Настройка параметров выборки в зависимости от Intent

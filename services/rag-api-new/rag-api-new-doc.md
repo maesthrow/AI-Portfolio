@@ -200,7 +200,8 @@
 `services/rag-api-new/app/rag/query_plan.py:build_query_plan(...)` делает:
 
 1) **Intent detection** (эвристики по токенам) → `Intent`:
-   - `CONTACTS`, `CURRENT_JOB`, `ACHIEVEMENTS`, `RAG_USAGE`, `LANGUAGES`, `PROJECT_DETAILS`, иначе `GENERAL`.
+   - `CONTACTS`, `CURRENT_JOB`, `ACHIEVEMENTS`, `TECHNOLOGIES`, `LANGUAGES`, `PROJECT_DETAILS`, иначе `GENERAL`.
+   - Запросы про RAG/LLM/Agents и кейсы вида "где применял <технология>" трактуются как `TECHNOLOGIES` (без отдельного частного intent).
 2) **Entity extraction**:
    - строится `EntityRegistry` из всех metadatas в Chroma (`get_entity_registry`, кэшируется),
    - из вопроса выделяются `EntityMatch` по алиасам (проекты/компании/технологии).
