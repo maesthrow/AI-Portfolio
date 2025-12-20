@@ -77,18 +77,29 @@ class AnswerLLM:
             truncate_text((payload.meta or {}).get("evidence"), limit=400),
         )
 
-        # Handle not found case
-        if not payload.found or not payload.items:
+        evidence_text = (payload.meta or {}).get("evidence")
+        evidence_text = evidence_text if isinstance(evidence_text, str) else str(evidence_text or "")
+        evidence_text = evidence_text.strip()
+
+        # Handle not found case (no facts and no evidence context)
+        if not payload.items and not evidence_text and not payload.found:
             logger.info("Answer not-found: query=%r", truncate_text(payload.query, limit=400))
             return self._get_not_found_response(payload)
 
         # Pre-render facts for context
-        rendered_facts = self.renderer.render(
-            facts=payload.items,
-            style=payload.render_style,
-            intents=payload.intents,
-        )
+        if payload.items:
+            rendered_facts = self.renderer.render(
+                facts=payload.items,
+                style=payload.render_style,
+                intents=payload.intents,
+            )
+        else:
+            rendered_facts = evidence_text
         logger.info("Answer rendered_facts=%r", truncate_text(rendered_facts, limit=2000))
+
+        if not rendered_facts:
+            logger.info("Answer not-found (empty context): query=%r", truncate_text(payload.query, limit=400))
+            return self._get_not_found_response(payload)
 
         # Get style instruction
         style_instruction = self._get_style_instruction(payload)

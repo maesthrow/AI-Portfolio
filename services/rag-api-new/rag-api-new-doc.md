@@ -56,7 +56,7 @@
 
 ### Feature flags (качество/эволюция)
 
-- `rag_router_v2` — включает v2-маршрутизацию поиска через `portfolio_search` (intent/entity-aware).
+- `rag_router_v2` — включает v2-маршрутизацию поиска через `portfolio_search` (intent/entity-aware). В режиме v3 (`planner_llm_v3=true`) `portfolio_search` возвращает retrieval-контекст (без вызова `portfolio_rag_answer`), чтобы финальный ответ генерировал Answer LLM.
 - `rag_atomic_docs` — при ingest/batch генерирует атомарные документы `type=item` (achievements/tags/bullets/contacts/stats).
 - `rag_context_packer_v2` — включает упаковщик контекста v2 (`pack_context_v2`).
 - `agent_fact_tool` — агент использует `portfolio_search_tool` (структурированный поиск фактов), а не `portfolio_rag_tool` (готовый текстовый RAG-ответ).
@@ -369,7 +369,7 @@
 
 ### 11.2 Инструменты агента (tools)
 
-Определены в `services/rag-api-new/app/agent/tools.py`.
+Определены в `services/rag-api-new/app/agent/agent_tools.py` (файловые tool-обёртки для агента). План-исполнитель использует пакет `services/rag-api-new/app/agent/tools/`.
 
 #### `portfolio_search_tool(question) -> dict`
 

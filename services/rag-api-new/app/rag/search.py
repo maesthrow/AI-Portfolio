@@ -160,7 +160,9 @@ def portfolio_search(
     coll = collection or cfg.chroma_collection
 
     # === Feature flag check ===
-    if not cfg.rag_router_v2:
+    # v3 (planner_llm_v3=true) uses this module as a retrieval tool, so avoid the
+    # legacy portfolio_rag_answer() path (it already generates an answer).
+    if not cfg.rag_router_v2 and not cfg.planner_llm_v3:
         # Fallback на старый portfolio_rag_answer
         from .core import portfolio_rag_answer
         result = portfolio_rag_answer(question, k=k, collection=coll)

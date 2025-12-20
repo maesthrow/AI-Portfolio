@@ -75,13 +75,27 @@ class PlanExecutor:
 
                 # Convert sources to SourceInfo
                 for src in sources:
-                    if isinstance(src, dict):
+                    if not isinstance(src, dict):
+                        continue
+                    try:
+                        source_id = src.get("id")
+                        if source_id is None:
+                            source_id = src.get("ref_id") or src.get("source") or ""
+                        label = src.get("label")
+                        if not label:
+                            label = src.get("title") or src.get("name") or src.get("id") or source_id or ""
                         all_sources.append(
                             SourceInfo(
-                                id=src.get("id", ""),
-                                label=src.get("label", src.get("title", "")),
+                                id=str(source_id),
+                                label=str(label),
                                 type=src.get("type"),
                             )
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "SourceInfo parse failed: %s src=%s",
+                            e,
+                            compact_json(src, limit=2000),
                         )
 
                 if success:
@@ -125,13 +139,27 @@ class PlanExecutor:
                 all_facts.extend(facts)
 
                 for src in sources:
-                    if isinstance(src, dict):
+                    if not isinstance(src, dict):
+                        continue
+                    try:
+                        source_id = src.get("id")
+                        if source_id is None:
+                            source_id = src.get("ref_id") or src.get("source") or ""
+                        label = src.get("label")
+                        if not label:
+                            label = src.get("title") or src.get("name") or src.get("id") or source_id or ""
                         all_sources.append(
                             SourceInfo(
-                                id=src.get("id", ""),
-                                label=src.get("label", src.get("title", "")),
+                                id=str(source_id),
+                                label=str(label),
                                 type=src.get("type"),
                             )
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "SourceInfo parse failed: %s src=%s",
+                            e,
+                            compact_json(src, limit=2000),
                         )
 
                 if success:
