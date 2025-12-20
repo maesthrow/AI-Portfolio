@@ -438,29 +438,29 @@ PROJECTS_DATA = [
     },
 ]
 
-# PUBLICATIONS_DATA = [
-#     {
-#         "title": "Гайд: AI-агент на GigaChat и LangGraph (от архитектуры до валидации)",
-#         "year": 2025,
-#         "source": "Habr",
-#         "url": "https://habr.com/ru/articles/xxxxx/",
-#         "badge": None,
-#         "description_md": (
-#             "Пошаговый разбор архитектуры AI-агента на базе GigaChat и LangGraph "
-#             "на примере Lean Canvas."
-#         ),
-#         "order_index": 10,
-#     },
-#     {
-#         "title": "Какой плащ был у Понтия Пилата? Отвечает GigaChat",
-#         "year": 2024,
-#         "source": "Habr",
-#         "url": "https://habr.com/ru/articles/yyyyy/",
-#         "badge": None,
-#         "description_md": "Развлекательный кейс с использованием GigaChat и RAG-подхода.",
-#         "order_index": 20,
-#     },
-# ]
+PUBLICATIONS_DATA = [
+    # {
+    #     "title": "Гайд: AI-агент на GigaChat и LangGraph (от архитектуры до валидации)",
+    #     "year": 2025,
+    #     "source": "Habr",
+    #     "url": "https://habr.com/ru/articles/xxxxx/",
+    #     "badge": None,
+    #     "description_md": (
+    #         "Пошаговый разбор архитектуры AI-агента на базе GigaChat и LangGraph "
+    #         "на примере Lean Canvas."
+    #     ),
+    #     "order_index": 10,
+    # },
+    # {
+    #     "title": "Какой плащ был у Понтия Пилата? Отвечает GigaChat",
+    #     "year": 2024,
+    #     "source": "Habr",
+    #     "url": "https://habr.com/ru/articles/yyyyy/",
+    #     "badge": None,
+    #     "description_md": "Развлекательный кейс с использованием GigaChat и RAG-подхода.",
+    #     "order_index": 20,
+    # },
+]
 
 STATS_DATA = [
     # цифры примерные — легко поправишь в БД
@@ -702,33 +702,33 @@ TECHNOLOGIES_DATA = sorted(
     }
 )
 
-# RAG_DOCUMENTS_DATA = [
-#     # переносим из старых сидеров «documents» в более общий RagDocument
-#     {
-#         "type": "project_doc",
-#         "title": "Архитектура сервиса LLM + RAG (t2)",
-#         "body": "Схема архитектуры сервиса LLM + RAG для проектов t2.",
-#         "url": "https://example.org/aston-llm-rag-arch.pdf",
-#         "tags": ["t2", "RAG", "architecture"],
-#         "metadata": {"project_slug": "t2-ml"},
-#     },
-#     {
-#         "type": "project_doc",
-#         "title": "Схема CV-пайплайна t2",
-#         "body": "Диаграмма пайплайна CV-обработки для ребрендинга t2/Tele2.",
-#         "url": "https://example.org/aston-cv-pipeline-diagram.pdf",
-#         "tags": ["t2", "cv", "pipeline"],
-#         "metadata": {"project_slug": "t2-ml"},
-#     },
-#     {
-#         "type": "project_doc",
-#         "title": "Архитектура HyperKeeper",
-#         "body": "Схема архитектуры Telegram-бота HyperKeeper.",
-#         "url": "https://example.org/hyperkeeper-arch.pdf",
-#         "tags": ["hyperkeeper", "architecture"],
-#         "metadata": {"project_slug": "hyperkeeper"},
-#     },
-# ]
+RAG_DOCUMENTS_DATA = [
+    # переносим из старых сидеров «documents» в более общий RagDocument
+    # {
+    #     "type": "project_doc",
+    #     "title": "Архитектура сервиса LLM + RAG (t2)",
+    #     "body": "Схема архитектуры сервиса LLM + RAG для проектов t2.",
+    #     "url": "https://example.org/aston-llm-rag-arch.pdf",
+    #     "tags": ["t2", "RAG", "architecture"],
+    #     "metadata": {"project_slug": "t2-ml"},
+    # },
+    # {
+    #     "type": "project_doc",
+    #     "title": "Схема CV-пайплайна t2",
+    #     "body": "Диаграмма пайплайна CV-обработки для ребрендинга t2/Tele2.",
+    #     "url": "https://example.org/aston-cv-pipeline-diagram.pdf",
+    #     "tags": ["t2", "cv", "pipeline"],
+    #     "metadata": {"project_slug": "t2-ml"},
+    # },
+    # {
+    #     "type": "project_doc",
+    #     "title": "Архитектура HyperKeeper",
+    #     "body": "Схема архитектуры Telegram-бота HyperKeeper.",
+    #     "url": "https://example.org/hyperkeeper-arch.pdf",
+    #     "tags": ["hyperkeeper", "architecture"],
+    #     "metadata": {"project_slug": "hyperkeeper"},
+    # },
+]
 
 
 # ---------- функции-сидеры ----------
