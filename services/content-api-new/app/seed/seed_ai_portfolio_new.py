@@ -152,7 +152,7 @@ EXPERIENCE_DATA = [
     },
     # АЛОР
     {
-        "role": "Python backend developer",
+        "role": "Python Backend Developer",
         "company_name": "ООО «АЛОР +»",
         "company_slug": "alor",
         "company_url": "https://www.alorbroker.ru",
@@ -177,7 +177,7 @@ EXPERIENCE_DATA = [
     },
     # Spargo / F3 TAIL
     {
-        "role": "Python backend developer",
+        "role": ".NET/Python Backend Developer",
         "company_name": "АО «Спарго Технологии»",
         "company_slug": "spargo",
         "company_url": "https://www.spargo.ru",
@@ -202,7 +202,7 @@ EXPERIENCE_DATA = [
     },
     # РКЦ «Прогресс» / СКИО
     {
-        "role": "Python developer",
+        "role": "Backend Developer",
         "company_name": "АО «РКЦ «Прогресс»",
         "company_slug": "progress",
         "company_url": "https://samspace.ru",
@@ -213,9 +213,9 @@ EXPERIENCE_DATA = [
         "end_date": date(2023, 8, 1),
         "is_current": False,
         "kind": "commercial",
-        "company_role_md": "Проектировал и реализовывал систему учета и контроля испытательного оборудования для ракетно‑космического центра.",
+        "company_role_md": "Разрабатывал программное обеспечение для подразделений испытательного центра.",
         "summary_md": (
-            "Система контроля испытательного оборудования."
+            "Ракетно-космическое предприятие."
         ),
         "achievements_md": (
             "- По собственной инициативе разработал систему контроля испытательного оборудования (СКИО).\n"
@@ -232,13 +232,13 @@ PROJECTS_DATA = [
         "name": "t2 — Нейросети",
         "slug": "t2-ml",
         "description_md": (
-            "ML-платформа для проектов компании t2: CV-сервисы для ребрендинга, "
+            "ML-платформа компании t2: CV-сервисы для ребрендинга, "
             "LLM + RAG-системы, бэкенд авто-обучения и инференса CV-моделей."
         ),
         "long_description_md": (
-            "- CV-пайплайн для контроля бренда, цветов и подложек в тысячах фотоконтентов.\n"
-            "- LLM-ассистент с RAG для расчёта штрафов и разборов спорных кейсов (LangChain/LangGraph, vLLM, ChromaDB).\n"
-            "- MLOps: MLflow, Celery, RabbitMQ, пайплайн автообучения и валидации моделей.\n"
+            "- Сервис на базе компьютерного зрения для распознавания бренда на тысячах фотографий с точек продаж.\n"
+            "- LLM-ассистент с RAG для расчёта штрафов и по договорам (LangChain/LangGraph, vLLM, ChromaDB).\n"
+            "- MLOps: MLflow, Celery, RabbitMQ, пайплайн автообучения, валидации и инференса ML-моделей компьютерного зрения.\n"
             "- Backend на FastAPI, интеграции с внутренними сервисами t2."
         ),
         "period": "2024 — н.в.",
@@ -252,16 +252,21 @@ PROJECTS_DATA = [
             "Python 3.12",
             "FastAPI",
             "PostgreSQL",
+            "SQLAlchemy",
+            "Alembic",
             "Redis",
             "Celery",
             "RabbitMQ",
-            "YOLO (Ultralytics)",
+            "Ultralytics",
+            "YOLO",
             "Detectron2",
             "vLLM",
             "LiteLLM",
             "LangChain",
             "LangGraph",
+            "RAG",
             "ChromaDB",
+            "Qdrant",
             "MLflow",
             "Docker",
         ],
@@ -270,8 +275,7 @@ PROJECTS_DATA = [
         "name": "АЛОР БРОКЕР",
         "slug": "alor-broker",
         "description_md": (
-            "Python-бэкенд для брокерских сервисов: нотификации, регистрация клиентов, "
-            "интеграция с ФНС через Контур.Экстерн."
+            "Серверная разработка микросервисов для биржевого брокера, интеграции с внешними системами и API."
         ),
         "long_description_md": None,
         "period": "2024",
@@ -285,6 +289,9 @@ PROJECTS_DATA = [
             "Python 3.9",
             "FastAPI",
             "PostgreSQL",
+            "Pydantic",
+            "SQLAlchemy",
+            "Alembic",
             "RabbitMQ",
             "Celery",
             "Docker",
@@ -295,7 +302,7 @@ PROJECTS_DATA = [
         "slug": "f3-tail",
         "description_md": (
             "Сервисы для автоматизации аптек и розничной торговли: интеграции, мониторинг, "
-            "бот службы поддержки на aiogram-dialog."
+            "бот службы поддержки."
         ),
         "long_description_md": None,
         "period": "2023–2024",
@@ -306,10 +313,13 @@ PROJECTS_DATA = [
         "repo_url": None,
         "demo_url": None,
         "technologies": [
+            "C#"
+            ".NET Framework",
+            ".NET Core",
+            "ASP.NET Core",
+            "MS SQL Server",
             "Python 3.9",
-            "FastAPI",
             "PostgreSQL",
-            "SQLAlchemy",
             "APScheduler",
             "aiogram",
             "aiogram-dialog",
@@ -321,7 +331,7 @@ PROJECTS_DATA = [
         "slug": "skio",
         "description_md": (
             "Серверная часть и БД системы контроля испытательного оборудования (СКИО): "
-            "проектирование схемы БД, отчёты CSV/COPY, автоматизация выгрузок."
+            "проектирование схемы БД, архитектуры приложения, автоматизация выгрузок документации."
         ),
         "period": "2021–2023",
         "company_name": "АО «РКЦ «Прогресс»",
@@ -331,11 +341,10 @@ PROJECTS_DATA = [
         "repo_url": None,
         "demo_url": None,
         "technologies": [
-            "Python 3.9",
-            "SQLAlchemy",
-            "psycopg",
-            "PostgreSQL",
-            "pytest",
+            "C#",
+            ".NET Framework",
+            "MS SQL Server",
+            "ADO.NET",
         ],
     },
     {
@@ -346,8 +355,8 @@ PROJECTS_DATA = [
             "Интеграция с LLM (GigaChat), история диалогов и быстрый поиск по контенту."
         ),
         "long_description_md": (
-            "- Telegram-бот для загрузки документов, заметок и медиа.\n"
-            "- RAG-поиск по личному хранилищу, ответ через LLM.\n"
+            "- Личный проект: Telegram-бот для загрузки документов, заметок и медиа.\n"
+            "- RAG-поиск по личному хранилищу, интегрированная LLM-модель GigaChat и сохраннеие истории диалогов.\n"
             "- Модульная архитектура: aiogram, LangChain, MongoDB, ChromaDB."
         ),
         "period": "2023 — 2024",
@@ -429,29 +438,29 @@ PROJECTS_DATA = [
     },
 ]
 
-PUBLICATIONS_DATA = [
-    {
-        "title": "Гайд: AI-агент на GigaChat и LangGraph (от архитектуры до валидации)",
-        "year": 2025,
-        "source": "Habr",
-        "url": "https://habr.com/ru/articles/xxxxx/",
-        "badge": None,
-        "description_md": (
-            "Пошаговый разбор архитектуры AI-агента на базе GigaChat и LangGraph "
-            "на примере Lean Canvas."
-        ),
-        "order_index": 10,
-    },
-    {
-        "title": "Какой плащ был у Понтия Пилата? Отвечает GigaChat",
-        "year": 2024,
-        "source": "Habr",
-        "url": "https://habr.com/ru/articles/yyyyy/",
-        "badge": None,
-        "description_md": "Развлекательный кейс с использованием GigaChat и RAG-подхода.",
-        "order_index": 20,
-    },
-]
+# PUBLICATIONS_DATA = [
+#     {
+#         "title": "Гайд: AI-агент на GigaChat и LangGraph (от архитектуры до валидации)",
+#         "year": 2025,
+#         "source": "Habr",
+#         "url": "https://habr.com/ru/articles/xxxxx/",
+#         "badge": None,
+#         "description_md": (
+#             "Пошаговый разбор архитектуры AI-агента на базе GigaChat и LangGraph "
+#             "на примере Lean Canvas."
+#         ),
+#         "order_index": 10,
+#     },
+#     {
+#         "title": "Какой плащ был у Понтия Пилата? Отвечает GigaChat",
+#         "year": 2024,
+#         "source": "Habr",
+#         "url": "https://habr.com/ru/articles/yyyyy/",
+#         "badge": None,
+#         "description_md": "Развлекательный кейс с использованием GigaChat и RAG-подхода.",
+#         "order_index": 20,
+#     },
+# ]
 
 STATS_DATA = [
     # цифры примерные — легко поправишь в БД
@@ -674,7 +683,8 @@ TECHNOLOGIES_DATA = sorted(
         "Docker",
         "GitLab",
         "Azure DevOps",
-        "YOLO (Ultralytics)",
+        "Ultralytics",
+        "YOLO",
         "Detectron2",
         "LangChain",
         "LangGraph",
@@ -685,38 +695,40 @@ TECHNOLOGIES_DATA = sorted(
         "MLflow",
         "MongoDB",
         "pytest",
+        "C#",
         "ASP.NET Core",
-        ".NET 8",
+        ".NET Core",
+        "MS SQL Server",
     }
 )
 
-RAG_DOCUMENTS_DATA = [
-    # переносим из старых сидеров «documents» в более общий RagDocument
-    {
-        "type": "project_doc",
-        "title": "Архитектура сервиса LLM + RAG (t2)",
-        "body": "Схема архитектуры сервиса LLM + RAG для проектов t2.",
-        "url": "https://example.org/aston-llm-rag-arch.pdf",
-        "tags": ["t2", "RAG", "architecture"],
-        "metadata": {"project_slug": "t2-ml"},
-    },
-    {
-        "type": "project_doc",
-        "title": "Схема CV-пайплайна t2",
-        "body": "Диаграмма пайплайна CV-обработки для ребрендинга t2/Tele2.",
-        "url": "https://example.org/aston-cv-pipeline-diagram.pdf",
-        "tags": ["t2", "cv", "pipeline"],
-        "metadata": {"project_slug": "t2-ml"},
-    },
-    {
-        "type": "project_doc",
-        "title": "Архитектура HyperKeeper",
-        "body": "Схема архитектуры Telegram-бота HyperKeeper.",
-        "url": "https://example.org/hyperkeeper-arch.pdf",
-        "tags": ["hyperkeeper", "architecture"],
-        "metadata": {"project_slug": "hyperkeeper"},
-    },
-]
+# RAG_DOCUMENTS_DATA = [
+#     # переносим из старых сидеров «documents» в более общий RagDocument
+#     {
+#         "type": "project_doc",
+#         "title": "Архитектура сервиса LLM + RAG (t2)",
+#         "body": "Схема архитектуры сервиса LLM + RAG для проектов t2.",
+#         "url": "https://example.org/aston-llm-rag-arch.pdf",
+#         "tags": ["t2", "RAG", "architecture"],
+#         "metadata": {"project_slug": "t2-ml"},
+#     },
+#     {
+#         "type": "project_doc",
+#         "title": "Схема CV-пайплайна t2",
+#         "body": "Диаграмма пайплайна CV-обработки для ребрендинга t2/Tele2.",
+#         "url": "https://example.org/aston-cv-pipeline-diagram.pdf",
+#         "tags": ["t2", "cv", "pipeline"],
+#         "metadata": {"project_slug": "t2-ml"},
+#     },
+#     {
+#         "type": "project_doc",
+#         "title": "Архитектура HyperKeeper",
+#         "body": "Схема архитектуры Telegram-бота HyperKeeper.",
+#         "url": "https://example.org/hyperkeeper-arch.pdf",
+#         "tags": ["hyperkeeper", "architecture"],
+#         "metadata": {"project_slug": "hyperkeeper"},
+#     },
+# ]
 
 
 # ---------- функции-сидеры ----------
