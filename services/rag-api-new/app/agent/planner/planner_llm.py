@@ -12,6 +12,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from .schemas import QueryPlanV2, make_default_fallback_plan
 from .prompts import PLANNER_SYSTEM_PROMPT, PLANNER_REPAIR_PROMPT
+from ...utils.logging_utils import compact_json, truncate_text
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
@@ -64,6 +65,8 @@ class PlannerLLM:
             logger.warning("Empty question, returning default fallback plan")
             return make_default_fallback_plan("")
 
+        logger.info("Planner input question=%r", truncate_text(question, limit=500))
+
         try:
             if self._supports_structured:
                 return self._plan_structured(question)
@@ -106,13 +109,19 @@ class PlannerLLM:
                             len(result.tool_calls),
                             result.confidence,
                         )
+                        logger.info(
+                            "Plan JSON=%s",
+                            compact_json(result.model_dump(mode="json")),
+                        )
                         return result
                     else:
                         raise ValueError("Plan validation failed")
 
                 # If result is dict, try to parse
                 if isinstance(result, dict):
-                    return QueryPlanV2.model_validate(result)
+                    parsed = QueryPlanV2.model_validate(result)
+                    logger.info("Plan JSON=%s", compact_json(parsed.model_dump(mode="json")))
+                    return parsed
 
                 raise ValueError(f"Unexpected result type: {type(result)}")
 
@@ -122,6 +131,11 @@ class PlannerLLM:
                     attempt + 1,
                     self.max_retries + 1,
                     e,
+                )
+                logger.info(
+                    "Planner repair attempt=%d last_error=%r",
+                    attempt + 1,
+                    truncate_text(str(e), limit=400),
                 )
 
                 if attempt < self.max_retries:

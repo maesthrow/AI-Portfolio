@@ -13,6 +13,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from ..planner.schemas import FactsPayload, RenderStyle, AnswerStyle
 from ..render.renderer import RenderEngine, post_process_answer
+from ...utils.logging_utils import truncate_text
 from .prompts import (
     ANSWER_SYSTEM_PROMPT,
     ANSWER_USER_TEMPLATE,
@@ -64,8 +65,21 @@ class AnswerLLM:
         Returns:
             User-facing answer string
         """
+        logger.info(
+            "Answer input: found=%s items=%d sources=%d intents=%s render_style=%s answer_style=%s coverage=%.2f evidence=%r",
+            payload.found,
+            len(payload.items),
+            len(payload.sources),
+            [i.value for i in (payload.intents or [])],
+            getattr(payload.render_style, "value", payload.render_style),
+            getattr(payload.answer_style, "value", payload.answer_style),
+            float((payload.meta or {}).get("coverage") or 0.0),
+            truncate_text((payload.meta or {}).get("evidence"), limit=400),
+        )
+
         # Handle not found case
         if not payload.found or not payload.items:
+            logger.info("Answer not-found: query=%r", truncate_text(payload.query, limit=400))
             return self._get_not_found_response(payload)
 
         # Pre-render facts for context
@@ -74,6 +88,7 @@ class AnswerLLM:
             style=payload.render_style,
             intents=payload.intents,
         )
+        logger.info("Answer rendered_facts=%r", truncate_text(rendered_facts, limit=2000))
 
         # Get style instruction
         style_instruction = self._get_style_instruction(payload)
@@ -90,6 +105,12 @@ class AnswerLLM:
             style_instruction=style_instruction,
             warnings=warnings_text,
         )
+        logger.info(
+            "Answer prompt: system_len=%d user_len=%d user_preview=%r",
+            len(ANSWER_SYSTEM_PROMPT or ""),
+            len(user_prompt or ""),
+            truncate_text(user_prompt, limit=2000),
+        )
 
         # Generate answer
         messages = [
@@ -100,6 +121,7 @@ class AnswerLLM:
         try:
             response = self.llm.invoke(messages)
             answer = response.content.strip()
+            logger.info("Answer raw_preview=%r", truncate_text(answer, limit=800))
 
             # Post-process to remove any remaining artifacts
             cleaned_answer, warnings = post_process_answer(answer)
@@ -107,6 +129,7 @@ class AnswerLLM:
             if warnings:
                 logger.warning("Post-process removed artifacts: %s", warnings)
 
+            logger.info("Answer final_preview=%r", truncate_text(cleaned_answer, limit=800))
             return cleaned_answer
 
         except Exception as e:

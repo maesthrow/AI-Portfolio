@@ -18,6 +18,7 @@ from ..planner.schemas import (
 )
 from ..tools.graph_query_tool import execute_graph_query
 from ..tools.portfolio_search_tool import execute_portfolio_search
+from ...utils.logging_utils import compact_json, truncate_text
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,13 @@ class PlanExecutor:
 
         # Execute each tool call
         for i, tool_call in enumerate(plan.tool_calls):
+            logger.info(
+                "Tool call start %d/%d tool=%s args=%s",
+                i + 1,
+                len(plan.tool_calls),
+                tool_call.tool,
+                compact_json(tool_call.args, limit=2000),
+            )
             try:
                 facts, sources, success, confidence, evidence = self._execute_tool(
                     tool_call, question
@@ -82,13 +90,26 @@ class PlanExecutor:
                         evidence_text = evidence
 
                 logger.info(
-                    "Tool %d/%d (%s) returned %d facts, found=%s",
+                    "Tool call end %d/%d tool=%s facts=%d sources=%d found=%s confidence=%.2f evidence=%r",
                     i + 1,
                     len(plan.tool_calls),
                     tool_call.tool,
                     len(facts),
+                    len(sources),
                     success,
+                    confidence,
+                    truncate_text(evidence, limit=400),
                 )
+                if facts:
+                    preview = [
+                        {"type": f.type, "text": truncate_text(f.text, limit=180)}
+                        for f in facts[:3]
+                    ]
+                    logger.info(
+                        "Tool facts preview tool=%s preview=%s",
+                        tool_call.tool,
+                        compact_json(preview, limit=2000),
+                    )
 
             except Exception as e:
                 logger.warning("Tool %s failed: %s", tool_call.tool, e)
@@ -116,6 +137,14 @@ class PlanExecutor:
                 if success:
                     found = True
                     overall_confidence *= 0.7  # Reduce confidence for fallback
+                    logger.info(
+                        "Fallback success tool=%s facts=%d sources=%d confidence=%.2f evidence=%r",
+                        plan.fallback.tool,
+                        len(facts),
+                        len(sources),
+                        confidence,
+                        truncate_text(evidence, limit=400),
+                    )
                     warnings.append("Использован резервный поиск")
                     if evidence:
                         evidence_text = evidence

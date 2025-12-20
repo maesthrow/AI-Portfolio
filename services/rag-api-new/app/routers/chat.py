@@ -12,6 +12,7 @@ from langchain_core.messages import HumanMessage
 
 from app.deps import agent_app, settings
 from app.schemas.chat import ChatRequest
+from app.utils.logging_utils import compact_json, truncate_text
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,13 @@ async def chat_stream(req: ChatRequest):
     if req.system_prompt:
         question = f"{question}\n\nДоп. инструкции: {req.system_prompt.strip()}"
 
+    logger.info(
+        "chat_stream start message_id=%s thread_id=%s question=%r",
+        message_id,
+        thread_id,
+        truncate_text(question, limit=800),
+    )
+
     state = {
         "messages": [HumanMessage(content=question)],
         "user_id": req.session_id,
@@ -160,9 +168,26 @@ async def chat_stream(req: ChatRequest):
 
                 elif kind == "on_tool_start":
                     tool_name = event.get("name") or (event.get("data") or {}).get("name") or "tool"
+                    data = event.get("data") or {}
+                    tool_input = data.get("input") or data.get("inputs") or data.get("tool_input")
+                    logger.info(
+                        "tool_start message_id=%s thread_id=%s tool=%s input=%s",
+                        message_id,
+                        thread_id,
+                        tool_name,
+                        compact_json(tool_input, limit=2000),
+                    )
                     yield json.dumps({"type": "tool_start", "tool": tool_name}, ensure_ascii=False) + "\n"
 
                 elif kind == "on_tool_end":
+                    data = event.get("data") or {}
+                    tool_output = data.get("output") or data.get("result")
+                    logger.info(
+                        "tool_end message_id=%s thread_id=%s output_preview=%r",
+                        message_id,
+                        thread_id,
+                        truncate_text(tool_output, limit=800),
+                    )
                     yield json.dumps({"type": "tool_end"}, ensure_ascii=False) + "\n"
 
         except Exception as exc:
