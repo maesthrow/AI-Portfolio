@@ -35,6 +35,8 @@ def get_one(session, model, **filters):
 
 
 def upsert_one(session, model, identity: dict, payload: dict):
+    # Identity fields are used to locate the record; don't duplicate/overwrite them in payload.
+    payload = {k: v for k, v in payload.items() if k not in identity}
     obj = get_one(session, model, **identity)
     if obj is None:
         obj = model(**identity, **payload)
@@ -868,6 +870,8 @@ def seed_technologies(session):
         identity = {"slug": slug}
         payload = {"name": name, "category": None, "order_index": idx * 10}
         upsert_one(session, Technology, identity, payload)
+    # Needed because SessionLocal is configured with autoflush=False; later queries must see these rows.
+    session.flush()
 
 
 def seed_projects_with_tech(session):
@@ -887,6 +891,8 @@ def seed_projects_with_tech(session):
         slug = payload.get("slug")
         identity = {"slug": slug}
         proj = upsert_one(session, Project, identity, payload)
+        if proj.id is None:
+            session.flush()
 
         for t_idx, tech_name in enumerate(tech_names, start=1):
             tech_slug = slugify_tech(tech_name)
