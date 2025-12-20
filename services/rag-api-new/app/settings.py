@@ -57,10 +57,22 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # === Feature flags ===
-    graph_rag_enabled: bool = False       # Эпик 1: включает Graph-RAG
-    agent_fact_tool: bool = False         # Эпик 1: graph_query_tool для агента
-    rag_router_v2: bool = False           # Эпик 2: QueryPlan-based routing
-    format_v2_enabled: bool = False       # Эпик 3: новое форматирование и естественный тон
+    # Иерархия: planner_llm_v3 > rag_router_v2 > базовый v1
+    #
+    # Рекомендуемые конфигурации:
+    #   v3 (новый): graph_rag_enabled=true, planner_llm_v3=true, остальные=false
+    #   v2 (legacy): graph_rag_enabled=true, rag_router_v2=true, agent_fact_tool=true
+    #   v1 (базовый): все false
+    #
+    graph_rag_enabled: bool = False       # Граф знаний (нужен для v3 и v2)
+    agent_fact_tool: bool = False         # [v2] graph_query_tool для агента
+    rag_router_v2: bool = False           # [v2] QueryPlan-based routing
+    format_v2_enabled: bool = False       # [v2] форматирование и промпты
+    planner_llm_v3: bool = False          # [v3] полный LLM-пайплайн (Planner + Answer)
+
+    # === LLM temperatures (для v3) ===
+    planner_temperature: float = 0.0      # Planner LLM (детерминированный)
+    answer_temperature: float = 0.3       # Answer LLM (баланс креативности)
 
     @property
     def chroma_client_kwargs(self) -> dict:

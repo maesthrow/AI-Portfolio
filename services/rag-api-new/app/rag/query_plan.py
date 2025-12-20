@@ -1,8 +1,16 @@
 """
-Query Planning - планирование запросов.
+Query Planning - планирование запросов (LEGACY).
 
-Определяет Intent (намерение) из вопроса, извлекает сущности,
-и формирует QueryPlan для оптимального поиска.
+DEPRECATED: Этот модуль содержит keyword-based планирование.
+При включённом planner_llm_v3=true используется LLM-based планирование
+из app/agent/planner/.
+
+Этот модуль будет удалён после полного перехода на LLM-планирование.
+Для нового кода используйте:
+    from app.agent.planner import PlannerLLM, QueryPlanV2
+
+Текущий модуль определяет Intent по ключевым словам,
+извлекает сущности и формирует QueryPlan для гибридного поиска.
 """
 from __future__ import annotations
 from typing import List, Set, Tuple

@@ -4,7 +4,10 @@
       "Bash(npx tsc --noEmit)",
       "Bash(alembic revision:*)",
       "Bash(cat:*)",
-      "Bash(python -m pytest tests/test_smoke.py -v)"
+      "Bash(python -m pytest tests/test_smoke.py -v)",
+      "Bash(dir:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python -c:*)"
     ],
     "deny": [],
     "ask": []

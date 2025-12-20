@@ -106,7 +106,7 @@ def portfolio_rag_tool_v2(question: str) -> dict:
     # Проверка feature flag
     if not cfg.rag_router_v2:
         # Fallback на старый инструмент
-        from .tools import portfolio_rag_tool
+        from .agent_tools import portfolio_rag_tool
         return portfolio_rag_tool.invoke(question)
 
     logger.info("portfolio_rag_tool_v2: question=%r", question[:100])

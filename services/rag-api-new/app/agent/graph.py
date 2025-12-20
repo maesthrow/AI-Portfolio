@@ -92,10 +92,11 @@ def build_agent_graph():
     ReAct-агент с памятью по thread_id (session_id) и жёстким требованием звать RAG-tool.
 
     При включённых feature flags:
+    - planner_llm_v3: использует portfolio_rag_tool_v3 (полный LLM-пайплайн)
     - rag_router_v2: использует portfolio_rag_tool_v2 вместо portfolio_rag_tool
     - agent_fact_tool + graph_rag_enabled: добавляет graph_query_tool
     """
-    from .tools import portfolio_rag_tool, list_projects_tool
+    from .agent_tools import portfolio_rag_tool, list_projects_tool
     from ..deps import chat_llm, settings
 
     cfg = settings()
@@ -106,16 +107,22 @@ def build_agent_graph():
     tools = [portfolio_rag_tool, list_projects_tool]
     extra_prompt = ""
 
-    # === Feature flags ===
+    # === Feature flags (приоритет: v3 > v2 > v1) ===
+
+    # planner_llm_v3: полный LLM-пайплайн (Planner + Executor + Answer)
+    if cfg.planner_llm_v3:
+        from .tools_v3 import portfolio_rag_tool_v3
+        tools = [portfolio_rag_tool_v3, list_projects_tool]
+        logger.info("Agent using portfolio_rag_tool_v3 (planner_llm_v3=true)")
 
     # rag_router_v2: заменяем portfolio_rag_tool на v2
-    if cfg.rag_router_v2:
+    elif cfg.rag_router_v2:
         from .tools_v2 import portfolio_rag_tool_v2
         tools = [portfolio_rag_tool_v2, list_projects_tool]
         logger.info("Agent using portfolio_rag_tool_v2 (rag_router_v2=true)")
 
     # agent_fact_tool + graph_rag_enabled: добавляем graph_query_tool
-    if cfg.agent_fact_tool and cfg.graph_rag_enabled:
+    if cfg.agent_fact_tool and cfg.graph_rag_enabled and not cfg.planner_llm_v3:
         from .tools_v2 import graph_query_tool
         tools.append(graph_query_tool)
         extra_prompt = AGENT_GRAPH_TOOL_PROMPT

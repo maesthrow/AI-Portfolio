@@ -1,3 +1,9 @@
+"""LangChain tools used by the agent graph.
+
+Named `agent_tools.py` to avoid collision with the `tools/` package
+(`app/agent/tools/`) which contains plan-executor helpers.
+"""
+
 from __future__ import annotations
 from langchain.tools import tool
 from ..deps import vectorstore, settings

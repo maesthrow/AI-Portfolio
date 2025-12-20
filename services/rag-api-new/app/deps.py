@@ -92,6 +92,52 @@ def chat_llm() -> BaseChatModel:
     )
 
 
+def _create_llm_with_temperature(temperature: float) -> BaseChatModel:
+    """Create LLM with specific temperature."""
+    s = settings()
+
+    if s.chat_model.lower().startswith("gigachat"):
+        return GigaChat(
+            credentials=s.giga_auth_data,
+            model=s.chat_model,
+            verify_ssl_certs=False,
+            temperature=temperature,
+        )
+
+    return ChatOpenAI(
+        api_key=s.litellm_api_key or "EMPTY",
+        base_url=str(s.litellm_base_url),
+        model=s.chat_model,
+        temperature=temperature,
+        max_tokens=1024,
+        timeout=60,
+    )
+
+
+@lru_cache()
+def planner_llm() -> BaseChatModel:
+    """
+    LLM для Planner (планирование запросов).
+
+    Использует temperature=0.0 для детерминированного вывода.
+    """
+    s = settings()
+    logger.info("Creating planner LLM with temperature=%.2f", s.planner_temperature)
+    return _create_llm_with_temperature(s.planner_temperature)
+
+
+@lru_cache()
+def answer_llm() -> BaseChatModel:
+    """
+    LLM для Answer (генерация ответов).
+
+    Использует temperature=0.3 для баланса креативности и точности.
+    """
+    s = settings()
+    logger.info("Creating answer LLM with temperature=%.2f", s.answer_temperature)
+    return _create_llm_with_temperature(s.answer_temperature)
+
+
 @lru_cache()
 def agent_app():
     """
