@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from typing import List
+
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+
+# === V1 Prompt (backward compatibility) ===
 
 BASE_PROMPT = (
     "Ты — AI-ассистент, представляющий разработчика Дмитрия Каргина. Говоришь о Дмитрии в третьем лице, "
@@ -87,6 +91,98 @@ def build_messages_when_empty(system_prompt: str, question: str, style_hint: str
             content=(
                 f"Вопрос: {question}\n\nДанных нет.\n{style_line}\n"
                 f"Если данных нет - честно скажи, что не можешь ответить и предложи, что уточнить."
+            )
+        ),
+    ]
+
+
+# === V2 Prompts (Epic 3: Natural Language Formatting) ===
+
+BASE_PROMPT_V2 = """Ты — AI-ассистент разработчика Дмитрия. Говоришь о Дмитрии в третьем лице,
+ не выдавая себя за него.  Отвечаешь дружелюбно.
+ Представление краткое: кто ты (AI-ассистент Дмитрия) и чем помогаешь (факты об опыте, проектах, технологиях, контактах). 
+ Сфера: факты о проектах/компаниях/достижениях/технологиях, текущая роль, контакты. Не придумывай факты, ссылки, компании.
+
+Стиль ответа:
+- Кратко и по делу, 2-5 предложений
+- Без формальных вводных ("На данный момент...", "В соответствии...")
+- Не перечисляй, чего нет — только факты
+- Не добавляй ссылки вида [1], [2] в ответ
+- Не упоминай confidence, уверенность или технические метаданные
+- Если данных нет — скажи кратко и предложи уточнить вопрос
+"""
+
+STYLE_INSTRUCTIONS_V2 = {
+    "LIST": (
+        "Формат: маркированный список.\n"
+        "- Каждый элемент с новой строки, начинается с дефиса\n"
+        "- Короткое вступление (1 предложение) перед списком\n"
+        "- Не более 10 пунктов"
+    ),
+    "ULTRASHORT": "Отвечай максимально кратко: 1-2 предложения, без списков.",
+    "DEFAULT": "Короткий абзац, 2-4 предложения.",
+}
+
+
+def build_messages_for_answer_v2(
+    question: str,
+    context: str,
+    style_hint: str | None = None,
+    confidence: float | None = None,
+    found: bool = True,
+) -> List[BaseMessage]:
+    """
+    Build messages with v2 formatting (Epic 3).
+
+    Key differences from v1:
+    - First person voice (я, мой)
+    - No confidence in prompt
+    - Cleaner style instructions
+    - No technical artifacts
+    """
+    from ..deps import settings
+    cfg = settings()
+
+    # Fallback to v1 if feature flag is disabled
+    if not cfg.format_v2_enabled:
+        return build_messages_for_answer(
+            make_system_prompt(None), question, context, style_hint, confidence
+        )
+
+    style_line = STYLE_INSTRUCTIONS_V2.get(style_hint or "DEFAULT", "")
+
+    # Don't pass confidence to prompt - handle it softly
+    caution = ""
+    if confidence is not None and confidence < LOW_CONFIDENCE_THRESHOLD:
+        caution = "Если не уверен — лучше уточни у пользователя."
+
+    user_content = f"Вопрос: {question}\n\nДанные:\n{context}\n\n{style_line}\n{caution}"
+
+    return [
+        SystemMessage(content=BASE_PROMPT_V2),
+        HumanMessage(content=user_content.strip()),
+    ]
+
+
+def build_messages_when_empty_v2(question: str, style_hint: str | None = None) -> List[BaseMessage]:
+    """
+    Build messages for empty results with v2 formatting.
+
+    Returns short, friendly "not found" response.
+    """
+    from ..deps import settings
+    cfg = settings()
+
+    if not cfg.format_v2_enabled:
+        return build_messages_when_empty(make_system_prompt(None), question, style_hint)
+
+    return [
+        SystemMessage(content=BASE_PROMPT_V2),
+        HumanMessage(
+            content=(
+                f"Вопрос: {question}\n\n"
+                "Данных по этому запросу нет. Ответь коротко, что такой информации нет, "
+                "и предложи уточнить вопрос. Не перечисляй, чего нет."
             )
         ),
     ]

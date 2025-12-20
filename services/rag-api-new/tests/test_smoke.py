@@ -373,3 +373,185 @@ class TestSearchTypes:
         )
         assert result.found is True
         assert result.confidence == 0.95
+
+
+# === Epic 3: Response Formatting Tests ===
+
+from app.rag.formatter import FormatRenderer, format_not_found_response
+
+
+class TestFormatRenderer:
+    """Тесты для FormatRenderer (Epic 3)."""
+
+    def test_removes_references(self):
+        """Post-processing удаляет ссылки [1], [2]."""
+        renderer = FormatRenderer()
+        text = "Дмитрий работает с Python [1] и FastAPI [2]."
+        result = renderer.post_process(text)
+        assert "[1]" not in result
+        assert "[2]" not in result
+        assert "Python" in result
+        assert "FastAPI" in result
+
+    def test_removes_confidence(self):
+        """Post-processing удаляет упоминания confidence."""
+        renderer = FormatRenderer()
+        text = "Результат с confidence: 0.85. Дмитрий - разработчик."
+        result = renderer.post_process(text)
+        assert "confidence" not in result.lower()
+        assert "0.85" not in result
+        assert "разработчик" in result
+
+    def test_removes_tail_phrases(self):
+        """Post-processing удаляет 'хвосты' про отсутствие данных."""
+        renderer = FormatRenderer()
+        text = "Дмитрий знает Python. Конкретных упоминаний больше не найдено."
+        result = renderer.post_process(text)
+        assert "не найдено" not in result
+        assert "Python" in result
+
+    def test_list_format_technologies(self):
+        """Рендеринг технологий в маркированный список."""
+        renderer = FormatRenderer(style_hint="LIST")
+        items = [{"name": "Python"}, {"name": "FastAPI"}, {"name": "PostgreSQL"}]
+        result = renderer.render_technologies(items)
+        assert "- Python" in result
+        assert "- FastAPI" in result
+        assert "- PostgreSQL" in result
+
+    def test_list_format_achievements(self):
+        """Рендеринг достижений в маркированный список."""
+        renderer = FormatRenderer()
+        items = [
+            {"text": "Сократил время обработки на 50%"},
+            {"achievement": "Внедрил RAG систему"},
+        ]
+        result = renderer.render_achievements(items)
+        assert "- Сократил время обработки на 50%" in result
+        assert "- Внедрил RAG систему" in result
+
+    def test_list_format_contacts(self):
+        """Рендеринг контактов."""
+        renderer = FormatRenderer()
+        items = [
+            {"kind": "email", "value": "test@example.com"},
+            {"kind": "github", "url": "https://github.com/test"},
+        ]
+        result = renderer.render_contacts(items)
+        assert "email:" in result.lower() or "email" in result
+        assert "github:" in result.lower() or "github" in result
+
+    def test_empty_items(self):
+        """Пустой список возвращает пустую строку."""
+        renderer = FormatRenderer()
+        result = renderer.render_technologies([])
+        assert result == ""
+
+    def test_whitespace_cleanup(self):
+        """Post-processing очищает лишние пробелы."""
+        renderer = FormatRenderer()
+        text = "Дмитрий   работает    в компании."
+        result = renderer.post_process(text)
+        assert "   " not in result
+        assert "Дмитрий работает в компании" in result
+
+
+class TestNotFoundResponses:
+    """Тесты для ответов 'не найдено' (Epic 3)."""
+
+    def test_not_found_technologies(self):
+        """Ответ 'не найдено' для технологий короткий."""
+        response = format_not_found_response(Intent.TECHNOLOGIES)
+        assert len(response) < 100
+        assert "нет" in response.lower()
+
+    def test_not_found_achievements(self):
+        """Ответ 'не найдено' для достижений."""
+        response = format_not_found_response(Intent.ACHIEVEMENTS)
+        assert len(response) < 100
+        assert "нет" in response.lower()
+
+    def test_not_found_project(self):
+        """Ответ 'не найдено' для проекта."""
+        response = format_not_found_response(Intent.PROJECT_DETAILS)
+        assert "проект" in response.lower()
+
+    def test_not_found_contacts(self):
+        """Ответ 'не найдено' для контактов."""
+        response = format_not_found_response(Intent.CONTACTS)
+        assert "нет" in response.lower()
+
+    def test_not_found_general(self):
+        """Ответ 'не найдено' для общего запроса."""
+        response = format_not_found_response(Intent.GENERAL)
+        assert len(response) < 100
+
+
+# === Промпты V2 тестируются только при наличии langchain_core ===
+# Эти тесты пропускаются если langchain_core не установлен (локальная среда)
+
+try:
+    from app.rag.prompting import BASE_PROMPT_V2, STYLE_INSTRUCTIONS_V2
+    _HAS_LANGCHAIN = True
+except ImportError:
+    _HAS_LANGCHAIN = False
+
+
+@pytest.mark.skipif(not _HAS_LANGCHAIN, reason="langchain_core not installed")
+class TestPromptingV2:
+    """Тесты для промптов V2 (Epic 3)."""
+
+    def test_base_prompt_v2_first_person(self):
+        """V2 промпт содержит упоминание первого лица."""
+        # Проверяем что промпт содержит инструкции о первом лице
+        assert "я" in BASE_PROMPT_V2.lower() or "мой" in BASE_PROMPT_V2.lower()
+
+    def test_base_prompt_v2_no_references(self):
+        """V2 промпт запрещает ссылки [1], [2]."""
+        assert "[1]" in BASE_PROMPT_V2 or "ссылки" in BASE_PROMPT_V2.lower()
+
+    def test_base_prompt_v2_no_confidence(self):
+        """V2 промпт запрещает упоминание confidence."""
+        assert "confidence" in BASE_PROMPT_V2.lower()
+
+    def test_style_instructions_v2_list(self):
+        """V2 стиль LIST содержит инструкции о списках."""
+        assert "LIST" in STYLE_INSTRUCTIONS_V2
+        list_style = STYLE_INSTRUCTIONS_V2["LIST"]
+        assert "список" in list_style.lower() or "дефис" in list_style.lower()
+
+    def test_style_instructions_v2_ultrashort(self):
+        """V2 стиль ULTRASHORT содержит инструкции о краткости."""
+        assert "ULTRASHORT" in STYLE_INSTRUCTIONS_V2
+        short_style = STYLE_INSTRUCTIONS_V2["ULTRASHORT"]
+        assert "кратко" in short_style.lower()
+
+
+try:
+    from app.agent.graph import AGENT_SYSTEM_PROMPT_V2
+    _HAS_AGENT = True
+except ImportError:
+    _HAS_AGENT = False
+    AGENT_SYSTEM_PROMPT_V2 = ""
+
+
+@pytest.mark.skipif(not _HAS_AGENT, reason="langchain_core not installed")
+class TestAgentPromptV2:
+    """Тесты для агентского промпта V2 (Epic 3)."""
+
+    def test_agent_prompt_v2_exists(self):
+        """Агентский промпт V2 существует."""
+        assert AGENT_SYSTEM_PROMPT_V2 is not None
+        assert len(AGENT_SYSTEM_PROMPT_V2) > 100
+
+    def test_agent_prompt_v2_first_person(self):
+        """Агентский промпт V2 содержит инструкции о первом лице."""
+        assert "первого лица" in AGENT_SYSTEM_PROMPT_V2.lower() or "я" in AGENT_SYSTEM_PROMPT_V2
+
+    def test_agent_prompt_v2_no_references(self):
+        """Агентский промпт V2 запрещает ссылки."""
+        assert "[1]" in AGENT_SYSTEM_PROMPT_V2
+
+    def test_agent_prompt_v2_no_confidence(self):
+        """Агентский промпт V2 запрещает confidence."""
+        assert "confidence" in AGENT_SYSTEM_PROMPT_V2.lower()

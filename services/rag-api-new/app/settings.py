@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     graph_rag_enabled: bool = False       # Эпик 1: включает Graph-RAG
     agent_fact_tool: bool = False         # Эпик 1: graph_query_tool для агента
     rag_router_v2: bool = False           # Эпик 2: QueryPlan-based routing
+    format_v2_enabled: bool = False       # Эпик 3: новое форматирование и естественный тон
 
     @property
     def chroma_client_kwargs(self) -> dict:

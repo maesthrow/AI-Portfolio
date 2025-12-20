@@ -114,6 +114,37 @@ def portfolio_rag_tool_v2(question: str) -> dict:
     from ..rag.search import portfolio_search
     result = portfolio_search(question=question)
 
+    # === Epic 3: FormatRenderer integration ===
+    if cfg.format_v2_enabled:
+        from ..rag.formatter import FormatRenderer, format_not_found_response
+
+        renderer = FormatRenderer()
+
+        if not result.found:
+            return {
+                "answer": format_not_found_response(result.intent),
+                "items": [],
+                "sources": [],
+                "confidence": 0.0,
+                "found": False,
+                "intent": result.intent.value,
+                "used_graph": result.used_graph,
+            }
+
+        # Если граф вернул структурированные items — форматируем их
+        if result.items and result.used_graph:
+            formatted = renderer.render_items(result.items, result.intent)
+            return {
+                "answer": formatted,
+                "items": result.items,
+                "sources": result.sources,
+                "confidence": result.confidence,
+                "found": True,
+                "intent": result.intent.value,
+                "used_graph": result.used_graph,
+            }
+
+    # Default behavior (v1 or hybrid search result)
     return {
         "answer": result.evidence,
         "items": result.items,

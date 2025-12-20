@@ -155,3 +155,50 @@ def pack_context(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
         out_parts.append(block)
         used += add
     return "\n\n".join(out_parts)
+
+
+def pack_context_v2(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
+    """
+    Pack context without technical metadata (Epic 3).
+
+    Key differences from v1:
+    - No [type] prefixes
+    - Clean title formatting
+    - More natural reading flow
+    """
+    import re
+
+    def _sents(text: str) -> list[str]:
+        sents = re.split(r"(?<=[\.\!\?])\s+", text or "")
+        sents = [s.strip() for s in sents if s and s.strip()]
+        return sents or ([text.strip()] if text else [])
+
+    from ..deps import settings
+    cfg = settings()
+
+    # Fallback to v1 if feature flag is disabled
+    if not cfg.format_v2_enabled:
+        return pack_context(evidence, token_budget)
+
+    char_budget = token_budget * 4
+    parts: list[str] = []
+    used = 0
+
+    for sd in evidence:
+        md = sd.doc.metadata or {}
+        sents = _sents(sd.doc.page_content)[:2]
+        chunk = " ".join(sents).strip()
+        if not chunk:
+            continue
+
+        # Clean title without [type] prefix
+        title = md.get("name") or md.get("title") or md.get("label") or ""
+        block = f"{title}: {chunk}" if title else chunk
+
+        add = len(block) + 2
+        if used + add > char_budget:
+            break
+        parts.append(block)
+        used += add
+
+    return "\n\n".join(parts)

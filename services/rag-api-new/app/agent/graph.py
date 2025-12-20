@@ -7,7 +7,7 @@ from langchain_core.messages import SystemMessage, BaseMessage, HumanMessage
 from langchain.agents import create_agent
 from langgraph.checkpoint.memory import MemorySaver
 
-from ..rag.prompting import make_system_prompt
+from ..rag.prompting import make_system_prompt, BASE_PROMPT_V2
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,29 @@ AGENT_GRAPH_TOOL_PROMPT = """
 Предпочитай graph_query_tool для вопросов с конкретным проектом/компанией.
 """
 
+# === Epic 3: Natural Language Agent Prompt ===
+
+AGENT_SYSTEM_PROMPT_V2 = """
+РОЛЬ: Планировщик инструментов для портфолио разработчика.
+
+ПРАВИЛА:
+1) Для вопросов о проектах, технологиях, опыте — ОБЯЗАТЕЛЬНО вызови portfolio_rag_tool.
+2) Не придумывай факты. Если данных нет — честно скажи.
+3) Приветствия ("привет", "кто ты") — отвечай коротко без инструментов.
+
+ФОРМАТ ОТВЕТА:
+- Говори от первого лица (я, мой, у меня)
+- Дружелюбно, без формальностей
+- Не добавляй ссылки [1], [2]
+- Не упоминай confidence
+- Если данных нет — кратко "Такой информации у меня нет"
+- Не перечисляй, чего нет
+
+СТИЛЬ:
+- Кратко: 2-5 предложений или короткий список
+- Для перечислений: маркированный список с дефисами
+"""
+
 
 def build_agent_graph():
     """
@@ -99,7 +122,13 @@ def build_agent_graph():
         logger.info("Agent using graph_query_tool (agent_fact_tool=true, graph_rag_enabled=true)")
 
     # Формируем системный промпт
-    system_prompt = f"{make_system_prompt(None)}\n\n{AGENT_SYSTEM_PROMPT}"
+    # Epic 3: используем v2 prompt при включённом format_v2_enabled
+    if cfg.format_v2_enabled:
+        system_prompt = f"{BASE_PROMPT_V2}\n\n{AGENT_SYSTEM_PROMPT_V2}"
+        logger.info("Agent using format_v2_enabled prompts")
+    else:
+        system_prompt = f"{make_system_prompt(None)}\n\n{AGENT_SYSTEM_PROMPT}"
+
     if extra_prompt:
         system_prompt += extra_prompt
 

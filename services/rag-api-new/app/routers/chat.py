@@ -10,10 +10,24 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
-from app.deps import agent_app
+from app.deps import agent_app, settings
 from app.schemas.chat import ChatRequest
 
 logger = logging.getLogger(__name__)
+
+# Epic 3: Post-processing renderer (lazy import)
+_format_renderer = None
+
+
+def _get_format_renderer():
+    """Lazy import of FormatRenderer to avoid circular imports."""
+    global _format_renderer
+    if _format_renderer is None:
+        from app.rag.formatter import FormatRenderer
+        _format_renderer = FormatRenderer()
+    return _format_renderer
+
+
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
 
@@ -155,6 +169,12 @@ async def chat_stream(req: ChatRequest):
             logger.exception("Agent streaming failed")
             yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False) + "\n"
             return
+
+        # Epic 3: Post-process final text if format_v2 is enabled
+        cfg = settings()
+        if cfg.format_v2_enabled and final_text:
+            renderer = _get_format_renderer()
+            final_text = renderer.post_process(final_text)
 
         if not sent_delta and final_text:
             yield json.dumps({"type": "delta", "content": final_text}, ensure_ascii=False) + "\n"
