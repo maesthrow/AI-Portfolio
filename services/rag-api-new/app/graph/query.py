@@ -89,6 +89,15 @@ def _current_job_query() -> GraphQueryResult:
             "company": c.name,
             "role": c.data.get("role"),
             "start_date": c.data.get("start_date"),
+            "company_summary_md": c.data.get("company_summary_md"),
+            "company_role_md": c.data.get("company_role_md"),
+            "text": "\n".join(
+                [
+                    f"{c.name} — {c.data.get('role')}" if c.data.get("role") else str(c.name),
+                    str(c.data.get("company_summary_md") or "").strip(),
+                    str(c.data.get("company_role_md") or "").strip(),
+                ]
+            ).strip(),
         }
         for c in companies
     ]
@@ -174,7 +183,37 @@ def _technologies_query(entity_key: str | None) -> GraphQueryResult:
 
     if entity_key:
         # Ищем технологии конкретного проекта
-        project = store.get_node_by_slug(entity_key)
+        node = store.get_node_by_slug(entity_key)
+
+        # Technology usage: if entity_key refers to a technology node, list projects that USE it.
+        if node and node.type == NodeType.TECHNOLOGY:
+            tech = node
+            incoming = store.get_incoming_edges(tech.id, EdgeType.USES)
+            projects = [store.get_node(e.source_id) for e in incoming]
+            projects = [p for p in projects if p and p.type == NodeType.PROJECT]
+
+            items = [
+                {
+                    "technology": tech.name,
+                    "project": p.name,
+                    "project_slug": p.slug,
+                    "company_name": p.data.get("company_name"),
+                    "domain": p.data.get("domain"),
+                }
+                for p in projects
+            ]
+            sources = [_node_to_source(tech)] + [_node_to_source(p) for p in projects[:10]]
+
+            return GraphQueryResult(
+                items=items,
+                found=len(items) > 0,
+                sources=sources,
+                confidence=0.9 if items else 0.0,
+                intent=Intent.TECHNOLOGIES,
+                entity_key=entity_key,
+            )
+
+        project = node if (node and node.type == NodeType.PROJECT) else None
         if not project:
             # Пробуем найти по частичному совпадению
             projects = store.get_nodes_by_type(NodeType.PROJECT)
@@ -236,7 +275,8 @@ def _project_details_query(entity_key: str) -> GraphQueryResult:
             intent=Intent.PROJECT_DETAILS,
         )
 
-    project = store.get_node_by_slug(entity_key)
+    node = store.get_node_by_slug(entity_key)
+    project = node if (node and node.type == NodeType.PROJECT) else None
 
     if not project:
         # Пробуем найти по частичному совпадению
@@ -316,12 +356,26 @@ def _experience_query(entity_key: str | None) -> GraphQueryResult:
             if p.data.get("company_slug") == c.slug:
                 projects.append(p.name)
 
+        summary_md = c.data.get("company_summary_md")
+        role_md = c.data.get("company_role_md")
+        role = c.data.get("role")
+        period = f"{c.data.get('start_date')} - {c.data.get('end_date') or 'present'}"
+
+        text_parts = [f"{c.name} — {role}" if role else str(c.name)]
+        if summary_md:
+            text_parts.append(str(summary_md))
+        if role_md:
+            text_parts.append(str(role_md))
+
         items.append({
             "company": c.name,
-            "role": c.data.get("role"),
-            "period": f"{c.data.get('start_date')} - {c.data.get('end_date') or 'present'}",
+            "role": role,
+            "period": period,
             "is_current": c.data.get("is_current"),
             "projects": projects,
+            "company_summary_md": summary_md,
+            "company_role_md": role_md,
+            "text": "\n".join([p for p in text_parts if p]),
         })
 
     return GraphQueryResult(

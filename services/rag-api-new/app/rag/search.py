@@ -124,7 +124,11 @@ def _apply_entity_filter(docs: List[Doc], entities: List[Entity], policy: Entity
         # Если STRICT вернул пусто, возвращаем исходные (fallback)
         if filtered:
             return filtered
-        if any(e.type == EntityType.TECHNOLOGY for e in entities):
+        # Если вопрос только про технологию и нет матчей — лучше вернуть пусто,
+        # чтобы агент детерминированно ответил "не найдено". При смешанных
+        # сущностях (технология + человек/компания) не режем выдачу полностью,
+        # иначе получаем ложные "NO_RESULTS" из-за несовпадения slug/alias.
+        if entities and all(e.type == EntityType.TECHNOLOGY for e in entities):
             return []
         return docs
 

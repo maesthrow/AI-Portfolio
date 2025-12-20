@@ -103,20 +103,58 @@ def execute_graph_query(
 def _item_to_fact(item: Any, intent: Any) -> FactItem | None:
     """Convert a graph query item to FactItem."""
     if isinstance(item, dict):
-        # Extract text based on item type
-        text = (
-            item.get("text")
-            or item.get("achievement")
-            or item.get("name")
-            or item.get("description")
-            or str(item)
-        )
+        text = item.get("text")
+        if not text:
+            if item.get("technology") and item.get("project"):
+                tech = item.get("technology")
+                proj = item.get("project")
+                comp = item.get("company_name")
+                suffix = f" ({comp})" if comp else ""
+                text = f"{tech} используется в проекте {proj}{suffix}"
+            elif item.get("name") and any(k in item for k in ("description", "long_description", "domain", "period")):
+                name = item.get("name")
+                desc = item.get("description") or item.get("long_description") or ""
+                domain = item.get("domain")
+                period = item.get("period")
+                parts = [str(name)]
+                if domain:
+                    parts.append(f"домен: {domain}")
+                if period:
+                    parts.append(f"период: {period}")
+                if desc:
+                    parts.append(str(desc))
+                text = " — ".join([p for p in parts if p])
+            elif item.get("company") or item.get("role"):
+                company = item.get("company")
+                role = item.get("role")
+                period = item.get("period")
+                start_date = item.get("start_date")
+                summary = item.get("company_summary_md") or ""
+                role_md = item.get("company_role_md") or ""
+                parts = []
+                if company and role:
+                    parts.append(f"{company} — {role}")
+                elif company:
+                    parts.append(str(company))
+                if period:
+                    parts.append(str(period))
+                elif start_date:
+                    parts.append(f"с {start_date}")
+                if summary:
+                    parts.append(str(summary))
+                if role_md:
+                    parts.append(str(role_md))
+                text = "\n".join([p for p in parts if p])
+            else:
+                text = item.get("achievement") or item.get("name") or item.get("description") or str(item)
 
         # Determine fact type
         if "achievement" in item:
             fact_type = "achievement"
         elif "name" in item and "category" in item:
             fact_type = "technology"
+        elif item.get("technology") and item.get("project"):
+            fact_type = "technology_usage"
         elif "company" in item or "role" in item:
             fact_type = "experience"
         elif "kind" in item and ("url" in item or "value" in item):

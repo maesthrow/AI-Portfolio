@@ -10,6 +10,7 @@ import logging
 from langchain.tools import tool
 
 from ..deps import settings
+from ..utils.logging_utils import truncate_text
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,9 @@ def portfolio_rag_tool_v3(question: str) -> dict:
     from .executor import PlanExecutor
     from .render import RenderEngine
     from .answer import AnswerLLM
+    from .critic import CriticLLM, CriticDecision
+    from .tools.portfolio_search_tool import execute_portfolio_search
+    from .planner.schemas import SourceInfo
 
     try:
         # 1. Plan
@@ -76,6 +80,62 @@ def portfolio_rag_tool_v3(question: str) -> dict:
         # 2. Execute
         executor = PlanExecutor()
         payload = executor.execute(plan, question)
+
+        # 2.1 Self-check: if retrieval is insufficient, run hybrid search and merge context
+        try:
+            if float(plan.confidence or 0.0) < 0.5:
+                decision = CriticDecision(
+                    sufficient=False,
+                    need_search=True,
+                    query=question,
+                    reason="low_plan_confidence",
+                )
+                logger.info("Self-check forcing hybrid search due to low plan confidence=%.2f", float(plan.confidence or 0.0))
+            else:
+                critic = CriticLLM(planner_llm())
+                decision = critic.evaluate(question, plan, payload)
+
+            search_already_used = any(tc.tool == "portfolio_search_tool" for tc in (plan.tool_calls or []))
+            if decision.need_search and not search_already_used:
+                search_query = (decision.query or "").strip() or question
+                logger.info("Self-check triggering portfolio_search_tool query=%r", truncate_text(search_query, limit=200))
+                facts2, sources2, found2, confidence2, evidence2 = execute_portfolio_search(
+                    query=search_query,
+                    k=8,
+                )
+
+                if found2 and facts2:
+                    merged_items = (payload.items or []) + facts2
+                    payload.items = merged_items[: plan.limits.max_items]
+
+                # Merge sources (dedupe by id)
+                existing_ids = {s.id for s in (payload.sources or []) if s.id}
+                for src in sources2:
+                    if not isinstance(src, dict):
+                        continue
+                    try:
+                        source_id = src.get("id")
+                        if source_id is None:
+                            source_id = src.get("ref_id") or src.get("source") or ""
+                        label = src.get("label") or src.get("title") or src.get("name") or src.get("id") or source_id or ""
+                        si = SourceInfo(id=str(source_id), label=str(label), type=src.get("type"))
+                        if si.id and si.id not in existing_ids:
+                            payload.sources.append(si)
+                            existing_ids.add(si.id)
+                    except Exception as e:
+                        logger.warning("Self-check source merge failed: %s", e)
+
+                if found2:
+                    payload.found = True
+                    payload.warnings.append("Self-check: использован дополнительный гибридный поиск")
+
+                if isinstance(payload.meta, dict):
+                    payload.meta["coverage"] = max(float(payload.meta.get("coverage") or 0.0), float(confidence2 or 0.0))
+                    if evidence2:
+                        payload.meta["evidence"] = evidence2
+
+        except Exception as e:
+            logger.warning("Self-check skipped due to error: %s", e)
 
         logger.info(
             "Execution complete: found=%s, items=%d, confidence=%.2f",

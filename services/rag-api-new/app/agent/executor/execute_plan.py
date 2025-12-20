@@ -48,7 +48,7 @@ class PlanExecutor:
         all_facts: list[FactItem] = []
         all_sources: list[SourceInfo] = []
         warnings: list[str] = []
-        overall_confidence = plan.confidence
+        overall_confidence = float(plan.confidence or 0.0)
         found = False
         evidence_text = ""
 
@@ -100,6 +100,7 @@ class PlanExecutor:
 
                 if success:
                     found = True
+                    overall_confidence = max(overall_confidence, float(confidence or 0.0))
                     if evidence:
                         evidence_text = evidence
 
@@ -164,7 +165,7 @@ class PlanExecutor:
 
                 if success:
                     found = True
-                    overall_confidence *= 0.7  # Reduce confidence for fallback
+                    overall_confidence = max(overall_confidence, float(confidence or 0.0) * 0.7)
                     logger.info(
                         "Fallback success tool=%s facts=%d sources=%d confidence=%.2f evidence=%r",
                         plan.fallback.tool,

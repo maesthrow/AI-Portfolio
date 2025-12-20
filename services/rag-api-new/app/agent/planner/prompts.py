@@ -127,36 +127,3 @@ PLANNER_REPAIR_PROMPT = """Предыдущий ответ не является
 Исправь структуру и верни валидный QueryPlan согласно схеме.
 Обязательные поля: intents, tool_calls.
 """
-
-# Mapping of known project/company aliases to canonical IDs
-ENTITY_ALIASES = {
-    # Projects
-    "алор": "project:alor-broker",
-    "alor": "project:alor-broker",
-    "алор брокер": "project:alor-broker",
-    "alor broker": "project:alor-broker",
-    "ai-portfolio": "project:ai-portfolio",
-    "ai portfolio": "project:ai-portfolio",
-    "портфолио": "project:ai-portfolio",
-
-    # Companies
-    "aston": "company:aston",
-    "астон": "company:aston",
-    "sberbank": "company:sberbank",
-    "сбербанк": "company:sberbank",
-    "сбер": "company:sberbank",
-
-    # Technologies
-    "rag": "technology:rag",
-    "langgraph": "technology:langgraph",
-    "langchain": "technology:langchain",
-    "python": "technology:python",
-    "fastapi": "technology:fastapi",
-    "react": "technology:react",
-    "nextjs": "technology:nextjs",
-    "next.js": "technology:nextjs",
-    "postgresql": "technology:postgresql",
-    "postgres": "technology:postgresql",
-    "chroma": "technology:chromadb",
-    "chromadb": "technology:chromadb",
-}
