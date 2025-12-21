@@ -17,7 +17,8 @@ from app.rag.search_types import (
     SearchResult,
 )
 from app.rag.entities import EntityRegistry, get_entity_registry, reset_entity_registry
-from app.rag.query_plan import plan_query
+# NOTE: plan_query removed in v3 (LLM-based planning used instead)
+# from app.rag.query_plan import plan_query
 from app.graph.schema import NodeType, EdgeType, GraphNode, GraphEdge
 from app.graph.store import GraphStore, get_graph_store, reset_graph_store
 from app.graph.query import graph_query
@@ -91,54 +92,56 @@ class TestEntityRegistry:
         assert entity is None
 
 
-class TestIntentClassification:
-    """Тесты для классификации интента."""
-
-    def setup_method(self):
-        """Сброс реестра перед каждым тестом."""
-        reset_entity_registry()
-
-    def test_achievements_intent(self):
-        """Определение intent ACHIEVEMENTS."""
-        plan = plan_query("Какие достижения на проекте?", use_graph_feature=False)
-        assert plan.intent == Intent.ACHIEVEMENTS
-
-    def test_current_job_intent(self):
-        """Определение intent CURRENT_JOB."""
-        plan = plan_query("Где сейчас работает?", use_graph_feature=False)
-        assert plan.intent == Intent.CURRENT_JOB
-
-    def test_technologies_intent(self):
-        """Определение intent TECHNOLOGIES."""
-        plan = plan_query("Какой стек технологий использует?", use_graph_feature=False)
-        assert plan.intent == Intent.TECHNOLOGIES
-
-    def test_contacts_intent(self):
-        """Определение intent CONTACTS."""
-        plan = plan_query("Как связаться?", use_graph_feature=False)
-        assert plan.intent == Intent.CONTACTS
-
-    def test_experience_intent(self):
-        """Определение intent EXPERIENCE."""
-        plan = plan_query("Какой опыт работы?", use_graph_feature=False)
-        assert plan.intent == Intent.EXPERIENCE
-
-    def test_general_intent_fallback(self):
-        """Fallback на GENERAL для неопределённых вопросов."""
-        plan = plan_query("Привет, расскажи о себе", use_graph_feature=False)
-        assert plan.intent == Intent.GENERAL
-
-    def test_query_plan_structure(self):
-        """Проверка структуры QueryPlan."""
-        plan = plan_query("Какие достижения?", use_graph_feature=True)
-
-        assert isinstance(plan.intent, Intent)
-        assert isinstance(plan.entities, list)
-        assert isinstance(plan.entity_policy, EntityPolicy)
-        assert isinstance(plan.use_graph, bool)
-        assert isinstance(plan.k_dense, int)
-        assert isinstance(plan.k_bm, int)
-        assert isinstance(plan.k_final, int)
+# NOTE: TestIntentClassification removed in v3 - uses deleted plan_query (keyword-based intent)
+# In v3 intent classification is done by LLM Planner instead
+# class TestIntentClassification:
+#     """Тесты для классификации интента (v1/v2 only)."""
+#
+#     def setup_method(self):
+#         """Сброс реестра перед каждым тестом."""
+#         reset_entity_registry()
+#
+#     def test_achievements_intent(self):
+#         """Определение intent ACHIEVEMENTS."""
+#         plan = plan_query("Какие достижения на проекте?", use_graph_feature=False)
+#         assert plan.intent == Intent.ACHIEVEMENTS
+#
+#     def test_current_job_intent(self):
+#         """Определение intent CURRENT_JOB."""
+#         plan = plan_query("Где сейчас работает?", use_graph_feature=False)
+#         assert plan.intent == Intent.CURRENT_JOB
+#
+#     def test_technologies_intent(self):
+#         """Определение intent TECHNOLOGIES."""
+#         plan = plan_query("Какой стек технологий использует?", use_graph_feature=False)
+#         assert plan.intent == Intent.TECHNOLOGIES
+#
+#     def test_contacts_intent(self):
+#         """Определение intent CONTACTS."""
+#         plan = plan_query("Как связаться?", use_graph_feature=False)
+#         assert plan.intent == Intent.CONTACTS
+#
+#     def test_experience_intent(self):
+#         """Определение intent EXPERIENCE."""
+#         plan = plan_query("Какой опыт работы?", use_graph_feature=False)
+#         assert plan.intent == Intent.EXPERIENCE
+#
+#     def test_general_intent_fallback(self):
+#         """Fallback на GENERAL для неопределённых вопросов."""
+#         plan = plan_query("Привет, расскажи о себе", use_graph_feature=False)
+#         assert plan.intent == Intent.GENERAL
+#
+#     def test_query_plan_structure(self):
+#         """Проверка структуры QueryPlan."""
+#         plan = plan_query("Какие достижения?", use_graph_feature=True)
+#
+#         assert isinstance(plan.intent, Intent)
+#         assert isinstance(plan.entities, list)
+#         assert isinstance(plan.entity_policy, EntityPolicy)
+#         assert isinstance(plan.use_graph, bool)
+#         assert isinstance(plan.k_dense, int)
+#         assert isinstance(plan.k_bm, int)
+#         assert isinstance(plan.k_final, int)
 
 
 class TestGraphStore:

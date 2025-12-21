@@ -49,14 +49,12 @@ def collection_stats():
             counts[t] = counts.get(t, 0) + 1
         by_type = counts
 
-    # === Graph-RAG: статистика графа ===
-    graph_stats = None
-    if cfg.graph_rag_enabled:
-        from app.graph.store import get_graph_store
-        store = get_graph_store()
-        stats = store.stats()
-        graph_stats = GraphStats(
-            nodes=stats["nodes"],
+    # === Graph-RAG: статистика графа (always enabled in v3) ===
+    from app.graph.store import get_graph_store
+    store = get_graph_store()
+    stats = store.stats()
+    graph_stats = GraphStats(
+        nodes=stats["nodes"],
             edges=stats["edges"],
             nodes_by_type=stats["nodes_by_type"],
         )

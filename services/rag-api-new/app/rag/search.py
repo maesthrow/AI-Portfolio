@@ -13,11 +13,10 @@ from typing import Any, List
 
 from ..deps import settings, vectorstore, reranker
 from ..graph.query import graph_query
-from .query_plan import plan_query
-from .search_types import SearchResult, Intent, EntityPolicy, Entity, EntityType
+from .search_types import SearchResult, Intent, EntityPolicy, Entity, EntityType, QueryPlan
 from .retrieval import HybridRetriever
 from .rank import rerank
-from .evidence import select_evidence, pack_context
+from .evidence import select_evidence, pack_context_v2
 from .types import ScoredDoc, SourceInfo, Doc
 
 logger = logging.getLogger(__name__)
@@ -145,18 +144,19 @@ def portfolio_search(
     allowed_types: set[str] | list[str] | None = None,
 ) -> SearchResult:
     """
-    Унифицированный поиск по портфолио.
+    Гибридный поиск по портфолио (v3).
 
-    1. Проверяет feature flag rag_router_v2
-    2. Генерирует QueryPlan
-    3. Если use_graph: пробует graph_query
-    4. Иначе/fallback: гибридный поиск
-    5. Возвращает SearchResult
+    Стратегия:
+    1. Пытается граф-запрос (v3: всегда включен)
+    2. Fallback на гибридный поиск (dense + BM25)
+    3. Reranking и отбор evidence
+    4. Возвращает SearchResult
 
     Args:
         question: Вопрос пользователя
         k: Количество результатов
         collection: Название коллекции (опционально)
+        allowed_types: Разрешенные типы документов
 
     Returns:
         SearchResult с найденными фактами или evidence
@@ -164,29 +164,18 @@ def portfolio_search(
     cfg = settings()
     coll = collection or cfg.chroma_collection
 
-    # === Feature flag check ===
-    # v3 (planner_llm_v3=true) uses this module as a retrieval tool, so avoid the
-    # legacy portfolio_rag_answer() path (it already generates an answer).
-    if not cfg.rag_router_v2 and not cfg.planner_llm_v3:
-        # Fallback на старый portfolio_rag_answer
-        from .core import portfolio_rag_answer
-        result = portfolio_rag_answer(question, k=k, collection=coll)
-        return SearchResult(
-            query=question,
-            intent=Intent.GENERAL,
-            entities=[],
-            items=[],
-            evidence=result.get("answer", ""),
-            sources=result.get("sources", []),
-            confidence=result.get("confidence", 0.0),
-            found=result.get("found", 0) > 0,
-            used_graph=False,
-        )
-
-    # === Generate QueryPlan ===
-    plan = plan_query(question, use_graph_feature=cfg.graph_rag_enabled)
-    if allowed_types:
-        plan.allowed_types = set(allowed_types)
+    # === Create search plan with default parameters ===
+    # В v3 параметры поиска определяет Planner LLM, здесь используем значения по умолчанию
+    plan = QueryPlan(
+        intent=Intent.GENERAL,
+        entities=[],
+        entity_policy=EntityPolicy.NONE,
+        use_graph=True,  # v3: граф всегда включен
+        k_dense=20,
+        k_bm=15,
+        k_final=30,
+        allowed_types=set(allowed_types) if allowed_types else None,
+    )
 
     logger.info(
         "QueryPlan: intent=%s, entities=%s, use_graph=%s, entity_policy=%s",
@@ -197,7 +186,8 @@ def portfolio_search(
     )
 
     # === Try Graph Query ===
-    if plan.use_graph and cfg.graph_rag_enabled:
+    # v3: граф всегда включен
+    if plan.use_graph:
         entity_key = plan.entities[0].slug if plan.entities else None
         graph_result = graph_query(plan.intent, entity_key)
 
@@ -269,7 +259,7 @@ def portfolio_search(
     )
 
     # === Pack Context ===
-    context = pack_context(evidence_docs, token_budget=900)
+    context = pack_context_v2(evidence_docs, token_budget=900)
     sources = _build_sources(evidence_docs)
 
     return SearchResult(

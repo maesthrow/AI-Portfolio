@@ -27,12 +27,9 @@ def ingest_batch(payload: ExportPayload):
 
     res = upsert_documents(coll, items)
 
-    # === Graph-RAG: построение графа знаний ===
-    cfg = settings()
-    logger.info("graph_rag_enabled=%s", cfg.graph_rag_enabled)
-    if cfg.graph_rag_enabled:
-        from app.graph.builder import build_graph_from_export
-        store = build_graph_from_export(payload)
-        logger.info("Graph built: %s", store.stats())
+    # === Graph-RAG: построение графа знаний (always enabled in v3) ===
+    from app.graph.builder import build_graph_from_export
+    store = build_graph_from_export(payload)
+    logger.info("Graph built: %s", store.stats())
 
     return IngestBatchResult(added=res.upserted, collection=res.collection)

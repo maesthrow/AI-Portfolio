@@ -159,9 +159,9 @@ def pack_context(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
 
 def pack_context_v2(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
     """
-    Pack context without technical metadata (Epic 3).
+    Pack context without technical metadata (v3).
 
-    Key differences from v1:
+    Key features:
     - No [type] prefixes
     - Clean title formatting
     - More natural reading flow
@@ -172,13 +172,6 @@ def pack_context_v2(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
         sents = re.split(r"(?<=[\.\!\?])\s+", text or "")
         sents = [s.strip() for s in sents if s and s.strip()]
         return sents or ([text.strip()] if text else [])
-
-    from ..deps import settings
-    cfg = settings()
-
-    # Fallback to v1 if feature flag is disabled
-    if not cfg.format_v2_enabled:
-        return pack_context(evidence, token_budget)
 
     char_budget = token_budget * 4
     parts: list[str] = []

@@ -195,9 +195,8 @@ async def chat_stream(req: ChatRequest):
             yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False) + "\n"
             return
 
-        # Epic 3: Post-process final text if format_v2 is enabled
-        cfg = settings()
-        if cfg.format_v2_enabled and final_text:
+        # v3: Post-process final text
+        if final_text:
             renderer = _get_format_renderer()
             final_text = renderer.post_process(final_text)
 

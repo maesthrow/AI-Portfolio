@@ -374,7 +374,7 @@ class AnswerLLM:
         # First line is often the technology name for technology docs.
         first_line = t.splitlines()[0].strip() if t.splitlines() else ""
 
-        m = re.search(r"(?:используется\\s+в|used\\s+in)\\s*:\\s*(.+)", t, flags=re.IGNORECASE)
+        m = re.search(r"(?:используется\s+в|used\s+in)\s*:\s*(.+)", t, flags=re.IGNORECASE)
         if not m:
             return None
         tail = m.group(1).strip()
@@ -392,14 +392,14 @@ class AnswerLLM:
         Blocks are separated by blank lines.
         """
         out: dict[str, list[str]] = {}
-        blocks = re.split(r"\\n\\s*\\n", evidence_text.strip())
+        blocks = re.split(r"\n\s*\n", evidence_text.strip())
         for block in blocks:
             b = block.strip()
             if not b:
                 continue
             # Try to get title from header.
             tech_name = None
-            m_header = re.match(r"^\\[(?P<type>[^\\]]+)\\]\\s*(?P<title>[^:]+)\\s*:\\s*(?P<body>.*)$", b, flags=re.DOTALL)
+            m_header = re.match(r"^\[(?P<type>[^\]]+)\]\s*(?P<title>[^:]+)\s*:\s*(?P<body>.*)$", b, flags=re.DOTALL)
             body = b
             if m_header:
                 ttype = (m_header.group("type") or "").strip().lower()

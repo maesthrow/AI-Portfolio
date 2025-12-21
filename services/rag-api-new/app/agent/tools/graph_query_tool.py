@@ -41,17 +41,10 @@ def execute_graph_query(
     Returns:
         Tuple of (facts, sources, found, confidence)
     """
-    from ...deps import settings
     from ...graph.query import graph_query
     from ...rag.search_types import Intent
 
-    cfg = settings()
-
-    # Check feature flag
-    if not cfg.graph_rag_enabled:
-        logger.warning("Graph RAG disabled, returning empty result")
-        return [], [], False, 0.0
-
+    # Graph RAG always enabled in v3
     # Parse entity_key from entity_id
     entity_key = None
     if entity_id:

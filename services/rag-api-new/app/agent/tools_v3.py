@@ -43,15 +43,6 @@ def portfolio_rag_tool_v3(question: str) -> dict:
         - found: найдены ли данные
         - intents: определённые намерения
     """
-    cfg = settings()
-
-    # Check feature flag
-    if not cfg.planner_llm_v3:
-        # Fallback to v2 tool
-        logger.warning("planner_llm_v3 disabled, falling back to v2")
-        from .tools_v2 import portfolio_rag_tool_v2
-        return portfolio_rag_tool_v2.invoke(question)
-
     logger.info("portfolio_rag_tool_v3: question=%r", question[:100])
 
     # Import dependencies
@@ -170,21 +161,13 @@ def portfolio_rag_tool_v3(question: str) -> dict:
 
     except Exception as e:
         logger.error("portfolio_rag_tool_v3 failed: %s", e, exc_info=True)
-
-        # Fallback to v2 on error
-        try:
-            from .tools_v2 import portfolio_rag_tool_v2
-            logger.warning("Falling back to v2 tool due to error")
-            return portfolio_rag_tool_v2.invoke(question)
-        except Exception as e2:
-            logger.error("Fallback to v2 also failed: %s", e2)
-            return {
-                "answer": "Произошла ошибка при обработке запроса. Попробуйте переформулировать вопрос.",
-                "rendered_facts": "",
-                "items": [],
-                "sources": [],
-                "confidence": 0.0,
-                "found": False,
-                "intents": [],
-                "warnings": [str(e)],
-            }
+        return {
+            "answer": "Произошла ошибка при обработке запроса. Попробуйте переформулировать вопрос.",
+            "rendered_facts": "",
+            "items": [],
+            "sources": [],
+            "confidence": 0.0,
+            "found": False,
+            "intents": [],
+            "warnings": [str(e)],
+        }

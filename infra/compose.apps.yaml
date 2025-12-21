@@ -155,12 +155,9 @@ services:
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       FRONTEND_LOCAL_IP: ${FRONTEND_LOCAL_IP}
       LOG_LEVEL: INFO
-      # === Feature flags (Epics 1, 2 & 3) ===
-      graph_rag_enabled: ${GRAPH_RAG_ENABLED:-false}
-      agent_fact_tool: ${AGENT_FACT_TOOL:-false}
-      rag_router_v2: ${RAG_ROUTER_V2:-false}
-      format_v2_enabled: ${FORMAT_V2_ENABLED:-false}
-      planner_llm_v3: ${PLANNER_LLM_V3:-false}
+
+      planner_temperature: ${PLANNER_TEMPERATURE:-0.0}
+      answer_temperature: ${ANSWER_TEMPERATURE:-0.2}
     depends_on:
       - chroma
       - litellm
