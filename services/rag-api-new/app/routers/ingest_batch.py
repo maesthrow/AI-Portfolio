@@ -27,7 +27,7 @@ def ingest_batch(payload: ExportPayload):
 
     res = upsert_documents(coll, items)
 
-    # === Graph-RAG: построение графа знаний (always enabled in v3) ===
+    # === Graph-RAG: построение графа знаний (always enabled) ===
     from app.graph.builder import build_graph_from_export
     store = build_graph_from_export(payload)
     logger.info("Graph built: %s", store.stats())

@@ -44,7 +44,7 @@ def execute_graph_query(
     from ...graph.query import graph_query
     from ...rag.search_types import Intent
 
-    # Graph RAG always enabled in v3
+    # Graph RAG always enabled
     # Parse entity_key from entity_id
     entity_key = None
     if entity_id:

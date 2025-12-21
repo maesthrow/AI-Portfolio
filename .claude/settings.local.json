@@ -7,7 +7,8 @@
       "Bash(python -m pytest tests/test_smoke.py -v)",
       "Bash(dir:*)",
       "Bash(python -m py_compile:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(python -m pytest:*)"
     ],
     "deny": [],
     "ask": []

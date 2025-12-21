@@ -157,9 +157,9 @@ def pack_context(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
     return "\n\n".join(out_parts)
 
 
-def pack_context_v2(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
+def pack_context(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
     """
-    Pack context without technical metadata (v3).
+    Pack context without technical metadata.
 
     Key features:
     - No [type] prefixes

@@ -53,22 +53,22 @@ def build_agent_graph():
     """
     ReAct-агент с памятью по thread_id (session_id).
 
-    Использует v3 конфигурацию:
-    - Единственный инструмент: portfolio_rag_tool_v3
+    Использует полный LLM-пайплайн:
+    - Единственный инструмент: portfolio_rag_tool
     - Полный пайплайн: Planner → Executor → Critic → Render → Answer
     - Промпт: AGENT_SYSTEM_PROMPT
     """
-    from .tools_v3 import portfolio_rag_tool_v3
+    from .rag_tool import portfolio_rag_tool
     from ..deps import chat_llm
 
     llm = chat_llm()
     checkpointer = MemorySaver()
 
-    # v3 configuration - single tool with full pipeline
-    tools = [portfolio_rag_tool_v3]
+    # Single tool with full LLM pipeline
+    tools = [portfolio_rag_tool]
     system_prompt = AGENT_SYSTEM_PROMPT
 
-    logger.info("Agent using v3 configuration: portfolio_rag_tool_v3 with unified prompt")
+    logger.info("Agent using portfolio_rag_tool with unified prompt")
 
     agent = create_agent(
         model=llm,
