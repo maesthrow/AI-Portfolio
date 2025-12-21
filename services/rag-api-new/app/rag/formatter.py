@@ -1,5 +1,5 @@
 """
-Response Formatter - Epic 3.
+Response Formatter.
 
 Transforms SearchResult to natural, user-friendly text.
 Removes technical artifacts and applies consistent formatting.

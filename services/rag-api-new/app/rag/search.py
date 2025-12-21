@@ -16,7 +16,7 @@ from ..graph.query import graph_query
 from .search_types import SearchResult, Intent, EntityPolicy, Entity, EntityType, QueryPlan
 from .retrieval import HybridRetriever
 from .rank import rerank
-from .evidence import select_evidence, pack_context_v2
+from .evidence import select_evidence, pack_context
 from .types import ScoredDoc, SourceInfo, Doc
 
 logger = logging.getLogger(__name__)
@@ -144,10 +144,10 @@ def portfolio_search(
     allowed_types: set[str] | list[str] | None = None,
 ) -> SearchResult:
     """
-    Гибридный поиск по портфолио (v3).
+    Гибридный поиск по портфолио.
 
     Стратегия:
-    1. Пытается граф-запрос (v3: всегда включен)
+    1. Пытается граф-запрос (всегда включен)
     2. Fallback на гибридный поиск (dense + BM25)
     3. Reranking и отбор evidence
     4. Возвращает SearchResult
@@ -165,12 +165,12 @@ def portfolio_search(
     coll = collection or cfg.chroma_collection
 
     # === Create search plan with default parameters ===
-    # В v3 параметры поиска определяет Planner LLM, здесь используем значения по умолчанию
+    # Параметры поиска определяет Planner LLM, здесь используем значения по умолчанию
     plan = QueryPlan(
         intent=Intent.GENERAL,
         entities=[],
         entity_policy=EntityPolicy.NONE,
-        use_graph=True,  # v3: граф всегда включен
+        use_graph=True,  # граф всегда включен
         k_dense=20,
         k_bm=15,
         k_final=30,
@@ -186,7 +186,7 @@ def portfolio_search(
     )
 
     # === Try Graph Query ===
-    # v3: граф всегда включен
+    # Граф всегда включен
     if plan.use_graph:
         entity_key = plan.entities[0].slug if plan.entities else None
         graph_result = graph_query(plan.intent, entity_key)
@@ -259,7 +259,7 @@ def portfolio_search(
     )
 
     # === Pack Context ===
-    context = pack_context_v2(evidence_docs, token_budget=900)
+    context = pack_context(evidence_docs, token_budget=900)
     sources = _build_sources(evidence_docs)
 
     return SearchResult(

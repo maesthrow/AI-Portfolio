@@ -1,8 +1,7 @@
 """
-Agent Tools v3 - full LLM-based RAG pipeline.
+Agent Tools - full LLM-based RAG pipeline.
 
-Implements the Planner LLM -> Executor -> Answer LLM pipeline
-as specified in ТЗ TZ_Planner_Answer_LLM_rag-api-new.md.
+Implements the Planner LLM -> Executor -> Answer LLM pipeline.
 """
 from __future__ import annotations
 
@@ -15,8 +14,8 @@ from ..utils.logging_utils import truncate_text
 logger = logging.getLogger(__name__)
 
 
-@tool("portfolio_rag_tool_v3")
-def portfolio_rag_tool_v3(question: str) -> dict:
+@tool("portfolio_rag_tool")
+def portfolio_rag_tool(question: str) -> dict:
     """
     Полноценный RAG-инструмент с LLM-планированием.
 
@@ -43,7 +42,7 @@ def portfolio_rag_tool_v3(question: str) -> dict:
         - found: найдены ли данные
         - intents: определённые намерения
     """
-    logger.info("portfolio_rag_tool_v3: question=%r", question[:100])
+    logger.info("portfolio_rag_tool: question=%r", question[:100])
 
     # Import dependencies
     from ..deps import planner_llm, answer_llm
@@ -160,7 +159,7 @@ def portfolio_rag_tool_v3(question: str) -> dict:
         }
 
     except Exception as e:
-        logger.error("portfolio_rag_tool_v3 failed: %s", e, exc_info=True)
+        logger.error("portfolio_rag_tool failed: %s", e, exc_info=True)
         return {
             "answer": "Произошла ошибка при обработке запроса. Попробуйте переформулировать вопрос.",
             "rendered_facts": "",

@@ -59,7 +59,7 @@
 - `rag_router_v2` - включает v2-маршрутизацию поиска через `portfolio_search` (intent/entity-aware). В режиме v3 (`planner_llm_v3=true`) `portfolio_search` возвращает retrieval-контекст (без вызова `portfolio_rag_answer`), чтобы финальный ответ генерировал Answer LLM.
 - `planner_llm_v3` - включает LLM-планировщик `QueryPlanV2` с post-sanitize (нормализация `entity_id` по EntityRegistry) и расширенными debug-логами: plan JSON, tool calls, answer prompt/контекст; включает self-check retrieval с автоматическим fallback на гибридный поиск при недостаточном контексте.
 - `rag_atomic_docs` - при ingest/batch генерирует атомарные документы `type=item` (achievements/tags/bullets/contacts/stats).
-- `rag_context_packer_v2` - включает упаковщик контекста v2 (`pack_context_v2`).
+- `rag_context_packer_v2` - (deprecated, always enabled) включает упаковщик контекста (`pack_context`).
 - `agent_fact_tool` - агент использует `portfolio_search_tool` (структурированный поиск фактов), а не `portfolio_rag_tool` (готовый текстовый RAG-ответ).
 - `agent_memory_v2` - включает внешнюю память v2 (follow-up detector + rolling summary), отключая встроенный checkpointer LangGraph.
 
@@ -308,9 +308,9 @@
 - добавляет заголовок вида `[type] title`,
 - режет по char_budget (`token_budget * 4`).
 
-### 9.2 pack_context_v2 (списки и атомарные item-доки)
+### 9.2 pack_context (списки и атомарные item-доки)
 
-`services/rag-api-new/app/rag/context.py:pack_context_v2(...)`:
+`services/rag-api-new/app/rag/evidence.py:pack_context(...)`:
 
 1) Определяет стратегию по вопросу (`_infer_strategy`):
    - `ACHIEVEMENTS`, `CONTACTS`, `STATS`, `TECH_TAGS`, `FOCUS_BULLETS`, `WORK_BULLETS`, иначе `COMPACT`.
@@ -337,7 +337,7 @@
 1) Вызывается `portfolio_search(...)` → `SearchResult(plan, evidence, sources, confidence, ...)`.
 2) Если `plan.answer_instructions` задан — он объединяется с `system_prompt` запроса.
 3) Строится `system_prompt` через `make_system_prompt(...)` (`services/rag-api-new/app/rag/prompting.py`).
-4) Строится `context` через `pack_context_v2` (если включён `rag_context_packer_v2`) или `pack_context`.
+4) Строится `context` через `pack_context` (always enabled).
 5) Формируются сообщения:
    - `build_messages_for_answer(system_prompt, question, context, style_hint, confidence)`.
    - Если confidence ниже порога — добавляется “осторожный режим” (коротко, попросить уточнить).
@@ -374,7 +374,7 @@
 
 #### v3: Planner LLM → Executor → Answer LLM
 
-Если включён `planner_llm_v3=true`, используется полный пайплайн из `services/rag-api-new/app/agent/tools_v3.py:portfolio_rag_tool_v3`:
+Используется полный пайплайн из `services/rag-api-new/app/agent/rag_tool.py:portfolio_rag_tool`:
 
 1) PlannerLLM строит `QueryPlanV2` (intents/entities/tool_calls).
 2) PlanExecutor выполняет tool_calls и собирает `FactsPayload`.

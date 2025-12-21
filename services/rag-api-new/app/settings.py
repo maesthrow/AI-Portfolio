@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # logging
     log_level: str = "INFO"
 
-     # === LLM temperatures (для v3) ===
+     # === LLM temperatures ===
     planner_temperature: float = 0.0      # Planner LLM (детерминированный)
     answer_temperature: float = 0.2       # Answer LLM (баланс креативности)
 

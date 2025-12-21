@@ -49,7 +49,7 @@ def collection_stats():
             counts[t] = counts.get(t, 0) + 1
         by_type = counts
 
-    # === Graph-RAG: статистика графа (always enabled in v3) ===
+    # === Graph-RAG: статистика графа (always enabled) ===
     from app.graph.store import get_graph_store
     store = get_graph_store()
     stats = store.stats()

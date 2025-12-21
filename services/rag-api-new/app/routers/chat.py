@@ -16,7 +16,7 @@ from app.utils.logging_utils import compact_json, truncate_text
 
 logger = logging.getLogger(__name__)
 
-# Epic 3: Post-processing renderer (lazy import)
+# Post-processing renderer (lazy import)
 _format_renderer = None
 
 
@@ -195,7 +195,7 @@ async def chat_stream(req: ChatRequest):
             yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False) + "\n"
             return
 
-        # v3: Post-process final text
+        # Post-process final text
         if final_text:
             renderer = _get_format_renderer()
             final_text = renderer.post_process(final_text)
