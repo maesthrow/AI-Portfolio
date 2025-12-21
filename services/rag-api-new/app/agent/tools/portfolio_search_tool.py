@@ -6,6 +6,7 @@ Executes full-text search with semantic and BM25 ranking.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from ..planner.schemas import FactItem
@@ -39,7 +40,7 @@ def execute_portfolio_search(
     )
 
     # Execute search
-    result = portfolio_search(question=query, k=k)
+    result = portfolio_search(question=query, k=k, allowed_types=allowed_types)
 
     # Convert items to FactItem
     facts = []
@@ -47,6 +48,11 @@ def execute_portfolio_search(
         fact = _item_to_fact(item, result.intent)
         if fact:
             facts.append(fact)
+
+    # Hybrid search returns only evidence; convert it to facts so the answer stage
+    # can be deterministic (and UI can display rendered_facts/items).
+    if not facts and result.evidence:
+        facts = _evidence_to_facts(result.evidence)
 
     return (
         facts,
@@ -95,3 +101,49 @@ def _item_to_fact(item: Any, intent: Any) -> FactItem | None:
         )
 
     return None
+
+
+def _evidence_to_facts(evidence: str) -> list[FactItem]:
+    """
+    Best-effort parser for pack_context() output.
+
+    Expected block format:
+      [technology] RAG: RAG\\nИспользуется в: ...
+    """
+    text = (evidence or "").strip()
+    if not text:
+        return []
+
+    facts: list[FactItem] = []
+    blocks = re.split(r"\n\s*\n", text)
+    for block in blocks:
+        b = (block or "").strip()
+        if not b:
+            continue
+        m = re.match(
+            r"^\[(?P<type>[^\]]+)\]\s*(?P<title>[^:]+)\s*:\s*(?P<body>.*)$",
+            b,
+            flags=re.DOTALL,
+        )
+        if m:
+            fact_type = (m.group("type") or "text").strip()
+            title = (m.group("title") or "").strip()
+            body = (m.group("body") or "").strip()
+            facts.append(
+                FactItem(
+                    type=fact_type,
+                    text=body or title or b,
+                    metadata={"name": title} if title else {},
+                    source_id=None,
+                )
+            )
+        else:
+            facts.append(
+                FactItem(
+                    type="text",
+                    text=b,
+                    metadata={},
+                    source_id=None,
+                )
+            )
+    return facts

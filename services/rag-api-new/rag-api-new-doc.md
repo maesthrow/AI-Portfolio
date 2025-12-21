@@ -372,9 +372,21 @@
 
 Определены в `services/rag-api-new/app/agent/agent_tools.py` (файловые tool-обёртки для агента). План-исполнитель использует пакет `services/rag-api-new/app/agent/tools/`.
 
+#### v3: Planner LLM → Executor → Answer LLM
+
+Если включён `planner_llm_v3=true`, используется полный пайплайн из `services/rag-api-new/app/agent/tools_v3.py:portfolio_rag_tool_v3`:
+
+1) PlannerLLM строит `QueryPlanV2` (intents/entities/tool_calls).
+2) PlanExecutor выполняет tool_calls и собирает `FactsPayload`.
+3) AnswerLLM формирует финальный пользовательский ответ по фактам.
+
+Нюансы:
+- При гибридном поиске `portfolio_search(...)` может вернуть только `evidence` (упакованный контекст) без `items`; поэтому `services/rag-api-new/app/agent/tools/portfolio_search_tool.py` делает best-effort парсинг `evidence` в `FactItem`, чтобы рендер/ответ не зависели от свободной интерпретации LLM.
+- Для intent `technology_usage` AnswerLLM сначала пытается ответить детерминированно из строк вида `Используется в: ...` (и при необходимости «восстанавливается» из evidence, если LLM ошибочно вернул not-found).
+
 #### `portfolio_search_tool(question) -> dict`
 
-В fact-режиме это основной инструмент “получить факты”.
+В fact-режиме это основной инструмент "получить факты".
 
 Внутри:
 

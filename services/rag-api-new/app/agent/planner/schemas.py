@@ -21,9 +21,9 @@ class IntentV2(str, Enum):
     PROJECT_DETAILS = "project_details"
     PROJECT_ACHIEVEMENTS = "project_achievements"
     PROJECT_TECH_STACK = "project_tech_stack"
+    TECHNOLOGY_OVERVIEW = "technology_overview"
     TECHNOLOGY_USAGE = "technology_usage"
     EXPERIENCE_SUMMARY = "experience_summary"
-    TECHNOLOGY_OVERVIEW = "technology_overview"
     CONTACTS = "contacts"
     GENERAL_UNSTRUCTURED = "general_unstructured"
 

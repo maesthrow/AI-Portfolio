@@ -142,6 +142,7 @@ def portfolio_search(
     question: str,
     k: int = 8,
     collection: str | None = None,
+    allowed_types: set[str] | list[str] | None = None,
 ) -> SearchResult:
     """
     Унифицированный поиск по портфолио.
@@ -184,6 +185,8 @@ def portfolio_search(
 
     # === Generate QueryPlan ===
     plan = plan_query(question, use_graph_feature=cfg.graph_rag_enabled)
+    if allowed_types:
+        plan.allowed_types = set(allowed_types)
 
     logger.info(
         "QueryPlan: intent=%s, entities=%s, use_graph=%s, entity_policy=%s",
