@@ -2,6 +2,7 @@
 Graph Query Tool - wrapper for graph-based retrieval.
 
 Executes structured queries against the knowledge graph.
+Supports V3 filters: tech_category, scope, company_id, project_id.
 """
 from __future__ import annotations
 
@@ -30,6 +31,11 @@ _INTENT_MAPPING = {
 def execute_graph_query(
     intent: str,
     entity_id: str | None = None,
+    tech_category: str | None = None,
+    scope: str | None = None,
+    company_id: str | None = None,
+    project_id: str | None = None,
+    limit: int = 20,
 ) -> tuple[list[FactItem], list[dict[str, Any]], bool, float]:
     """
     Execute a graph query and return structured facts.
@@ -37,32 +43,44 @@ def execute_graph_query(
     Args:
         intent: Query intent (from IntentV2 or legacy Intent)
         entity_id: Optional entity ID like "project:alor-broker"
+        tech_category: Filter technologies by category from data (language/database/etc.)
+        scope: Query scope level (global/company/project)
+        company_id: Filter by company ID
+        project_id: Filter by project ID
+        limit: Maximum number of results
 
     Returns:
         Tuple of (facts, sources, found, confidence)
     """
-    from ...graph.query import graph_query
+    from ...graph.query import graph_query, graph_query_with_filters
     from ...rag.search_types import Intent
 
-    # Graph RAG always enabled
     # Parse entity_key from entity_id
     entity_key = None
     if entity_id:
-        # entity_id format: "project:slug" or "company:slug"
         parts = entity_id.split(":", 1)
         if len(parts) == 2:
             entity_key = parts[1]
         else:
             entity_key = entity_id
 
+    # Parse company/project keys from IDs
+    company_key = None
+    if company_id:
+        parts = company_id.split(":", 1)
+        company_key = parts[1] if len(parts) == 2 else company_id
+
+    project_key = None
+    if project_id:
+        parts = project_id.split(":", 1)
+        project_key = parts[1] if len(parts) == 2 else project_id
+
     # Convert intent string to Intent enum
     intent_lower = intent.lower()
 
-    # Try direct match first
     try:
         intent_enum = Intent(intent_lower)
     except ValueError:
-        # Try mapping from IntentV2
         for iv2, legacy in _INTENT_MAPPING.items():
             if iv2.value == intent_lower or legacy == intent_lower:
                 try:
@@ -75,13 +93,27 @@ def execute_graph_query(
             intent_enum = Intent.GENERAL
 
     logger.info(
-        "graph_query: intent=%s, entity_key=%s",
+        "graph_query: intent=%s, entity_key=%s, tech_category=%s, scope=%s, company=%s, project=%s",
         intent_enum.value,
         entity_key,
+        tech_category,
+        scope,
+        company_key,
+        project_key,
     )
 
-    # Execute query
-    result = graph_query(intent_enum, entity_key)
+    # Use filters if provided, otherwise use legacy query
+    if tech_category or company_key or project_key:
+        result = graph_query_with_filters(
+            intent=intent_enum,
+            entity_key=entity_key,
+            tech_category=tech_category,
+            company_key=company_key,
+            project_key=project_key,
+            limit=limit,
+        )
+    else:
+        result = graph_query(intent_enum, entity_key)
 
     # Convert items to FactItem
     facts = []
@@ -89,6 +121,10 @@ def execute_graph_query(
         fact = _item_to_fact(item, intent_enum)
         if fact:
             facts.append(fact)
+
+    # Apply limit
+    if limit and len(facts) > limit:
+        facts = facts[:limit]
 
     return facts, result.sources, result.found, result.confidence
 

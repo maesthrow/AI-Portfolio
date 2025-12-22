@@ -1,7 +1,13 @@
 """
-Agent Tools - full LLM-based RAG pipeline.
+Agent Tools - full LLM-based RAG pipeline with hardening.
 
-Implements the Planner LLM -> Executor -> Answer LLM pipeline.
+Implements the enhanced pipeline:
+1. Planner LLM -> Executor -> Normalizer
+2. FactBundle extraction for grounding
+3. Answer LLM -> GroundingVerifier
+
+Note: Off-topic rejection is handled by agent's system prompt (see graph.py).
+Agent decides whether to call this tool or respond directly.
 """
 from __future__ import annotations
 
@@ -17,13 +23,17 @@ logger = logging.getLogger(__name__)
 @tool("portfolio_rag_tool")
 def portfolio_rag_tool(question: str) -> dict:
     """
-    Полноценный RAG-инструмент с LLM-планированием.
+    Полноценный RAG-инструмент с LLM-планированием и защитой от галлюцинаций.
 
-    Пайплайн:
+    Улучшенный пайплайн (TZ v3):
     1. Planner LLM анализирует вопрос и создаёт QueryPlan
     2. Executor выполняет tool_calls и собирает факты
-    3. RenderEngine форматирует факты
-    4. Answer LLM генерирует финальный ответ
+    3. Normalizer + FactBundle - детерминированная фильтрация
+    4. Answer LLM генерирует ответ
+    5. GroundingVerifier - проверка на галлюцинации
+
+    NOTE: Контроль темы (off-topic rejection) выполняется агентом до вызова этого инструмента.
+    Агент сам решает вызывать ли этот инструмент или ответить напрямую (приветствия, оффтоп).
 
     Используй для любых вопросов о портфолио:
     - проекты, компании, технологии
@@ -53,6 +63,9 @@ def portfolio_rag_tool(question: str) -> dict:
     from .critic import CriticLLM, CriticDecision
     from .tools.portfolio_search_tool import execute_portfolio_search
     from .planner.schemas import SourceInfo
+    from .normalizer import FactNormalizer
+    from .normalizer.fact_bundle import build_fact_bundle
+    from .grounding import GroundingVerifier
 
     try:
         # 1. Plan
@@ -134,7 +147,56 @@ def portfolio_rag_tool(question: str) -> dict:
             payload.meta.get("coverage", 0.0),
         )
 
-        # 3. Render (deterministic)
+        # 3. Normalize facts (deterministic filtering by intent)
+        normalizer = FactNormalizer()
+        primary_intent = plan.intents[0] if plan.intents else None
+        intent_str = primary_intent.value if primary_intent else "general_unstructured"
+
+        # Extract tech_filter from plan (QueryPlanV3 feature)
+        tech_filter_for_normalizer = None
+        if hasattr(plan, 'tech_filter') and plan.tech_filter:
+            tech_filter_for_normalizer = plan.tech_filter
+
+        normalizer_output = normalizer.normalize(
+            facts=payload.items,
+            intent=intent_str,
+            tech_filter=tech_filter_for_normalizer,
+            max_items=plan.limits.max_items,
+        )
+
+        # Update payload with normalized facts
+        from .planner.schemas import FactItem
+        normalized_facts = [
+            FactItem(
+                type=fi.type,
+                text=fi.text,
+                metadata=fi.metadata or {},
+                source_id=fi.entity_id,
+            )
+            for fi in normalizer_output.filtered_facts
+        ]
+        payload.items = normalized_facts
+
+        if normalizer_output.rules_applied:
+            payload.warnings.append(f"Normalizer: {', '.join(normalizer_output.rules_applied)}")
+
+        logger.info(
+            "Normalizer: %d facts after filtering, rules=%s",
+            len(normalized_facts),
+            normalizer_output.rules_applied,
+        )
+
+        # 4. Build FactBundle for grounding verification
+        fact_bundle = build_fact_bundle(payload.items)
+
+        logger.info(
+            "FactBundle: techs=%d, companies=%d, projects=%d",
+            len(fact_bundle.technologies),
+            len(fact_bundle.companies),
+            len(fact_bundle.projects),
+        )
+
+        # 5. Render (deterministic)
         renderer = RenderEngine()
         rendered = renderer.render(
             facts=payload.items,
@@ -143,9 +205,33 @@ def portfolio_rag_tool(question: str) -> dict:
             max_items=plan.limits.max_items,
         )
 
-        # 4. Answer (LLM)
+        # 6. Answer (LLM)
         answer_gen = AnswerLLM(answer_llm())
         answer = answer_gen.generate(payload)
+
+        # 7. Grounding verification - check for hallucinations
+        grounding_verifier = GroundingVerifier()
+        grounding_result = grounding_verifier.verify(answer, fact_bundle)
+
+        if not grounding_result.grounded:
+            logger.warning(
+                "Grounding check failed: action=%s, ungrounded=%s, confidence=%.2f",
+                grounding_result.action,
+                grounding_result.ungrounded_entities,
+                grounding_result.confidence,
+            )
+            payload.warnings.append(
+                f"Grounding: {grounding_result.action}, ungrounded={grounding_result.ungrounded_entities}"
+            )
+
+            if grounding_result.action == "refuse":
+                # Too many hallucinations - return safe response
+                answer = "На основе имеющихся данных портфолио не удалось найти достоверную информацию по вашему запросу. Попробуйте уточнить вопрос."
+                payload.warnings.append("Grounding: answer refused due to hallucinations")
+            elif grounding_result.action == "rewrite" and grounding_result.suggested_rewrite:
+                # Use rewritten answer without hallucinations
+                answer = grounding_result.suggested_rewrite
+                payload.warnings.append("Grounding: answer rewritten to remove ungrounded entities")
 
         return {
             "answer": answer,
@@ -156,6 +242,7 @@ def portfolio_rag_tool(question: str) -> dict:
             "found": payload.found,
             "intents": [i.value for i in payload.intents],
             "warnings": payload.warnings,
+            "grounded": grounding_result.grounded,
         }
 
     except Exception as e:

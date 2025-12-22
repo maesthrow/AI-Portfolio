@@ -295,25 +295,31 @@ class FactsPayload(BaseModel):
 
 # === Default fallback plan ===
 
-def make_default_fallback_plan(question: str) -> QueryPlanV2:
+def make_default_fallback_plan(question: str):
     """
     Create a default fallback plan for when Planner LLM fails.
 
     Uses GENERAL_UNSTRUCTURED intent with portfolio_search_tool.
     This is NOT legacy planning - it's an emergency minimal plan.
+
+    Returns QueryPlanV3 with minimal configuration.
     """
-    return QueryPlanV2(
-        intents=[IntentV2.GENERAL_UNSTRUCTURED],
+    from .schemas_v3 import QueryPlanV3, IntentV3, ToolCallV3, FallbackConfigV3, LimitsConfigV3, RenderStyleV3, AnswerStyleV3
+
+    return QueryPlanV3(
+        intents=[IntentV3.GENERAL_UNSTRUCTURED],
         entities=[],
         tool_calls=[
-            ToolCall(
+            ToolCallV3(
                 tool="portfolio_search_tool",
                 args={"query": question, "k": 8}
             )
         ],
-        fallback=FallbackConfig(enabled=False),
-        limits=LimitsConfig(max_items=8),
-        render_style=RenderStyle.BULLETS,
-        answer_style=AnswerStyle.NATURAL_RU,
+        fallback=FallbackConfigV3(enabled=False),
+        limits=LimitsConfigV3(max_items=8),
+        render_style=RenderStyleV3.BULLETS,
+        answer_style=AnswerStyleV3.NATURAL_RU,
         confidence=0.3,
+        tech_filter=None,
+        scope=None,
     )

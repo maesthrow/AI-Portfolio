@@ -663,44 +663,73 @@ SECTION_META_DATA = [
     },
 ]
 
-# плоский список технологий для таблицы Technology (без строгих категорий)
-TECHNOLOGIES_DATA = sorted(
-    {
-        "Python 3.9",
-        "Python 3.12",
-        "FastAPI",
-        "Pydantic",
-        "SQLAlchemy",
-        "Alembic",
-        "PostgreSQL",
-        "Redis",
-        "RabbitMQ",
-        "Celery",
-        "psycopg",
-        "APScheduler",
-        "aiogram",
-        "aiogram-dialog",
-        "Docker",
-        "GitLab",
-        "Azure DevOps",
-        "Ultralytics",
-        "YOLO",
-        "Detectron2",
-        "LangChain",
-        "LangGraph",
-        "ChromaDB",
-        "GigaChain",
-        "vLLM",
-        "LiteLLM",
-        "MLflow",
-        "MongoDB",
-        "pytest",
-        "C#",
-        "ASP.NET Core",
-        ".NET Core",
-        "MS SQL Server",
-    }
-)
+# Технологии с категориями для фильтрации (TZ v3)
+# Категории: language, database, vector_store, framework, ml_framework, concept, library, tool, message_broker
+TECHNOLOGIES_WITH_CATEGORIES = {
+    # Programming Languages
+    "Python 3.9": "language",
+    "Python 3.12": "language",
+    "C#": "language",
+
+    # Databases
+    "PostgreSQL": "database",
+    "Redis": "database",
+    "MongoDB": "database",
+    "MS SQL Server": "database",
+
+    # Vector Stores
+    "ChromaDB": "vector_store",
+    "Qdrant": "vector_store",
+    "pgvector": "vector_store",
+
+    # Frameworks
+    "FastAPI": "framework",
+    "ASP.NET Core": "framework",
+    ".NET Core": "framework",
+    ".NET Framework" : "framework",
+    "Next.js": "framework",
+
+    # ML/AI Frameworks
+    "LangChain": "ml_framework",
+    "LangGraph": "ml_framework",
+    "GigaChain": "ml_framework",
+    "vLLM": "ml_framework",
+    "LiteLLM": "ml_framework",
+    "MLflow": "ml_framework",
+    "Ultralytics": "ml_framework",
+    "YOLO": "ml_framework",
+    "Detectron2": "ml_framework",
+
+    # Concept
+    "RAG": "concept",
+    "LLM": "concept",
+    "ReAct": "concept",
+
+    # Libraries
+    "Pydantic": "library",
+    "SQLAlchemy": "library",
+    "Alembic": "library",
+    "psycopg": "library",
+    "APScheduler": "library",
+    "aiogram": "library",
+    "aiogram-dialog": "library",
+    "Celery": "library",
+    "pytest": "library",
+    "ADO.NET": "library",
+
+    # Tools
+    "Docker": "tool",
+    "Git": "tool",
+    "GitLab": "tool",
+    "Azure DevOps": "tool",
+
+    # Message Brokers
+    "RabbitMQ": "message_broker",
+    "Kafka": "message_broker",
+}
+
+# Sorted list for backward compatibility
+TECHNOLOGIES_DATA = sorted(TECHNOLOGIES_WITH_CATEGORIES.keys())
 
 RAG_DOCUMENTS_DATA = [
     # переносим из старых сидеров «documents» в более общий RagDocument
@@ -880,7 +909,9 @@ def seed_technologies(session):
             .replace("/", "-")
         )
         identity = {"slug": slug}
-        payload = {"name": name, "category": None, "order_index": idx * 10}
+        # Get category from mapping (TZ v3 requirement)
+        category = TECHNOLOGIES_WITH_CATEGORIES.get(name)
+        payload = {"name": name, "category": category, "order_index": idx * 10}
         upsert_one(session, Technology, identity, payload)
     # Needed because SessionLocal is configured with autoflush=False; later queries must see these rows.
     session.flush()
@@ -910,7 +941,9 @@ def seed_projects_with_tech(session):
             tech_slug = slugify_tech(tech_name)
             tech = get_one(session, Technology, slug=tech_slug)
             if tech is None:
-                tech = Technology(name=tech_name, slug=tech_slug, category=None, order_index=t_idx * 10)
+                # Get category from mapping (TZ v3 requirement)
+                category = TECHNOLOGIES_WITH_CATEGORIES.get(tech_name)
+                tech = Technology(name=tech_name, slug=tech_slug, category=category, order_index=t_idx * 10)
                 session.add(tech)
                 session.flush()
 

@@ -137,11 +137,85 @@ def _apply_entity_filter(docs: List[Doc], entities: List[Entity], policy: Entity
     return matching + non_matching
 
 
+def _apply_metadata_filters(
+    scored: List[ScoredDoc],
+    filters: dict[str, Any],
+) -> List[ScoredDoc]:
+    """
+    Apply metadata-based filters to scored documents.
+
+    Supports:
+    - tech_category: filter by technology category from metadata
+    - company_slug/company_id: filter by company
+    - project_slug/project_id: filter by project
+    - tags_any: match any of the specified tags
+
+    Args:
+        scored: List of scored documents
+        filters: Filter dictionary
+
+    Returns:
+        Filtered list of scored documents
+    """
+    if not filters:
+        return scored
+
+    tech_category = filters.get("tech_category")
+    company_slug = filters.get("company_slug") or filters.get("company_id")
+    project_slug = filters.get("project_slug") or filters.get("project_id")
+    tags_any = filters.get("tags_any", [])
+
+    def _matches(sd: ScoredDoc) -> bool:
+        md = sd.doc.metadata or {}
+
+        # Filter by tech_category
+        if tech_category:
+            doc_category = (md.get("category") or "").lower()
+            if doc_category != tech_category.lower():
+                # Also check if it's a technology document
+                doc_type = md.get("type", "")
+                if doc_type != "technology":
+                    return True  # Allow non-technology docs through
+                return False
+
+        # Filter by company
+        if company_slug:
+            slug_lower = company_slug.lower()
+            doc_company = (md.get("company_slug") or md.get("company_name") or "").lower()
+            if slug_lower not in doc_company and doc_company not in slug_lower:
+                return False
+
+        # Filter by project
+        if project_slug:
+            slug_lower = project_slug.lower()
+            doc_project = (md.get("project_slug") or md.get("slug") or md.get("name") or "").lower()
+            if slug_lower not in doc_project and doc_project not in slug_lower:
+                return False
+
+        # Filter by tags (OR logic)
+        if tags_any:
+            doc_tags = md.get("tags", [])
+            if isinstance(doc_tags, str):
+                doc_tags = [t.strip() for t in doc_tags.split(",")]
+            doc_tags_lower = {t.lower() for t in doc_tags}
+            tags_lower = {t.lower() for t in tags_any}
+            if not doc_tags_lower.intersection(tags_lower):
+                # No matching tags, but allow if no tags specified in doc
+                if doc_tags:
+                    return False
+
+        return True
+
+    return [sd for sd in scored if _matches(sd)]
+
+
 def portfolio_search(
     question: str,
     k: int = 8,
     collection: str | None = None,
     allowed_types: set[str] | list[str] | None = None,
+    filters: dict[str, Any] | None = None,
+    min_score: float | None = None,
 ) -> SearchResult:
     """
     Гибридный поиск по портфолио.
@@ -150,13 +224,20 @@ def portfolio_search(
     1. Пытается граф-запрос (всегда включен)
     2. Fallback на гибридный поиск (dense + BM25)
     3. Reranking и отбор evidence
-    4. Возвращает SearchResult
+    4. Применяет фильтры и min_score
+    5. Возвращает SearchResult
 
     Args:
         question: Вопрос пользователя
         k: Количество результатов
         collection: Название коллекции (опционально)
         allowed_types: Разрешенные типы документов
+        filters: Дополнительные фильтры:
+            - tech_category: фильтр по категории технологий
+            - company_id/company_slug: фильтр по компании
+            - project_id/project_slug: фильтр по проекту
+            - tags_any: список тегов для OR-фильтрации
+        min_score: Минимальный порог релевантности (0.0-1.0)
 
     Returns:
         SearchResult с найденными фактами или evidence
@@ -243,6 +324,15 @@ def portfolio_search(
 
     # === Rerank ===
     scored: List[ScoredDoc] = rerank(rr, question, candidates)
+
+    # === Apply additional filters ===
+    if filters:
+        scored = _apply_metadata_filters(scored, filters)
+
+    # === Apply min_score threshold ===
+    if min_score is not None and min_score > 0.0:
+        scored = [sd for sd in scored if sd.score >= min_score]
+
     evidence_docs = select_evidence(scored, question, k=k, min_k=max(k, 8))
 
     # === Compute Confidence ===

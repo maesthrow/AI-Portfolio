@@ -1,7 +1,7 @@
 """
 Planner LLM - LLM-based query planning.
 
-Uses structured output to generate QueryPlanV2 from user questions.
+Uses structured output to generate QueryPlanV3 from user questions.
 """
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING
 
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from .schemas import QueryPlanV2, make_default_fallback_plan
+from .schemas import make_default_fallback_plan
+from .schemas_v3 import QueryPlanV3, TechFilter, TechCategory
 from .prompts import PLANNER_SYSTEM_PROMPT, PLANNER_REPAIR_PROMPT
 from ...rag.entities import get_entity_registry
 from ...rag.search_types import EntityType
@@ -53,9 +54,9 @@ class PlannerLLM:
         # Check if LLM supports structured output
         self._supports_structured = hasattr(llm, "with_structured_output")
 
-    def plan(self, question: str) -> QueryPlanV2:
+    def plan(self, question: str) -> QueryPlanV3:
         """
-        Generate QueryPlanV2 from user question.
+        Generate QueryPlanV3 from user question.
 
         Attempts structured output first, falls back to default plan on failure.
 
@@ -63,7 +64,7 @@ class PlannerLLM:
             question: User's question
 
         Returns:
-            QueryPlanV2 with intents, entities, tool_calls, etc.
+            QueryPlanV3 with intents, entities, tool_calls, tech_filter, etc.
         """
         if not question or not question.strip():
             logger.warning("Empty question, returning default fallback plan")
@@ -82,7 +83,7 @@ class PlannerLLM:
             logger.error("Planner failed: %s", e)
             return make_default_fallback_plan(question)
 
-    def _plan_structured(self, question: str) -> QueryPlanV2:
+    def _plan_structured(self, question: str) -> QueryPlanV3:
         """
         Use LLM's structured output capability.
 
@@ -97,21 +98,22 @@ class PlannerLLM:
             try:
                 # Create structured LLM with Pydantic model
                 structured_llm = self.llm.with_structured_output(
-                    QueryPlanV2,
+                    QueryPlanV3,
                     method="json_schema",  # Use JSON schema for better compatibility
                 )
 
                 result = structured_llm.invoke(messages)
 
-                if isinstance(result, QueryPlanV2):
+                if isinstance(result, QueryPlanV3):
                     # Validate the plan
                     if self._validate_plan(result):
                         sanitized = self._sanitize_plan(question, result)
                         logger.info(
-                            "Plan generated: intents=%s, entities=%d, tool_calls=%d, confidence=%.2f",
+                            "Plan generated: intents=%s, entities=%d, tool_calls=%d, tech_filter=%s, confidence=%.2f",
                             [i.value for i in sanitized.intents],
                             len(sanitized.entities),
                             len(sanitized.tool_calls),
+                            sanitized.tech_filter.model_dump() if sanitized.tech_filter else None,
                             sanitized.confidence,
                         )
                         logger.info(
@@ -124,7 +126,7 @@ class PlannerLLM:
 
                 # If result is dict, try to parse
                 if isinstance(result, dict):
-                    parsed = QueryPlanV2.model_validate(result)
+                    parsed = QueryPlanV3.model_validate(result)
                     sanitized = self._sanitize_plan(question, parsed)
                     logger.info("Plan JSON=%s", compact_json(sanitized.model_dump(mode="json")))
                     return sanitized
@@ -159,7 +161,7 @@ class PlannerLLM:
         )
         return make_default_fallback_plan(question)
 
-    def _validate_plan(self, plan: QueryPlanV2) -> bool:
+    def _validate_plan(self, plan: QueryPlanV3) -> bool:
         """
         Validate generated plan.
 
@@ -185,7 +187,7 @@ class PlannerLLM:
 
         return True
 
-    def _sanitize_plan(self, question: str, plan: QueryPlanV2) -> QueryPlanV2:
+    def _sanitize_plan(self, question: str, plan: QueryPlanV3) -> QueryPlanV3:
         """
         Best-effort post-processing of an LLM-generated plan.
 
@@ -203,7 +205,7 @@ class PlannerLLM:
                 return ""
             t = text.strip().lower()
             t = t.replace("«", "").replace("»", "")
-            t = t.replace("„", "").replace("“", "").replace("”", "")
+            t = t.replace("„", "").replace(""", "").replace(""", "")
             t = re.sub(r"\s+", " ", t)
             return t
 
@@ -282,7 +284,7 @@ class PlannerLLM:
                     args["entity_id"] = normalized
                 tc["args"] = args
 
-        sanitized = QueryPlanV2.model_validate(data)
+        sanitized = QueryPlanV3.model_validate(data)
         if sanitized.model_dump(mode="json") != original:
             logger.info("Plan sanitized JSON=%s", compact_json(sanitized.model_dump(mode="json")))
         return sanitized

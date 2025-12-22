@@ -6,11 +6,14 @@ Graph Query - запросы к графу знаний.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List
 
 from ..rag.search_types import Intent, GraphQueryResult
 from .schema import NodeType, EdgeType, GraphNode
 from .store import get_graph_store
+
+logger = logging.getLogger(__name__)
 
 
 def _node_to_source(node: GraphNode) -> Dict[str, Any]:
@@ -249,7 +252,22 @@ def _technologies_query(entity_key: str | None) -> GraphQueryResult:
                 entity_key=entity_key,
             )
 
-    # Все технологии
+        # CRITICAL FIX: If entity_key provided but not found, return empty result
+        # This allows fallback to vector search instead of returning all technologies
+        logger.warning(
+            "Entity key '%s' not found in graph for technology query, returning empty result for fallback",
+            entity_key
+        )
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.TECHNOLOGIES,
+            entity_key=entity_key,
+        )
+
+    # Все технологии (only when NO entity_key specified)
     techs = store.get_nodes_by_type(NodeType.TECHNOLOGY)
     items = [{"name": t.name, "category": t.data.get("category")} for t in techs]
 
@@ -421,4 +439,276 @@ def graph_query(intent: Intent, entity_key: str | None = None) -> GraphQueryResu
         confidence=0.0,
         intent=intent,
         entity_key=entity_key,
+    )
+
+
+def graph_query_with_filters(
+    intent: Intent,
+    entity_key: str | None = None,
+    tech_category: str | None = None,
+    company_key: str | None = None,
+    project_key: str | None = None,
+    limit: int = 20,
+) -> GraphQueryResult:
+    """
+    Выполнить запрос к графу с дополнительными фильтрами.
+
+    Фильтрует результаты по:
+    - tech_category: категория технологии из node.data["category"]
+    - company_key: фильтр по компании
+    - project_key: фильтр по проекту
+
+    Args:
+        intent: Намерение (тип запроса)
+        entity_key: Опциональный slug сущности
+        tech_category: Категория технологий (language/database/framework/etc.)
+        company_key: Slug компании для фильтрации
+        project_key: Slug проекта для фильтрации
+        limit: Максимальное количество результатов
+
+    Returns:
+        GraphQueryResult с отфильтрованными фактами
+    """
+    store = get_graph_store()
+
+    # === Handle technology queries with category filter ===
+    # CRITICAL FIX: When tech_category is specified, return PROJECTS using those technologies
+    # This fixes "ML проекты" returning technology list instead of project list
+    if intent == Intent.TECHNOLOGIES and tech_category:
+        logger.info(
+            "Technology query with category filter '%s' - returning PROJECTS using these technologies",
+            tech_category
+        )
+        return _projects_by_tech_category_query(tech_category, limit)
+
+    if intent == Intent.LANGUAGES:
+        # Languages - return technologies in language category
+        # Note: This returns technologies, not projects (semantic difference)
+        return _technologies_by_category_query("language", limit)
+
+    # === Handle experience queries with company filter ===
+    if intent == Intent.EXPERIENCE and company_key:
+        return _experience_query(company_key)
+
+    # === Handle achievements with company/project filter ===
+    if intent == Intent.ACHIEVEMENTS:
+        key = project_key or company_key or entity_key
+        return _achievements_query(key)
+
+    # === Default: use base query ===
+    return graph_query(intent, entity_key)
+
+
+def _technologies_by_category_query(
+    category: str,
+    limit: int = 20
+) -> GraphQueryResult:
+    """
+    Запрос технологий по категории из data["category"].
+
+    Фильтрует ТОЛЬКО по реальной категории из данных,
+    без хардкода.
+
+    ВАЖНО: Сортирует по количеству использования (число проектов)
+    для корректного ранжирования (Python с 5 проектами > C# с 1 проектом).
+    """
+    store = get_graph_store()
+    techs = store.get_nodes_by_type(NodeType.TECHNOLOGY)
+
+    # Filter by category from node.data
+    category_lower = category.lower()
+    filtered = []
+    for t in techs:
+        node_category = (t.data.get("category") or "").lower()
+        if node_category == category_lower:
+            filtered.append(t)
+
+    # If no matches, return empty
+    if not filtered:
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.TECHNOLOGIES,
+            entity_key=category,
+        )
+
+    # CRITICAL: Sort by usage count (number of projects using this technology)
+    # This ensures Python (5+ projects) appears before C# (1 project)
+    tech_usage_counts = []
+    for t in filtered:
+        # Count incoming USES edges from projects
+        incoming_edges = store.get_incoming_edges(t.id, EdgeType.USES)
+        project_count = len([
+            e for e in incoming_edges
+            if store.get_node(e.source_id) and store.get_node(e.source_id).type == NodeType.PROJECT
+        ])
+        tech_usage_counts.append((t, project_count))
+
+    # Sort by usage count descending (most used first)
+    tech_usage_counts.sort(key=lambda x: x[1], reverse=True)
+
+    # Apply limit after sorting
+    top_techs = tech_usage_counts[:limit]
+
+    items = [
+        {
+            "name": t.name,
+            "category": t.data.get("category"),
+            "project_count": count,  # Include count for debugging
+        }
+        for t, count in top_techs
+    ]
+
+    return GraphQueryResult(
+        items=items,
+        found=len(items) > 0,
+        sources=[_node_to_source(t) for t, _ in top_techs[:10]],
+        confidence=0.95 if items else 0.0,
+        intent=Intent.TECHNOLOGIES,
+        entity_key=category,
+    )
+
+
+def _projects_by_tech_category_query(
+    category: str,
+    limit: int = 20
+) -> GraphQueryResult:
+    """
+    Запрос проектов, использующих технологии из категории.
+
+    Возвращает проекты с указанием технологий из данной категории,
+    которые в них применяются.
+
+    Пример: category="ml_framework" вернёт проекты t2, AI-Portfolio, HyperKeeper
+    с указанием ML-технологий, использованных в каждом проекте.
+
+    Args:
+        category: Категория технологий (ml_framework, language, database, etc.)
+        limit: Максимальное количество проектов
+
+    Returns:
+        GraphQueryResult с проектами, отсортированными по количеству
+        использованных технологий из данной категории
+    """
+    store = get_graph_store()
+
+    # 1. Get all technologies in this category
+    techs = store.get_nodes_by_type(NodeType.TECHNOLOGY)
+    category_lower = category.lower()
+    filtered_techs = [
+        t for t in techs
+        if (t.data.get("category") or "").lower() == category_lower
+    ]
+
+    if not filtered_techs:
+        logger.warning(
+            "No technologies found for category '%s', cannot find projects",
+            category
+        )
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.TECHNOLOGIES,
+            entity_key=category,
+        )
+
+    logger.info(
+        "Found %d technologies in category '%s': %s",
+        len(filtered_techs),
+        category,
+        [t.name for t in filtered_techs[:5]]
+    )
+
+    # 2. For each technology, get projects using it
+    project_tech_map = {}  # project_id -> {project: GraphNode, technologies: [str]}
+
+    for tech in filtered_techs:
+        incoming_edges = store.get_incoming_edges(tech.id, EdgeType.USES)
+        for edge in incoming_edges:
+            source_node = store.get_node(edge.source_id)
+            if source_node and source_node.type == NodeType.PROJECT:
+                if source_node.id not in project_tech_map:
+                    project_tech_map[source_node.id] = {
+                        "project": source_node,
+                        "technologies": []
+                    }
+                project_tech_map[source_node.id]["technologies"].append(tech.name)
+
+    if not project_tech_map:
+        logger.warning(
+            "No projects found using technologies from category '%s'",
+            category
+        )
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.TECHNOLOGIES,
+            entity_key=category,
+        )
+
+    logger.info(
+        "Found %d projects using technologies from category '%s'",
+        len(project_tech_map),
+        category
+    )
+
+    # 3. Sort projects by number of technologies from this category (descending)
+    projects_sorted = sorted(
+        project_tech_map.values(),
+        key=lambda x: len(x["technologies"]),
+        reverse=True
+    )
+
+    # 4. Apply limit
+    top_projects = projects_sorted[:limit]
+
+    # 5. Build result items
+    items = []
+    sources = []
+    for entry in top_projects:
+        project = entry["project"]
+        techs_used = entry["technologies"]
+
+        # Build text field with project info and technologies
+        company_str = project.data.get("company_name") or "standalone"
+        tech_list = ", ".join(techs_used[:3])
+        if len(techs_used) > 3:
+            tech_list += f" и ещё {len(techs_used) - 3}"
+
+        items.append({
+            "name": project.name,  # For compatibility with _item_to_fact
+            "project": project.name,  # Additional field
+            "project_slug": project.slug,
+            "slug": project.slug,  # For compatibility
+            "company_name": project.data.get("company_name"),
+            "domain": project.data.get("domain"),
+            "period": project.data.get("period"),
+            "description": project.data.get("description_md"),
+            "technologies": techs_used,
+            "tech_count": len(techs_used),
+            "category": category,
+            "text": f"{project.name} ({company_str}) — использует {tech_list}",
+        })
+        sources.append(_node_to_source(project))
+
+    logger.info(
+        "Returning %d projects for category '%s': %s",
+        len(items),
+        category,
+        [item["project"] for item in items[:5]]
+    )
+
+    return GraphQueryResult(
+        items=items,
+        found=len(items) > 0,
+        sources=sources[:10],
+        confidence=0.9 if items else 0.0,
+        intent=Intent.TECHNOLOGIES,
+        entity_key=category,
     )

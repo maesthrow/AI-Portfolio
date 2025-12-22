@@ -2,6 +2,7 @@
 Portfolio Search Tool - wrapper for hybrid retrieval.
 
 Executes full-text search with semantic and BM25 ranking.
+Supports V3 filters: types, tech_category, company_id, min_score.
 """
 from __future__ import annotations
 
@@ -18,6 +19,9 @@ def execute_portfolio_search(
     query: str,
     k: int = 8,
     allowed_types: list[str] | None = None,
+    filters: dict[str, Any] | None = None,
+    min_score: float | None = None,
+    tech_category: str | None = None,
 ) -> tuple[list[FactItem], list[dict[str, Any]], bool, float, str]:
     """
     Execute a portfolio search and return facts.
@@ -26,21 +30,37 @@ def execute_portfolio_search(
         query: Search query
         k: Number of results to return
         allowed_types: Optional list of document types to filter
+        filters: Additional filters (company_id, project_id, tech_category, tags_any)
+        min_score: Minimum relevance score threshold (0.0-1.0)
+        tech_category: Filter technologies by category
 
     Returns:
         Tuple of (facts, sources, found, confidence, evidence_text)
     """
     from ...rag.search import portfolio_search
 
+    # Merge tech_category into filters
+    effective_filters = dict(filters) if filters else {}
+    if tech_category:
+        effective_filters["tech_category"] = tech_category
+
     logger.info(
-        "portfolio_search: query=%r, k=%d, types=%s",
+        "portfolio_search: query=%r, k=%d, types=%s, filters=%s, min_score=%s",
         query[:50],
         k,
         allowed_types,
+        effective_filters,
+        min_score,
     )
 
     # Execute search
-    result = portfolio_search(question=query, k=k, allowed_types=allowed_types)
+    result = portfolio_search(
+        question=query,
+        k=k,
+        allowed_types=allowed_types,
+        filters=effective_filters if effective_filters else None,
+        min_score=min_score,
+    )
 
     # Convert items to FactItem
     facts = []

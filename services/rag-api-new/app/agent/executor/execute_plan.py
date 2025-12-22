@@ -230,10 +230,12 @@ class PlanExecutor:
         if tool_call.tool == "graph_query_tool":
             intent = tool_call.args.get("intent", "general")
             entity_id = tool_call.args.get("entity_id")
+            tech_category = tool_call.args.get("tech_category")
 
             facts, sources, found, confidence = execute_graph_query(
                 intent=intent,
                 entity_id=entity_id,
+                tech_category=tech_category,
             )
             return facts, sources, found, confidence, ""
 
