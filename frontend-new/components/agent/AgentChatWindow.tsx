@@ -50,7 +50,7 @@ export default function AgentChatWindow({
         sendDisabled={sendDisabled}
         streaming={streaming}
         onStop={onStop}
-        suggestions={["Расскажи об ML-проектах", "Опыт с Python", "Где применял RAG?", "Как устроен агент?"]}
+        suggestions={["Расскажи об ML-проектах", "Где применял RAG?", "Опыт с LLM и агентами", "Как можно связаться?"]}
       />
     </div>
   );
