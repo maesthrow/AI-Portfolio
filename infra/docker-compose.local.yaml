@@ -32,6 +32,7 @@ services:
       APP_ENV: dev
     command: >
       sh -lc "alembic upgrade head &&
+              python -m app.seed.seed_ai_portfolio_new &&
               uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     ports: [ "${CONTENT_PORT:-8003}:8000" ]
     healthcheck:
@@ -125,37 +126,9 @@ services:
       - ./litellm/config.yaml:/app/config.yaml:ro
     command: [ "--config", "/app/config.yaml", "--port", "4000" ]
     depends_on:
-      - vllm
       - tei
-
-  # vLLM (опционально: если есть CUDA/GPU)
-  vllm:
-    image: vllm/vllm-openai:latest
-    restart: unless-stopped
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      VLLM_WORKER_USE_STDOUT: "1"
-      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
-    ports: [ "${VLLM_PORT:-8002}:8000" ]
-    runtime: nvidia        # <- используйте вместо gpus:all, если нужно в WSL/старом докере
-    command: >
-      --model Qwen/Qwen2.5-7B-Instruct-AWQ
-      --host 0.0.0.0 --port 8000
-      --dtype auto
-      --quantization awq_marlin
-      --max-model-len 16384
-      --gpu-memory-utilization 0.90
-      --download-dir /root/.cache/hf
-      --max-num-batched-tokens 8192
-      --served-model-name qwen2.5-7b-instruct
-      --trust-remote-code
-      --enable-auto-tool-choice
-      --tool-call-parser hermes
-    volumes:
-      - hf_cache:/root/.cache/hf
 
 volumes:
   chroma_data:
-  hf_cache:
   tei_cache:
   pg_data:
