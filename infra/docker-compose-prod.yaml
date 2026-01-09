@@ -1,0 +1,160 @@
+services:
+  # ===== FRONTEND (Next.js) =====
+  frontend:
+    build:
+      context: ../frontend-new
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_CONTENT_API_BASE: ${NEXT_PUBLIC_CONTENT_API_BASE:-http://localhost:${CONTENT_PORT:-8003}/api/v1}
+      NEXT_PUBLIC_AGENT_API_BASE: ${NEXT_PUBLIC_AGENT_API_BASE:-http://localhost:${RAG_NEW_PORT:-8004}}
+      NEXT_PUBLIC_CHARS_PER_SECOND: ${NEXT_PUBLIC_CHARS_PER_SECOND:-60}
+      NEXT_PUBLIC_MAX_CHARS_PER_TICK: ${NEXT_PUBLIC_MAX_CHARS_PER_TICK:-4}
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+    depends_on:
+      - content-api
+      - rag-api
+
+  # ===== POSTGRES =====
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init/postgres-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # ===== CONTENT API =====
+  content-api:
+    build:
+      context: ../services/content-api-new
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # ВАЖНО: ходим в postgres по имени сервиса, внутри docker-сети
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: INFO
+      APP_ENV: dev
+    command: >
+      sh -lc "alembic upgrade head &&
+              python -m app.seed.seed_ai_portfolio_new &&
+              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "${CONTENT_PORT:-8003}:8000"
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # ===== CHROMA =====
+  chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    restart: unless-stopped
+    environment:
+      CHROMA_SERVER_AUTH_ENABLED: "false"
+    ports:
+      - "${CHROMA_PORT:-8001}:8000"
+    command: ["run", "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - chroma_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===== TEI (embeddings) =====
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    restart: unless-stopped
+    environment:
+      MODEL_ID: /data/model
+      HF_ENDPOINT: ""
+      HUGGINGFACE_HUB_BASE_URL: ""
+      HF_HUB_ENABLE_HF_TRANSFER: "0"
+    ports:
+      - "${TEI_PORT:-8006}:80"
+    volumes:
+      - ./models/intfloat/multilingual-e5-base:/data/model:ro
+
+  # ===== LiteLLM (единая точка входа к LLM/Embeddings) =====
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    restart: unless-stopped
+    ports:
+      - "${LITELLM_PORT:-8005}:4000"
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - tei
+
+  # ===== RAG API =====
+  rag-api:
+    build:
+      context: ../services/rag-api-new
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      litellm_base_url: http://litellm:4000/v1
+      litellm_api_key: ${LITELLM_MASTER_KEY}
+      chat_model: ${CHAT_MODEL}
+      embedding_model: ${EMBEDDING_MODEL}
+      giga_auth_data: ${GIGA_AUTH_DATA}
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+      chroma_collection: ${CHROMA_COLLECTION:-portfolio_new}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      FRONTEND_LOCAL_IP: ${FRONTEND_LOCAL_IP:-http://localhost:3000}
+      LOG_LEVEL: INFO
+    ports:
+      - "${RAG_NEW_PORT:-8004}:8000"
+    depends_on:
+      - chroma
+      - litellm
+
+  # ===== ONE-SHOT: экспорт из content-api -> ingest в rag-api =====
+  # Запускается при `up`, делает ingest и завершается.
+    # ===== ONE-SHOT: export -> ingest =====
+  rag-ingest:
+    image: python:3.12-slim
+    restart: "no"
+    depends_on:
+      - content-api
+      - rag-api
+    environment:
+      EXPORT_URL: http://content-api:8000/api/v1/rag/export
+      INGEST_URL: http://rag-api:8000/api/v1/ingest/batch
+      # Если у rag-api есть /healthz — включи:
+      # RAG_HEALTH_URL: http://rag-api:8000/healthz
+    volumes:
+      - ./scripts:/scripts:ro
+    command: [ "python", "/scripts/ingest.py" ]
+
+volumes:
+  pg_data:
+  chroma_data:
+  tei_cache:
