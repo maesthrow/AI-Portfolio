@@ -101,7 +101,7 @@ CONTACTS_DATA = [
         "kind": "linkedin",
         "label": "LinkedIn",
         "value": "Dmitriy Kargin",
-        "url": "https://www.linkedin.com/in/dmitriy-kargin",
+        "url": "https://www.linkedin.com/in/dmitriy-kargin-ba08b932b",
         "order_index": 40,
         "is_primary": False,
     },
@@ -475,8 +475,8 @@ STATS_DATA = [
     {
         "key": "experience_years",
         "label": "Опыт в разработке",
-        "value": "4+ года",
-        "hint": "Python / .NET, Backend / ML / AI",
+        "value": "5+ лет",
+        "hint": "Python / .NET | Backend / ML / AI",
         "group_name": "about",
         "order_index": 20,
     },
@@ -484,7 +484,7 @@ STATS_DATA = [
         "key": "ml_projects",
         "label": "ML-проекты",
         "value": "5+",
-        "hint": "",
+        "hint": "CV / LLM / AI-Agents",
         "group_name": "about",
         "order_index": 30,
     },
@@ -563,7 +563,7 @@ HERO_TAGS_DATA = [
 
 FOCUS_AREAS_DATA = [
     {
-        "title": "LLM / AI-агенты / RAG",
+        "title": "LLM / AI-Agents / RAG",
         "is_primary": True,
         "order_index": 10,
         "bullets": [
