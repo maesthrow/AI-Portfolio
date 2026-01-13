@@ -1,0 +1,18 @@
+{$DOMAIN} {
+  encode gzip zstd
+
+  # Content API: /api/* -> content-api:8000 (без strip)
+  handle /api/* {
+    reverse_proxy content-api:8000
+  }
+
+  # RAG API: /rag/* -> rag-api:8000 (strip /rag)
+  handle_path /rag/* {
+    reverse_proxy rag-api:8000
+  }
+
+  # Frontend
+  handle {
+    reverse_proxy frontend:3000
+  }
+}

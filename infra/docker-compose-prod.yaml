@@ -1,18 +1,41 @@
 services:
+  # ===== REVERSE PROXY + HTTPS =====
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - content-api
+      - rag-api
+
   # ===== FRONTEND (Next.js) =====
   frontend:
     build:
       context: ../frontend-new
       dockerfile: Dockerfile
+      # ВАЖНО: NEXT_PUBLIC_* обычно нужны на этапе build
+      # Если твой Dockerfile не поддерживает args — см. примечание ниже
+      args:
+        NEXT_PUBLIC_CONTENT_API_BASE: ${NEXT_PUBLIC_CONTENT_API_BASE}
+        NEXT_PUBLIC_AGENT_API_BASE: ${NEXT_PUBLIC_AGENT_API_BASE}
+        NEXT_PUBLIC_CHARS_PER_SECOND: ${NEXT_PUBLIC_CHARS_PER_SECOND}
+        NEXT_PUBLIC_MAX_CHARS_PER_TICK: ${NEXT_PUBLIC_MAX_CHARS_PER_TICK}
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_CONTENT_API_BASE: ${NEXT_PUBLIC_CONTENT_API_BASE:-http://localhost:${CONTENT_PORT:-8003}/api/v1}
-      NEXT_PUBLIC_AGENT_API_BASE: ${NEXT_PUBLIC_AGENT_API_BASE:-http://localhost:${RAG_NEW_PORT:-8004}}
-      NEXT_PUBLIC_CHARS_PER_SECOND: ${NEXT_PUBLIC_CHARS_PER_SECOND:-60}
-      NEXT_PUBLIC_MAX_CHARS_PER_TICK: ${NEXT_PUBLIC_MAX_CHARS_PER_TICK:-4}
-      NODE_ENV: development
-    ports:
-      - "3000:3000"
+      NODE_ENV: production
+      NEXT_PUBLIC_CONTENT_API_BASE: ${NEXT_PUBLIC_CONTENT_API_BASE}
+      NEXT_PUBLIC_AGENT_API_BASE: ${NEXT_PUBLIC_AGENT_API_BASE}
+      NEXT_PUBLIC_CHARS_PER_SECOND: ${NEXT_PUBLIC_CHARS_PER_SECOND}
+      NEXT_PUBLIC_MAX_CHARS_PER_TICK: ${NEXT_PUBLIC_MAX_CHARS_PER_TICK}
+    expose:
+      - "3000"
     depends_on:
       - content-api
       - rag-api
@@ -25,8 +48,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./init/postgres-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
@@ -35,6 +56,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+    # В проде НЕ публикуем порт наружу
+    expose:
+      - "5432"
 
   # ===== CONTENT API =====
   content-api:
@@ -43,22 +67,20 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      # ВАЖНО: ходим в postgres по имени сервиса, внутри docker-сети
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       LOG_LEVEL: INFO
-      APP_ENV: dev
+      APP_ENV: prod
     command: >
       sh -lc "alembic upgrade head &&
-              python -m app.seed.seed_ai_portfolio_new &&
-              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-    ports:
-      - "${CONTENT_PORT:-8003}:8000"
+              uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${CONTENT_WORKERS:-2}"
     depends_on:
       - postgres
+    expose:
+      - "8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
-      interval: 5s
+      interval: 10s
       timeout: 3s
       retries: 30
 
@@ -68,21 +90,16 @@ services:
     restart: unless-stopped
     environment:
       CHROMA_SERVER_AUTH_ENABLED: "false"
-    ports:
-      - "${CHROMA_PORT:-8001}:8000"
     command: ["run", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - chroma_data:/data
+    expose:
+      - "8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/heartbeat"]
-      interval: 5s
+      interval: 10s
       timeout: 3s
       retries: 30
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   # ===== TEI (embeddings) =====
   tei:
@@ -93,24 +110,26 @@ services:
       HF_ENDPOINT: ""
       HUGGINGFACE_HUB_BASE_URL: ""
       HF_HUB_ENABLE_HF_TRANSFER: "0"
-    ports:
-      - "${TEI_PORT:-8006}:80"
     volumes:
       - ./models/intfloat/multilingual-e5-base:/data/model:ro
+    expose:
+      - "80"
 
-  # ===== LiteLLM (единая точка входа к LLM/Embeddings) =====
+  # ===== LiteLLM =====
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     restart: unless-stopped
-    ports:
-      - "${LITELLM_PORT:-8005}:4000"
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # Если LiteLLM у тебя ходит в GigaChat по env — добавь сюда и это:
+      # GIGA_AUTH_DATA: ${GIGA_AUTH_DATA}
     volumes:
       - ./litellm/config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     depends_on:
       - tei
+    expose:
+      - "4000"
 
   # ===== RAG API =====
   rag-api:
@@ -127,19 +146,17 @@ services:
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
       chroma_collection: ${CHROMA_COLLECTION:-portfolio_new}
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
-      FRONTEND_LOCAL_IP: ${FRONTEND_LOCAL_IP:-http://localhost:3000}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       LOG_LEVEL: INFO
-    ports:
-      - "${RAG_NEW_PORT:-8004}:8000"
     depends_on:
       - chroma
       - litellm
+    expose:
+      - "8000"
 
-  # ===== ONE-SHOT: экспорт из content-api -> ingest в rag-api =====
-  # Запускается при `up`, делает ingest и завершается.
-    # ===== ONE-SHOT: export -> ingest =====
+  # ===== OPTIONAL: one-shot ingest (запускать вручную) =====
   rag-ingest:
+    profiles: ["init"]
     image: python:3.12-slim
     restart: "no"
     depends_on:
@@ -148,13 +165,12 @@ services:
     environment:
       EXPORT_URL: http://content-api:8000/api/v1/rag/export
       INGEST_URL: http://rag-api:8000/api/v1/ingest/batch
-      # Если у rag-api есть /healthz — включи:
-      # RAG_HEALTH_URL: http://rag-api:8000/healthz
     volumes:
       - ./scripts:/scripts:ro
-    command: [ "python", "/scripts/ingest.py" ]
+    command: ["python", "/scripts/ingest_http.py"]
 
 volumes:
   pg_data:
   chroma_data:
-  tei_cache:
+  caddy_data:
+  caddy_config:
