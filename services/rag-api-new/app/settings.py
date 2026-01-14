@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # Модели (алиасы, как в конфиге прокси)
     chat_model: str
     embedding_model: str = "text-embedding-3-large"
+    embedding_batch_size: int = 4  # Small batch to avoid TEI 413 Payload Too Large
 
     # Reranker
     reranker_model: str = "BAAI/bge-reranker-base"
