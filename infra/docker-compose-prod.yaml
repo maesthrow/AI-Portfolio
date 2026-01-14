@@ -119,7 +119,8 @@ services:
       - "--max-concurrent-requests"
       - "16"
       - "--max-batch-tokens"
-      - "4096"
+      - "16384"
+      - "--auto-truncate"
     volumes:
       - ./models/intfloat/multilingual-e5-base:/data/model:ro
     expose:
