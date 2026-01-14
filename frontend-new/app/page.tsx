@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import Shell from "@/components/layout/Shell";
 import HeroIntro from "@/components/hero/HeroIntro";
 import HeroScrollHint from "@/components/hero/HeroScrollHint";
