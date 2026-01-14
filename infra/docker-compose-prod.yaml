@@ -177,7 +177,7 @@ services:
       INGEST_URL: http://rag-api:8000/api/v1/ingest/batch
     volumes:
       - ./scripts:/scripts:ro
-    command: ["python", "/scripts/ingest_http.py"]
+    command: ["python", "/scripts/ingest.py"]
 
 volumes:
   pg_data:
