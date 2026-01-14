@@ -145,7 +145,7 @@ services:
   rag-api:
     build:
       context: ../services/rag-api-new
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.prod
     restart: unless-stopped
     environment:
       litellm_base_url: http://litellm:4000/v1
