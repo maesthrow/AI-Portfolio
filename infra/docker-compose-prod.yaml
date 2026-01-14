@@ -113,6 +113,13 @@ services:
       HF_ENDPOINT: ""
       HUGGINGFACE_HUB_BASE_URL: ""
       HF_HUB_ENABLE_HF_TRANSFER: "0"
+    command:
+      - "--model-id"
+      - "/data/model"
+      - "--max-concurrent-requests"
+      - "16"
+      - "--max-batch-tokens"
+      - "4096"
     volumes:
       - ./models/intfloat/multilingual-e5-base:/data/model:ro
     expose:
