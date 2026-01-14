@@ -4,15 +4,21 @@ services:
     build:
       context: ../frontend-new
       dockerfile: Dockerfile
+      target: dev   # если ты сделал multi-stage; если нет — убери строку
     restart: unless-stopped
     environment:
+      NODE_ENV: development
       NEXT_PUBLIC_CONTENT_API_BASE: ${NEXT_PUBLIC_CONTENT_API_BASE:-http://localhost:${CONTENT_PORT:-8003}/api/v1}
       NEXT_PUBLIC_AGENT_API_BASE: ${NEXT_PUBLIC_AGENT_API_BASE:-http://localhost:${RAG_NEW_PORT:-8004}}
       NEXT_PUBLIC_CHARS_PER_SECOND: ${NEXT_PUBLIC_CHARS_PER_SECOND:-60}
       NEXT_PUBLIC_MAX_CHARS_PER_TICK: ${NEXT_PUBLIC_MAX_CHARS_PER_TICK:-4}
-      NODE_ENV: development
     ports:
       - "3000:3000"
+    # супер желательно для dev:
+    volumes:
+      - ../frontend-new:/app
+      - /app/node_modules
+    command: [ "npm","run","dev","--","-H","0.0.0.0","-p","3000" ]
     depends_on:
       - content-api
       - rag-api

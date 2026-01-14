@@ -22,8 +22,7 @@ services:
     build:
       context: ../frontend-new
       dockerfile: Dockerfile
-      # ВАЖНО: NEXT_PUBLIC_* обычно нужны на этапе build
-      # Если твой Dockerfile не поддерживает args — см. примечание ниже
+      target: runner   # если multi-stage; если нет — убери строку
       args:
         NEXT_PUBLIC_CONTENT_API_BASE: ${NEXT_PUBLIC_CONTENT_API_BASE}
         NEXT_PUBLIC_AGENT_API_BASE: ${NEXT_PUBLIC_AGENT_API_BASE}
@@ -32,12 +31,14 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # можно продублировать (не обязательно, но не мешает):
       NEXT_PUBLIC_CONTENT_API_BASE: ${NEXT_PUBLIC_CONTENT_API_BASE}
       NEXT_PUBLIC_AGENT_API_BASE: ${NEXT_PUBLIC_AGENT_API_BASE}
       NEXT_PUBLIC_CHARS_PER_SECOND: ${NEXT_PUBLIC_CHARS_PER_SECOND}
       NEXT_PUBLIC_MAX_CHARS_PER_TICK: ${NEXT_PUBLIC_MAX_CHARS_PER_TICK}
     expose:
       - "3000"
+    # command не нужен, если в Dockerfile CMD = next start
     depends_on:
       - content-api
       - rag-api
