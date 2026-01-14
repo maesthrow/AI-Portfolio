@@ -34,12 +34,15 @@ class Settings(BaseSettings):
     litellm_base_url: str | AnyUrl = "http://localhost:8005/v1"
     litellm_api_key: str = "sk-local-any"
 
+    # === TEI (embeddings) - direct access bypassing LiteLLM ===
+    tei_base_url: str | AnyUrl = "http://tei:80/v1"
+
     # GigaChat
     giga_auth_data: str | None = None
 
     # Модели (алиасы, как в конфиге прокси)
     chat_model: str
-    embedding_model: str = "embedding-default"
+    embedding_model: str = "text-embedding-3-large"
 
     # Reranker
     reranker_model: str = "BAAI/bge-reranker-base"

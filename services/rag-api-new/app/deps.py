@@ -29,9 +29,10 @@ def settings():
 @lru_cache()
 def embeddings() -> OpenAIEmbeddings:
     s = settings()
+    # Use TEI directly (bypassing LiteLLM which adds unsupported encoding_format)
     return OpenAIEmbeddings(
-        api_key=s.litellm_api_key or "EMPTY",
-        base_url=str(s.litellm_base_url),
+        api_key="dummy",
+        base_url=str(s.tei_base_url),
         model=s.embedding_model,
     )
 

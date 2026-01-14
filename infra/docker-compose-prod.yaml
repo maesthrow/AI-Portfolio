@@ -150,8 +150,9 @@ services:
     environment:
       litellm_base_url: http://litellm:4000/v1
       litellm_api_key: ${LITELLM_MASTER_KEY}
+      tei_base_url: http://tei:80/v1
       chat_model: ${CHAT_MODEL}
-      embedding_model: ${EMBEDDING_MODEL}
+      embedding_model: text-embedding-3-large
       giga_auth_data: ${GIGA_AUTH_DATA}
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
