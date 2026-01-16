@@ -103,6 +103,7 @@ services:
       - "${TEI_PORT:-8006}:80"
     volumes:
       - ./models/intfloat/multilingual-e5-base:/data/model:ro
+    command: ["--model-id", "/data/model", "--auto-truncate"]
 
   # ===== LiteLLM (единая точка входа к LLM/Embeddings) =====
   litellm:
