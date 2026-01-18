@@ -130,17 +130,41 @@ docker logs -f ai-folio-rag-ingest-1
 
 ```bash
 # Статистика коллекции ChromaDB (из контейнера, т.к. порт не проброшен наружу)
-docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/admin/stats"
+docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/api/v1/admin/stats"
 
 # Красивый вывод JSON
-docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/admin/stats" | python3 -m json.tool
+docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/api/v1/admin/stats" | python3 -m json.tool
 
 # Альтернатива - через docker network
 docker run --rm --network ai-folio_default curlimages/curl:latest \
-  curl -s "http://rag-api:8000/admin/stats"
+  curl -s "http://rag-api:8000/api/v1/admin/stats"
 
 # Очистить коллекцию (ОСТОРОЖНО!)
-docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/admin/collection"
+docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/collection"
+```
+
+---
+
+## Response Cache (Кэш ответов агента)
+
+```bash
+# Статистика кэша ответов
+docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/api/v1/admin/cache/stats"
+
+# Красивый вывод JSON
+docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/api/v1/admin/cache/stats" | python3 -m json.tool
+
+# Очистить кэш ответов (рекомендуется после переиндексации)
+docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/cache"
+```
+
+**Примечание:** Кэш использует семантическое сравнение (embeddings) для поиска похожих вопросов.
+При similarity >= 0.95 возвращается закэшированный ответ без вызова LLM.
+
+**Рекомендация:** После выполнения `rag-ingest` желательно очистить кэш:
+```bash
+docker compose -p ai-folio -f docker-compose-prod.yaml --env-file .env.prod --profile init up rag-ingest && \
+docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/cache"
 ```
 
 ---

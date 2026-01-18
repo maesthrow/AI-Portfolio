@@ -104,14 +104,32 @@ docker compose -p ai-portfolio-local -f docker-compose.local.yaml --env-file .en
 
 ```bash
 # Статистика коллекции ChromaDB (количество документов по типам)
-curl "http://localhost:8004/admin/stats"
+curl "http://localhost:8004/api/v1/admin/stats"
 
 # Красивый вывод JSON
-curl -s "http://localhost:8004/admin/stats" | python -m json.tool
+curl -s "http://localhost:8004/api/v1/admin/stats" | python -m json.tool
 
 # Очистить коллекцию (ОСТОРОЖНО!)
-curl -X DELETE "http://localhost:8004/admin/collection"
+curl -X DELETE "http://localhost:8004/api/v1/admin/collection"
 ```
+
+---
+
+## Response Cache (Кэш ответов агента)
+
+```bash
+# Статистика кэша ответов
+curl "http://localhost:8004/api/v1/admin/cache/stats"
+
+# Красивый вывод JSON
+curl -s "http://localhost:8004/api/v1/admin/cache/stats" | python -m json.tool
+
+# Очистить кэш ответов (рекомендуется после переиндексации)
+curl -X DELETE "http://localhost:8004/api/v1/admin/cache"
+```
+
+**Примечание:** Кэш использует семантическое сравнение (embeddings) для поиска похожих вопросов.
+При similarity >= 0.95 возвращается закэшированный ответ без вызова LLM.
 
 ---
 

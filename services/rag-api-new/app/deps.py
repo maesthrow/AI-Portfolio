@@ -1,7 +1,10 @@
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import torch
+
+if TYPE_CHECKING:
+    from .cache import ResponseCache
 from sentence_transformers import CrossEncoder
 
 import chromadb
@@ -155,3 +158,52 @@ def graph_store():
     """
     from .graph.store import get_graph_store
     return get_graph_store()
+
+
+# === Response Cache ===
+
+_response_cache_instance: Optional["ResponseCache"] = None
+
+
+def response_cache() -> Optional["ResponseCache"]:
+    """
+    Получить экземпляр кэша ответов.
+
+    Возвращает None если кэширование отключено.
+    Использует lazy initialization для избежания circular imports.
+    """
+    global _response_cache_instance
+
+    s = settings()
+
+    if not s.cache_enabled:
+        return None
+
+    if _response_cache_instance is not None:
+        return _response_cache_instance
+
+    # Lazy import to avoid circular dependencies
+    from .cache import ResponseCache
+
+    _response_cache_instance = ResponseCache(
+        chroma_client=chroma_client(),
+        collection_name=s.cache_collection,
+        embeddings=embeddings(),
+        similarity_threshold=s.cache_similarity_threshold,
+    )
+
+    logger.info(
+        "Response cache initialized: collection=%s, threshold=%.2f",
+        s.cache_collection,
+        s.cache_similarity_threshold,
+    )
+
+    return _response_cache_instance
+
+
+def reset_response_cache() -> None:
+    """
+    Сбросить экземпляр кэша (для тестов и ре-инициализации).
+    """
+    global _response_cache_instance
+    _response_cache_instance = None

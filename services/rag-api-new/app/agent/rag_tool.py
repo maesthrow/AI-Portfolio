@@ -1,10 +1,12 @@
 """
-Agent Tools - full LLM-based RAG pipeline with hardening.
+Agent Tools - full LLM-based RAG pipeline with hardening and response caching.
 
 Implements the enhanced pipeline:
-1. Planner LLM -> Executor -> Normalizer
-2. FactBundle extraction for grounding
-3. Answer LLM -> GroundingVerifier
+1. Cache check - return cached response if similar question found
+2. Planner LLM -> Executor -> Normalizer
+3. FactBundle extraction for grounding
+4. Answer LLM -> GroundingVerifier
+5. Cache store - save response if eligible
 
 Note: Off-topic rejection is handled by agent's system prompt (see graph.py).
 Agent decides whether to call this tool or respond directly.
@@ -14,7 +16,7 @@ from __future__ import annotations
 import logging
 from langchain.tools import tool
 
-from ..deps import settings
+from ..deps import settings, response_cache
 from ..utils.logging_utils import truncate_text
 
 logger = logging.getLogger(__name__)
@@ -66,6 +68,31 @@ def portfolio_rag_tool(question: str) -> dict:
     from .normalizer import FactNormalizer
     from .normalizer.fact_bundle import build_fact_bundle
     from .grounding import GroundingVerifier
+
+    # === 0. CACHE CHECK ===
+    cache = response_cache()
+    if cache:
+        hit = cache.get(question)
+        if hit:
+            logger.info(
+                "Cache HIT: similarity=%.3f, question=%r",
+                hit.similarity,
+                hit.question[:50],
+            )
+            return {
+                "answer": hit.answer,
+                "rendered_facts": "",
+                "items": [],
+                "sources": hit.sources,
+                "confidence": hit.confidence,
+                "found": True,
+                "intents": hit.intents,
+                "warnings": [f"Cached response (similarity={hit.similarity:.2f})"],
+                "grounded": True,
+                "cached": True,
+            }
+        else:
+            logger.debug("Cache MISS for question=%r", question[:50])
 
     try:
         # 1. Plan
@@ -233,6 +260,30 @@ def portfolio_rag_tool(question: str) -> dict:
                 answer = grounding_result.suggested_rewrite
                 payload.warnings.append("Grounding: answer rewritten to remove ungrounded entities")
 
+        # === 8. CACHE STORE ===
+        if cache:
+            from ..cache import should_cache, CacheMetadata
+
+            if should_cache(
+                payload,
+                grounding_result,
+                plan,
+                settings().cache_min_confidence,
+                answer=answer,
+            ):
+                cache.set(
+                    question=question,
+                    answer=answer,
+                    metadata=CacheMetadata(
+                        intents=[i.value for i in payload.intents],
+                        confidence=payload.meta.get("coverage", 0.0),
+                        sources=[src.model_dump() for src in payload.sources],
+                    ),
+                )
+                logger.info("Response cached for question=%r", question[:50])
+            else:
+                logger.debug("Response NOT cached (policy check failed)")
+
         return {
             "answer": answer,
             "rendered_facts": rendered,
@@ -243,6 +294,7 @@ def portfolio_rag_tool(question: str) -> dict:
             "intents": [i.value for i in payload.intents],
             "warnings": payload.warnings,
             "grounded": grounding_result.grounded,
+            "cached": False,
         }
 
     except Exception as e:

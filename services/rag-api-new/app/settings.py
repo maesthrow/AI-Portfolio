@@ -60,7 +60,13 @@ class Settings(BaseSettings):
     # logging
     log_level: str = "INFO"
 
-     # === LLM temperatures ===
+    # === Response Cache ===
+    cache_enabled: bool = True
+    cache_collection: str = "response_cache"
+    cache_similarity_threshold: float = 0.95
+    cache_min_confidence: float = 0.7
+
+    # === LLM temperatures ===
     planner_temperature: float = 0.0      # Planner LLM (детерминированный)
     answer_temperature: float = 0.2       # Answer LLM (баланс креативности)
 

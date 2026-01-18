@@ -4,9 +4,9 @@ import logging
 
 from fastapi import APIRouter
 
-from app.deps import chroma_client, settings, vectorstore
+from app.deps import chroma_client, settings, vectorstore, response_cache
 from app.indexing import bm25
-from app.schemas.admin import ClearResult, StatsResult, GraphStats
+from app.schemas.admin import ClearResult, StatsResult, GraphStats, CacheStatsResult, CacheClearResult
 
 router = APIRouter(prefix="/api/v1", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -64,4 +64,60 @@ def collection_stats():
         total=total,
         by_type=by_type,
         graph_stats=graph_stats,
+    )
+
+
+# === Response Cache Endpoints ===
+
+@router.get("/admin/cache/stats", response_model=CacheStatsResult)
+def cache_stats():
+    """
+    Статистика кэша ответов агента.
+
+    Returns:
+        CacheStatsResult с информацией о кэше
+    """
+    cache = response_cache()
+
+    if not cache:
+        return CacheStatsResult(
+            enabled=False,
+            collection="",
+            total_entries=0,
+            total_hits=0,
+        )
+
+    stats = cache.stats()
+    return CacheStatsResult(
+        enabled=stats.enabled,
+        collection=stats.collection,
+        total_entries=stats.total_entries,
+        total_hits=stats.total_hits,
+    )
+
+
+@router.delete("/admin/cache", response_model=CacheClearResult)
+def clear_cache():
+    """
+    Очистить кэш ответов агента.
+
+    Returns:
+        CacheClearResult с количеством удалённых записей
+    """
+    cache = response_cache()
+
+    if not cache:
+        return CacheClearResult(
+            ok=True,
+            cleared=0,
+            message="Cache is disabled",
+        )
+
+    cleared = cache.clear()
+    logger.info("Response cache cleared: %d entries removed", cleared)
+
+    return CacheClearResult(
+        ok=True,
+        cleared=cleared,
+        message=f"Cleared {cleared} cached responses",
     )

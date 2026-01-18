@@ -23,3 +23,18 @@ class StatsResult(BaseModel):
     total: int
     by_type: dict[str, Any] | None = None
     graph_stats: GraphStats | None = None
+
+
+class CacheStatsResult(BaseModel):
+    """Статистика кэша ответов."""
+    enabled: bool
+    collection: str
+    total_entries: int
+    total_hits: int
+
+
+class CacheClearResult(BaseModel):
+    """Результат очистки кэша."""
+    ok: bool
+    cleared: int
+    message: str
