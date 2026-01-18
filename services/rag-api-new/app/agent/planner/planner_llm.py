@@ -54,7 +54,7 @@ class PlannerLLM:
         # Check if LLM supports structured output
         self._supports_structured = hasattr(llm, "with_structured_output")
 
-    def plan(self, question: str) -> QueryPlanV3:
+    def plan(self, question: str, context: str = "") -> QueryPlanV3:
         """
         Generate QueryPlanV3 from user question.
 
@@ -62,6 +62,7 @@ class PlannerLLM:
 
         Args:
             question: User's question
+            context: Optional dialog context (previous Q&A turns)
 
         Returns:
             QueryPlanV3 with intents, entities, tool_calls, tech_filter, etc.
@@ -71,10 +72,12 @@ class PlannerLLM:
             return make_default_fallback_plan("")
 
         logger.info("Planner input question=%r", truncate_text(question, limit=500))
+        if context:
+            logger.info("Planner context=%r", truncate_text(context, limit=300))
 
         try:
             if self._supports_structured:
-                return self._plan_structured(question)
+                return self._plan_structured(question, context)
             else:
                 logger.warning("LLM doesn't support structured output, using fallback")
                 return make_default_fallback_plan(question)
@@ -83,15 +86,29 @@ class PlannerLLM:
             logger.error("Planner failed: %s", e)
             return make_default_fallback_plan(question)
 
-    def _plan_structured(self, question: str) -> QueryPlanV3:
+    def _plan_structured(self, question: str, context: str = "") -> QueryPlanV3:
         """
         Use LLM's structured output capability.
 
         Attempts with_structured_output() with retry on failure.
+
+        Args:
+            question: User's question
+            context: Optional dialog context (previous Q&A turns)
         """
+        # Build user message with optional context
+        if context:
+            user_content = f"""КОНТЕКСТ ДИАЛОГА:
+{context}
+
+ТЕКУЩИЙ ВОПРОС:
+{question}"""
+        else:
+            user_content = question
+
         messages = [
             SystemMessage(content=PLANNER_SYSTEM_PROMPT),
-            HumanMessage(content=question),
+            HumanMessage(content=user_content),
         ]
 
         for attempt in range(self.max_retries + 1):

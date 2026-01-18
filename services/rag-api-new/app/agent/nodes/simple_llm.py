@@ -131,8 +131,12 @@ def simple_llm_node(state: RAGState) -> dict:
         "scope_category": scope_category,
     }
 
+    # Add AIMessage to messages for session memory (dialog context)
+    ai_message = AIMessage(content=answer)
+
     return {
         "answer": answer,
         "answer_is_deterministic": False,
         "final_response": final_response,
+        "messages": [ai_message],  # Merged via add_messages annotation
     }

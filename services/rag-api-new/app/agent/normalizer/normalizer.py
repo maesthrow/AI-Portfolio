@@ -21,6 +21,16 @@ from .fact_bundle import build_fact_bundle
 
 logger = logging.getLogger(__name__)
 
+# Types that are NOT places where technologies are applied
+# These should be excluded from technology_usage answers
+EXCLUDED_TYPES_FOR_TECH_USAGE = frozenset({
+    "focus_area",      # Skill descriptions, not projects
+    "work_approach",   # Work methodologies, not projects
+    "stat",            # Statistics
+    "catalog",         # Technology catalogs
+    "tech_focus",      # Technology focus areas
+})
+
 
 class FactNormalizer:
     """
@@ -71,6 +81,12 @@ class FactNormalizer:
         filtered = facts.copy()
         original_count = len(filtered)
 
+        # Debug: log fact types distribution
+        type_counts: dict[str, int] = {}
+        for f in filtered:
+            type_counts[f.type] = type_counts.get(f.type, 0) + 1
+        logger.debug(f"Normalizer input fact types: {type_counts}")
+
         # === Rule 1: Technology overview with category filter ===
         if intent_str == "technology_overview" and tech_filter and tech_filter.category:
             category = tech_filter.category
@@ -85,13 +101,21 @@ class FactNormalizer:
                 filtered = self._boost_by_category(filtered, category_str)
                 rules_applied.append(f"boost_category_filter:{category_str}")
 
-        # === Rule 2: Technology usage - only return projects with the technology ===
+        # === Rule 2: Technology usage - filter and prioritize ===
         if intent_str == "technology_usage":
-            # Filter to only technology_usage fact types
+            # Step 1: Exclude non-project types (focus_area, work_approach, etc.)
+            before_exclude = len(filtered)
+            filtered = [f for f in filtered if f.type not in EXCLUDED_TYPES_FOR_TECH_USAGE]
+            excluded_count = before_exclude - len(filtered)
+            if excluded_count > 0:
+                rules_applied.append(f"excluded_non_project_types:{excluded_count}")
+
+            # Step 2: Prioritize facts about actual technology usage
             tech_facts = [f for f in filtered if f.type in ("technology_usage", "technology", "project")]
+            other_facts = [f for f in filtered if f.type not in ("technology_usage", "technology", "project")]
             if tech_facts:
-                filtered = tech_facts
-                rules_applied.append("technology_usage_filter")
+                filtered = tech_facts + other_facts
+                rules_applied.append("technology_usage_prioritization")
 
         # === Rule 3: Experience summary - prioritize experience facts ===
         if intent_str == "experience_summary":
@@ -148,6 +172,26 @@ class FactNormalizer:
             rendered_text=rendered,
         )
 
+    # Known technologies by category for strict filtering of projects
+    CATEGORY_TECHNOLOGIES = {
+        "database": frozenset({
+            "postgresql", "postgres", "ms sql server", "mssql", "sql server",
+            "mongodb", "mongo", "redis", "chromadb", "chroma", "qdrant",
+            "mysql", "sqlite", "oracle", "mariadb", "pgvector",
+        }),
+        "vector_store": frozenset({
+            "chromadb", "chroma", "qdrant", "pgvector", "pinecone", "weaviate", "milvus",
+        }),
+        "ml_framework": frozenset({
+            "langchain", "langgraph", "langsmith", "pytorch", "tensorflow", "keras",
+            "scikit-learn", "sklearn", "huggingface", "transformers", "detectron2",
+            "ultralytics", "yolo", "mlflow", "vllm", "gigachain", "llm", "rag",
+        }),
+        "message_broker": frozenset({
+            "rabbitmq", "kafka", "redis", "celery", "nats",
+        }),
+    }
+
     def _filter_by_category_strict(
         self,
         facts: list[FactItem],
@@ -157,23 +201,36 @@ class FactNormalizer:
         STRICT filtering: only return facts with exact category match.
 
         For technology documents, checks metadata.category.
-        Non-technology documents are excluded.
+        For project/experience documents, checks if technologies include
+        any from the target category.
         """
         category_lower = category.lower()
         result = []
+        known_techs = self.CATEGORY_TECHNOLOGIES.get(category_lower, frozenset())
 
         for fact in facts:
             md = fact.metadata or {}
             fact_category = (md.get("category") or "").lower()
 
-            # Only include if category matches
+            # Technologies: check metadata.category directly
             if fact_category == category_lower:
                 result.append(fact)
-            # Include non-technology facts only if they reference the category
-            elif fact.type not in ("technology", "technology_usage"):
-                # Check if text mentions the category
-                if category_lower in fact.text.lower():
+                continue
+
+            # Projects/experience: check if their technologies match category
+            if fact.type in ("project", "experience", "experience_project"):
+                technologies_csv = md.get("technologies_csv", "")
+                technologies_str = md.get("technologies", "")
+                all_techs = f"{technologies_csv} {technologies_str}".lower()
+
+                # Check if any known tech from this category is in project's techs
+                if known_techs and any(tech in all_techs for tech in known_techs):
                     result.append(fact)
+                    continue
+
+            # Fallback: check if category keyword mentioned in text
+            if category_lower in fact.text.lower():
+                result.append(fact)
 
         return result
 

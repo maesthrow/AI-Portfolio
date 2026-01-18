@@ -16,6 +16,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from langchain_core.messages import AIMessage
+
 if TYPE_CHECKING:
     from app.agent.state import RAGState
 
@@ -95,6 +97,11 @@ def output_formatter_node(state: RAGState) -> dict:
         f"confidence={confidence:.2f}"
     )
 
+    # Add AIMessage to messages for session memory (dialog context)
+    # This enables multi-turn conversations where Planner can see previous Q&A
+    ai_message = AIMessage(content=answer)
+
     return {
         "final_response": final_response,
+        "messages": [ai_message],  # Merged via add_messages annotation
     }
