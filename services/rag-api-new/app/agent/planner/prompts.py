@@ -12,6 +12,7 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
 - project_details - детали конкретного проекта, инфо о проекте, роль на проекте
 - project_achievements - достижения на проекте
 - project_tech_stack - технологии проекта
+- project_list - список проектов по категории/технологии (ML проекты, проекты с RAG, AI-проекты)
 - technology_overview - какие технологии знает/использует
 - technology_usage - где применялась конкретная технология
 - experience_summary - общий опыт работы, где работал, сколько лет опыта
@@ -222,14 +223,15 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
   "confidence": 0.95
 }
 
-Вопрос: "ML проекты"
+Вопрос: "ML проекты" / "Расскажи об ML-проектах" / "AI-проекты"
 {
-  "intents": ["technology_usage"],
+  "intents": ["project_list"],
   "entities": [],
   "tool_calls": [
-    {"tool": "graph_query_tool", "args": {"intent": "technology_usage", "tech_category": "ml_framework"}}
+    {"tool": "graph_query_tool", "args": {"intent": "project_list", "tech_category": "ml_framework"}},
+    {"tool": "portfolio_search_tool", "args": {"query": "ML проекты AI машинное обучение", "k": 8}}
   ],
-  "tech_filter": {"category": "ml_framework", "strict": true},
+  "tech_filter": {"category": "ml_framework", "strict": false},
   "fallback": {"enabled": true, "tool": "portfolio_search_tool", "when": ["NO_RESULTS", "LOW_COVERAGE"]},
   "limits": {"max_items": 10, "max_groups": 4, "max_paragraphs": 3},
   "render_style": "grouped_bullets",

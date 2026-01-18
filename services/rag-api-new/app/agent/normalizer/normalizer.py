@@ -102,6 +102,13 @@ class FactNormalizer:
                 filtered = exp_facts + other_facts
                 rules_applied.append("experience_prioritization")
 
+        # === Rule 4: Project list - prioritize project facts ===
+        if intent_str == "project_list":
+            project_facts = [f for f in filtered if f.type in ("project", "experience_project")]
+            if project_facts:
+                filtered = project_facts
+                rules_applied.append("project_list_filter")
+
         # === Apply limit after filtering ===
         removed_by_limit = 0
         if len(filtered) > max_items:

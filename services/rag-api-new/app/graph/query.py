@@ -682,6 +682,7 @@ def _projects_by_tech_category_query(
             tech_list += f" и ещё {len(techs_used) - 3}"
 
         items.append({
+            "type": "project",  # Explicit type for _item_to_fact
             "name": project.name,  # For compatibility with _item_to_fact
             "project": project.name,  # Additional field
             "project_slug": project.slug,
@@ -692,7 +693,7 @@ def _projects_by_tech_category_query(
             "description": project.data.get("description_md"),
             "technologies": techs_used,
             "tech_count": len(techs_used),
-            "category": category,
+            "tech_category": category,  # Renamed from 'category' to avoid confusion with fact type
             "text": f"{project.name} ({company_str}) — использует {tech_list}",
         })
         sources.append(_node_to_source(project))

@@ -20,6 +20,7 @@ _INTENT_MAPPING = {
     IntentV2.PROJECT_DETAILS: "project_details",
     IntentV2.PROJECT_ACHIEVEMENTS: "achievements",
     IntentV2.PROJECT_TECH_STACK: "technologies",
+    IntentV2.PROJECT_LIST: "technologies",  # Uses _projects_by_tech_category_query when tech_category provided
     IntentV2.TECHNOLOGY_USAGE: "technologies",
     IntentV2.EXPERIENCE_SUMMARY: "experience",
     IntentV2.TECHNOLOGY_OVERVIEW: "technologies",
@@ -177,8 +178,10 @@ def _item_to_fact(item: Any, intent: Any) -> FactItem | None:
             else:
                 text = item.get("achievement") or item.get("name") or item.get("description") or str(item)
 
-        # Determine fact type
-        if "achievement" in item:
+        # Determine fact type - check explicit type first
+        if "type" in item:
+            fact_type = item["type"]
+        elif "achievement" in item:
             fact_type = "achievement"
         elif "name" in item and "category" in item:
             fact_type = "technology"

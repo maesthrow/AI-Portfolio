@@ -143,6 +143,12 @@ def answer_llm_node(state: RAGState) -> dict:
     render_style = plan.render_style if plan else None
     rendered_facts = renderer.render(facts=fact_items, style=render_style, intents=intents)
 
+    # Add evidence_text as additional context if rendered_facts is short
+    evidence_text = state.get("evidence_text", "")
+    if evidence_text and len(rendered_facts) < 200:
+        rendered_facts = f"{rendered_facts}\n\n--- Дополнительный контекст ---\n{evidence_text}"
+        logger.info(f"AnswerLLM: added evidence_text ({len(evidence_text)} chars) as fallback")
+
     if not rendered_facts:
         # Fallback to not found
         intent = plan.intents[0].value if plan and plan.intents else "general_unstructured"

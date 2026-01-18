@@ -78,12 +78,11 @@ def route_answer(
 
     Deterministic answers for:
     - Empty facts (not found response)
-    - technology_usage intent
     - contacts intent
 
     LLM answers for:
     - Complex intents requiring natural language
-    - project_details, experience_summary, etc.
+    - project_details, experience_summary, technology_usage, etc.
 
     Args:
         state: Current RAGState with normalized_facts and plan
@@ -104,8 +103,8 @@ def route_answer(
     if plan and plan.intents:
         intent = plan.intents[0].value
 
-        # These intents can be answered deterministically
-        if intent in ("technology_usage", "contacts"):
+        # Only contacts can be answered deterministically
+        if intent == "contacts":
             logger.info(f"RouteAnswer: {intent} → answer_deterministic")
             return "answer_deterministic"
 
