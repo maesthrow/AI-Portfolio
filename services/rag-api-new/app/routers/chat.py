@@ -132,9 +132,11 @@ async def chat_stream(req: ChatRequest):
         truncate_text(question, limit=800),
     )
 
+    # New RAGState format for the node-based graph
     state = {
         "messages": [HumanMessage(content=question)],
-        "user_id": req.session_id,
+        "question": question,
+        "session_id": req.session_id or "anon",
     }
 
     async def event_generator():
