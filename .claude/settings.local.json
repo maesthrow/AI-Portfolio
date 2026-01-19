@@ -12,7 +12,9 @@
       "Bash(git ls-tree:*)",
       "Bash(docker compose:*)",
       "Bash(docker logs:*)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(docker inspect:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

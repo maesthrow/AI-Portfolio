@@ -174,6 +174,9 @@ def answer_llm_node(state: RAGState) -> dict:
         f"style={style_instruction[:30]}..."
     )
 
+    # DEBUG: Log rendered facts to see what's being passed to LLM
+    logger.info(f"AnswerLLM rendered_facts:\n{rendered_facts[:1000]}")
+
     # Generate answer
     messages = [
         SystemMessage(content=ANSWER_SYSTEM_PROMPT),

@@ -356,7 +356,7 @@ def portfolio_search(
         query=question,
         intent=plan.intent,
         entities=plan.entities,
-        items=[],  # При гибридном поиске items пустой
+        items=evidence_docs,  # FIX: передаём ScoredDoc с полным metadata
         evidence=context,
         sources=sources,
         confidence=confidence,

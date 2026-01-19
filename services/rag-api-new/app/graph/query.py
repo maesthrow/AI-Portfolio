@@ -281,7 +281,12 @@ def _technologies_query(entity_key: str | None) -> GraphQueryResult:
 
 
 def _project_details_query(entity_key: str) -> GraphQueryResult:
-    """Запрос деталей конкретного проекта."""
+    """
+    Запрос деталей конкретного проекта.
+
+    P1 FIX: Если entity_key это компания, а не проект, делегируем
+    к _projects_by_company_query вместо возврата пустого результата.
+    """
     store = get_graph_store()
 
     if not entity_key:
@@ -306,6 +311,29 @@ def _project_details_query(entity_key: str) -> GraphQueryResult:
                 break
 
     if not project:
+        # P1 FIX: Check if entity_key refers to a company
+        # If so, return projects OF that company instead of empty result
+        key_lower = entity_key.lower()
+
+        # Check if the node found is actually a company
+        if node and node.type == NodeType.COMPANY:
+            logger.info(
+                "entity_key '%s' is a company, routing to _projects_by_company_query",
+                entity_key
+            )
+            return _projects_by_company_query(entity_key)
+
+        # Try to find by partial match in companies
+        companies = store.get_nodes_by_type(NodeType.COMPANY)
+        for c in companies:
+            if key_lower in c.slug.lower() or key_lower in c.name.lower():
+                logger.info(
+                    "entity_key '%s' matches company '%s', routing to _projects_by_company_query",
+                    entity_key,
+                    c.slug
+                )
+                return _projects_by_company_query(c.slug)
+
         return GraphQueryResult(
             items=[],
             found=False,
@@ -470,6 +498,15 @@ def graph_query_with_filters(
         GraphQueryResult с отфильтрованными фактами
     """
     store = get_graph_store()
+
+    # === Handle project_details for company entity (P0 fix) ===
+    # When entity is a company and intent is PROJECT_DETAILS, return projects OF that company
+    if intent == Intent.PROJECT_DETAILS and company_key:
+        logger.info(
+            "Routing PROJECT_DETAILS with company_key='%s' to _projects_by_company_query",
+            company_key
+        )
+        return _projects_by_company_query(company_key, limit)
 
     # === Handle technology queries with category filter ===
     # CRITICAL FIX: When tech_category is specified, return PROJECTS using those technologies
@@ -712,4 +749,139 @@ def _projects_by_tech_category_query(
         confidence=0.9 if items else 0.0,
         intent=Intent.TECHNOLOGIES,
         entity_key=category,
+    )
+
+
+def _projects_by_company_query(
+    company_key: str,
+    limit: int = 20
+) -> GraphQueryResult:
+    """
+    Запрос проектов конкретной компании.
+
+    Ищет компанию по ключу и возвращает все проекты, где company_slug
+    или company_name соответствуют ключу.
+
+    Args:
+        company_key: Ключ компании (slug или часть названия)
+        limit: Максимальное количество результатов
+
+    Returns:
+        GraphQueryResult с проектами компании
+    """
+    store = get_graph_store()
+
+    if not company_key:
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.PROJECT_DETAILS,
+        )
+
+    key_lower = company_key.lower()
+
+    # 1. Найти компанию по slug или partial match
+    company = store.get_node_by_slug(company_key)
+    if not company or company.type != NodeType.COMPANY:
+        # Поиск по partial match
+        companies = store.get_nodes_by_type(NodeType.COMPANY)
+        for c in companies:
+            if key_lower in c.slug.lower() or key_lower in c.name.lower():
+                company = c
+                break
+
+    if not company:
+        logger.warning(
+            "Company '%s' not found in graph, returning empty result",
+            company_key
+        )
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.PROJECT_DETAILS,
+            entity_key=company_key,
+        )
+
+    logger.info("Found company: %s (slug=%s)", company.name, company.slug)
+
+    # 2. Найти проекты этой компании
+    projects = []
+    for p in store.get_nodes_by_type(NodeType.PROJECT):
+        company_slug = (p.data.get("company_slug") or "").lower()
+        company_name = (p.data.get("company_name") or "").lower()
+
+        if (key_lower in company_slug or company_slug in key_lower or
+            key_lower in company_name or company_name in key_lower or
+            company.slug.lower() in company_slug):
+            projects.append(p)
+
+    if not projects:
+        logger.warning(
+            "No projects found for company '%s'",
+            company_key
+        )
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[_node_to_source(company)],
+            confidence=0.0,
+            intent=Intent.PROJECT_DETAILS,
+            entity_key=company_key,
+        )
+
+    logger.info(
+        "Found %d projects for company '%s': %s",
+        len(projects),
+        company.name,
+        [p.name for p in projects[:5]]
+    )
+
+    # 3. Собрать информацию о каждом проекте
+    items = []
+    sources = [_node_to_source(company)]
+
+    for project in projects[:limit]:
+        # Получаем технологии проекта
+        tech_edges = store.get_outgoing_edges(project.id, EdgeType.USES)
+        techs = [store.get_node(e.target_id) for e in tech_edges]
+        tech_names = [t.name for t in techs if t]
+        tech_names.extend(project.data.get("technologies") or [])
+        tech_names = list(set(tech_names))
+
+        # Получаем достижения проекта
+        achievements = []
+        for ach in store.get_nodes_by_type(NodeType.ACHIEVEMENT):
+            if ach.data.get("project_slug") == project.slug:
+                achievements.append(ach.data.get("text", ach.name))
+
+        items.append({
+            "type": "project",
+            "name": project.name,
+            "slug": project.slug,
+            "company_name": company.name,
+            "company_slug": company.slug,
+            "description": project.data.get("description_md"),
+            "long_description": project.data.get("long_description_md"),
+            "domain": project.data.get("domain"),
+            "period": project.data.get("period"),
+            "repo_url": project.data.get("repo_url"),
+            "demo_url": project.data.get("demo_url"),
+            "technologies": tech_names[:10],
+            "technologies_csv": ", ".join(tech_names[:10]),
+            "achievements": achievements[:5],
+            "text": f"{project.name} ({company.name}) — {project.data.get('description_md', '')[:200]}",
+        })
+        sources.append(_node_to_source(project))
+
+    return GraphQueryResult(
+        items=items,
+        found=True,
+        sources=sources[:10],
+        confidence=0.9,
+        intent=Intent.PROJECT_DETAILS,
+        entity_key=company_key,
     )

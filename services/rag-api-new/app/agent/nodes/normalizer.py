@@ -64,9 +64,14 @@ def normalizer_node(state: RAGState) -> dict:
         if plan.limits:
             max_items = plan.limits.max_items
 
+    # P2 FIX: Extract entity_scope from plan.entities for filtering
+    entity_scope = None
+    if plan and hasattr(plan, "entities") and plan.entities:
+        entity_scope = plan.entities
+
     logger.info(
         f"Normalizer processing: facts={len(merged_facts)}, "
-        f"intent={intent}, tech_filter={tech_filter}"
+        f"intent={intent}, tech_filter={tech_filter}, entity_scope={entity_scope}"
     )
 
     # Apply normalization
@@ -75,6 +80,7 @@ def normalizer_node(state: RAGState) -> dict:
         intent=intent,
         tech_filter=tech_filter,
         max_items=max_items,
+        entity_scope=entity_scope,  # P2 FIX
     )
 
     logger.info(

@@ -12,7 +12,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from .schemas import ScopeDecision
+from ..planner.schemas_v3 import ScopeDecision
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel

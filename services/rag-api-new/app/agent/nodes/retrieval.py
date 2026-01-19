@@ -171,11 +171,45 @@ def search_retriever_node(state: RAGState) -> dict:
             logger.error(f"SearchRetriever error: {e}")
 
     # If no search tool calls, but we have a question, do a fallback search
+    # P0 FIX: Use entity-aware fallback query when plan has entities
     if not executed_search and question:
-        logger.info("SearchRetriever: no explicit search, doing fallback search")
+        fallback_query = question
+
+        # Try to build entity-aware fallback query from plan entities
+        if plan and hasattr(plan, "entities") and plan.entities:
+            for entity in plan.entities:
+                entity_type = ""
+                entity_name = ""
+
+                # Handle both dict and object access patterns
+                if isinstance(entity, dict):
+                    entity_type = entity.get("type", "")
+                    entity_name = entity.get("name", "") or entity.get("id", "").split(":")[-1]
+                elif hasattr(entity, "type"):
+                    entity_type = getattr(entity, "type", "")
+                    entity_name = getattr(entity, "name", "") or getattr(entity, "id", "").split(":")[-1]
+
+                if entity_type == "company" and entity_name:
+                    fallback_query = f"проекты {entity_name}"
+                    logger.info(
+                        "SearchRetriever: entity-aware fallback, query='%s' (company=%s)",
+                        fallback_query,
+                        entity_name,
+                    )
+                    break
+                elif entity_type == "project" and entity_name:
+                    fallback_query = f"проект {entity_name}"
+                    logger.info(
+                        "SearchRetriever: entity-aware fallback, query='%s' (project=%s)",
+                        fallback_query,
+                        entity_name,
+                    )
+                    break
+
+        logger.info("SearchRetriever: fallback search with query='%s'", fallback_query[:50])
         try:
             facts, sources, found, confidence, evidence = execute_portfolio_search(
-                query=question,
+                query=fallback_query,
                 k=8,
             )
             all_facts.extend(facts)

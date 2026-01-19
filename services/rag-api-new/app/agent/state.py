@@ -87,6 +87,15 @@ class RAGState(TypedDict, total=False):
     # === Final Output ===
     final_response: dict[str, Any]
 
+    # === Session Context (P0: persistent context between questions) ===
+    last_company: str | None          # Last mentioned company (slug)
+    last_project: str | None          # Last mentioned project (slug)
+    last_technology: str | None       # Last mentioned technology
+    context_entities: list[dict]      # All entities mentioned in session
+
+    # === Rules Validator Output ===
+    validated_entities: dict[str, str | None]  # Validated company/project from rules
+
 
 def create_initial_state(
     question: str,

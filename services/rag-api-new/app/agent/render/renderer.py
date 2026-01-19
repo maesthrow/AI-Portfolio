@@ -45,6 +45,12 @@ class RenderEngine:
         # Limit facts
         limited_facts = facts[:max_items]
 
+        # Special handling for PROJECT_LIST intent
+        # Add project summary and render technology facts in project-centric way
+        # Check both IntentV2 and IntentV3 (or string values) for compatibility
+        if intents and self._has_intent(intents, "project_list"):
+            return self._render_project_list(limited_facts)
+
         if style == RenderStyle.BULLETS:
             return self._render_bullets(limited_facts)
         elif style == RenderStyle.GROUPED_BULLETS:
@@ -139,6 +145,123 @@ class RenderEngine:
             lines.append(f"| {name} | {category} |")
         return "\n".join(lines)
 
+    def _render_project_list(self, facts: list[FactItem]) -> str:
+        """
+        Render facts for PROJECT_LIST intent with project summary.
+
+        This ensures all projects are explicitly listed, even those
+        mentioned only in technology facts.
+        """
+        # Step 1: Extract all unique projects from all facts
+        all_projects = self._extract_all_projects(facts)
+
+        # Step 2: Build output with project summary first
+        lines = []
+
+        # Add project summary if we found multiple projects
+        if len(all_projects) > 1:
+            project_list = ", ".join(sorted(all_projects))
+            lines.append(f"[Проекты в контексте: {project_list}]")
+            lines.append("ВАЖНО: Упомяни ВСЕ проекты из списка выше в ответе.")
+            lines.append("")
+
+        # Step 3: Render direct project facts (experience_project, project)
+        project_facts = [f for f in facts if f.type in ("project", "experience_project")]
+        for fact in project_facts:
+            text = self._clean_text(fact.text)
+            if text:
+                # Keep full project description
+                lines.append(f"[Проект] {text}")
+                lines.append("")
+
+        # Step 4: Render technology facts in project-centric way
+        tech_facts = [f for f in facts if f.type == "technology"]
+        if tech_facts:
+            # Extract projects from technology facts that aren't already covered
+            covered_projects = set()
+            for f in project_facts:
+                md = f.metadata or {}
+                name = md.get("name") or md.get("project_name")
+                if name:
+                    covered_projects.add(name)
+
+            # Render technology facts emphasizing projects
+            tech_projects_info = []
+            for fact in tech_facts:
+                md = fact.metadata or {}
+                tech_name = md.get("name") or md.get("slug", "")
+                project_names_csv = md.get("project_names_csv") or ""
+
+                if project_names_csv and tech_name:
+                    projects = [p.strip() for p in project_names_csv.split(",")]
+                    # Find projects not yet covered
+                    new_projects = [p for p in projects if p not in covered_projects]
+                    if new_projects:
+                        tech_projects_info.append(
+                            f"- {tech_name} используется в: {', '.join(projects)}"
+                        )
+                        covered_projects.update(projects)
+
+            if tech_projects_info:
+                lines.append("[Технологии и связанные проекты]")
+                lines.extend(tech_projects_info)
+                lines.append("")
+
+        # Step 5: Render experience facts (company-level)
+        exp_facts = [f for f in facts if f.type == "experience"]
+        for fact in exp_facts:
+            text = self._clean_text(fact.text)
+            if text and len(text) < 500:  # Only short summaries
+                lines.append(f"[Опыт] {text}")
+
+        return "\n".join(lines).strip()
+
+    def _extract_all_projects(self, facts: list[FactItem]) -> set[str]:
+        """
+        Extract all unique project names from facts.
+
+        Looks in:
+        - Direct project facts (name from metadata)
+        - Technology facts (project_names_csv in metadata)
+
+        NOTE: Uses only human-readable names, not slugs.
+        """
+        projects = set()
+
+        for fact in facts:
+            md = fact.metadata or {}
+
+            # From project/experience_project facts - use name only
+            if fact.type in ("project", "experience_project"):
+                name = md.get("name") or md.get("project_name")
+                if name:
+                    projects.add(name)
+
+            # From technology facts - extract from project_names_csv (contains names, not slugs)
+            if fact.type == "technology":
+                project_names_csv = md.get("project_names_csv") or ""
+                if project_names_csv:
+                    for p in project_names_csv.split(","):
+                        p = p.strip()
+                        if p:
+                            projects.add(p)
+
+            # From experience facts - use project names from text parsing
+            # Skip project_slugs_csv as it contains slugs, not names
+            if fact.type == "experience":
+                # Check if there's a "Проекты:" line in the text
+                if "Проекты:" in fact.text:
+                    # Extract project names after "Проекты:"
+                    parts = fact.text.split("Проекты:")
+                    if len(parts) > 1:
+                        project_part = parts[1].strip().split("\n")[0]
+                        for p in project_part.split(","):
+                            p = p.strip()
+                            if p:
+                                projects.add(p)
+
+        return projects
+
     def _clean_text(self, text: str) -> str:
         """Clean text for rendering."""
         if not text:
@@ -155,6 +278,23 @@ class RenderEngine:
         text = re.sub(r" {2,}", " ", text)
 
         return text
+
+    def _has_intent(self, intents: list, intent_value: str) -> bool:
+        """
+        Check if intents list contains a specific intent.
+
+        Works with both IntentV2, IntentV3 enums and string values.
+        """
+        for intent in intents:
+            # Handle enum objects (IntentV2, IntentV3)
+            if hasattr(intent, "value"):
+                if intent.value == intent_value:
+                    return True
+            # Handle string values
+            elif isinstance(intent, str):
+                if intent == intent_value:
+                    return True
+        return False
 
     def _get_group_title(self, fact_type: str) -> str:
         """Get human-readable group title."""

@@ -3,6 +3,8 @@ Graph Query Tool - wrapper for graph-based retrieval.
 
 Executes structured queries against the knowledge graph.
 Supports V3 filters: tech_category, scope, company_id, project_id.
+
+P0 FIX: Now properly routes company entities using entity_type from parsed entity_id.
 """
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ import logging
 from typing import Any
 
 from ..planner.schemas import FactItem, IntentV2
+from ..utils.entity_utils import parse_entity_id
 
 logger = logging.getLogger(__name__)
 
@@ -56,25 +59,28 @@ def execute_graph_query(
     from ...graph.query import graph_query, graph_query_with_filters
     from ...rag.search_types import Intent
 
-    # Parse entity_key from entity_id
-    entity_key = None
-    if entity_id:
-        parts = entity_id.split(":", 1)
-        if len(parts) == 2:
-            entity_key = parts[1]
-        else:
-            entity_key = entity_id
+    # P0 FIX: Parse entity_id preserving entity_type
+    parsed_entity = parse_entity_id(entity_id)
+    entity_key = parsed_entity.key
+    entity_type = parsed_entity.entity_type
+
+    logger.debug(
+        "Parsed entity_id='%s' -> type=%s, key=%s",
+        entity_id,
+        entity_type,
+        entity_key,
+    )
 
     # Parse company/project keys from IDs
     company_key = None
     if company_id:
-        parts = company_id.split(":", 1)
-        company_key = parts[1] if len(parts) == 2 else company_id
+        parsed_company = parse_entity_id(company_id)
+        company_key = parsed_company.key
 
     project_key = None
     if project_id:
-        parts = project_id.split(":", 1)
-        project_key = parts[1] if len(parts) == 2 else project_id
+        parsed_project = parse_entity_id(project_id)
+        project_key = parsed_project.key
 
     # Convert intent string to Intent enum
     intent_lower = intent.lower()
@@ -94,8 +100,9 @@ def execute_graph_query(
             intent_enum = Intent.GENERAL
 
     logger.info(
-        "graph_query: intent=%s, entity_key=%s, tech_category=%s, scope=%s, company=%s, project=%s",
+        "graph_query: intent=%s, entity_type=%s, entity_key=%s, tech_category=%s, scope=%s, company=%s, project=%s",
         intent_enum.value,
+        entity_type,
         entity_key,
         tech_category,
         scope,
@@ -103,8 +110,32 @@ def execute_graph_query(
         project_key,
     )
 
-    # Use filters if provided, otherwise use legacy query
-    if tech_category or company_key or project_key:
+    # P0 FIX: Route company entity with project-related intents to _projects_by_company_query
+    # This fixes "над каким проектом работает в Aston?" returning wrong projects
+    if entity_type == "company" and entity_key:
+        project_intents = {Intent.PROJECT_DETAILS, Intent.TECHNOLOGIES}
+        if intent_enum in project_intents:
+            logger.info(
+                "Routing company entity '%s' with intent=%s to graph_query_with_filters(company_key)",
+                entity_key,
+                intent_enum.value,
+            )
+            result = graph_query_with_filters(
+                intent=intent_enum,
+                entity_key=entity_key,
+                company_key=entity_key,  # P0 FIX: Pass company_key explicitly
+                limit=limit,
+            )
+        else:
+            # For other intents (experience, achievements), use standard routing
+            result = graph_query_with_filters(
+                intent=intent_enum,
+                entity_key=entity_key,
+                company_key=entity_key,
+                limit=limit,
+            )
+    elif tech_category or company_key or project_key:
+        # Use filters if provided
         result = graph_query_with_filters(
             intent=intent_enum,
             entity_key=entity_key,

@@ -64,13 +64,23 @@ def output_formatter_node(state: RAGState) -> dict:
         grounded = grounding_result.grounded
 
     # Format sources for output
+    # Sources can be dicts (from new tool_executor) or SourceInfo objects (legacy)
     formatted_sources = []
     for source in sources:
-        formatted_sources.append({
-            "id": source.id,
-            "label": source.label,
-            "type": source.type,
-        })
+        if isinstance(source, dict):
+            # New format: sources are dicts from tool_executor
+            formatted_sources.append({
+                "id": source.get("id", ""),
+                "label": source.get("label") or source.get("title") or source.get("name", ""),
+                "type": source.get("type", ""),
+            })
+        else:
+            # Legacy format: SourceInfo objects
+            formatted_sources.append({
+                "id": source.id,
+                "label": source.label,
+                "type": source.type,
+            })
 
     # Build final response
     final_response: dict[str, Any] = {

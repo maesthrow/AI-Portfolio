@@ -31,6 +31,16 @@ EXCLUDED_TYPES_FOR_TECH_USAGE = frozenset({
     "tech_focus",      # Technology focus areas
 })
 
+# Types that don't provide direct project information
+# These are excluded from project_list answers (but technology can be kept if it references projects)
+EXCLUDED_TYPES_FOR_PROJECT_LIST = frozenset({
+    "focus_area",      # Skill descriptions
+    "work_approach",   # Work methodologies
+    "stat",            # Statistics (like "5+ ML-проектов")
+    "catalog",         # Technology catalogs
+    "tech_focus",      # Technology focus areas
+})
+
 
 class FactNormalizer:
     """
@@ -55,6 +65,7 @@ class FactNormalizer:
         intent: str | IntentV3,
         tech_filter: TechFilter | None = None,
         max_items: int = 20,
+        entity_scope: list | None = None,
     ) -> NormalizerOutput:
         """
         Apply deterministic normalization rules to facts.
@@ -64,6 +75,7 @@ class FactNormalizer:
             intent: Query intent
             tech_filter: Technology filter parameters
             max_items: Maximum number of items to return
+            entity_scope: P2 FIX - List of entities for scoped filtering
 
         Returns:
             NormalizerOutput with filtered facts and metadata
@@ -126,12 +138,64 @@ class FactNormalizer:
                 filtered = exp_facts + other_facts
                 rules_applied.append("experience_prioritization")
 
-        # === Rule 4: Project list - prioritize project facts ===
+        # === Rule 4: Project list - smart filtering ===
+        # Keep project facts as primary, but also include technology facts
+        # that reference projects (they provide coverage of which projects exist)
         if intent_str == "project_list":
+            # Step 1: Exclude noise types
+            before_exclude = len(filtered)
+            filtered = [f for f in filtered if f.type not in EXCLUDED_TYPES_FOR_PROJECT_LIST]
+            excluded_count = before_exclude - len(filtered)
+            if excluded_count > 0:
+                rules_applied.append(f"project_list_excluded_noise:{excluded_count}")
+
+            # Step 2: Categorize remaining facts
             project_facts = [f for f in filtered if f.type in ("project", "experience_project")]
+
+            # Technology facts that reference projects (have project_names in metadata)
+            tech_with_projects = []
+            for f in filtered:
+                if f.type == "technology":
+                    md = f.metadata or {}
+                    # Check if technology is used in projects
+                    project_refs = md.get("project_names_csv") or md.get("project_names")
+                    if project_refs:
+                        tech_with_projects.append(f)
+
+            # Experience facts (company-level, may mention projects)
+            experience_facts = [f for f in filtered if f.type == "experience"]
+
+            # Step 3: Build final list with priorities
             if project_facts:
-                filtered = project_facts
-                rules_applied.append("project_list_filter")
+                # Primary: project facts
+                # Secondary: technology facts that mention projects (for coverage)
+                # Tertiary: experience facts
+                filtered = project_facts + tech_with_projects[:5] + experience_facts[:2]
+                rules_applied.append("project_list_smart_filter")
+            elif tech_with_projects:
+                # Fallback: if no direct project facts, use technology facts
+                filtered = tech_with_projects + experience_facts[:2]
+                rules_applied.append("project_list_tech_fallback")
+            elif experience_facts:
+                # Last resort: experience facts
+                filtered = experience_facts
+                rules_applied.append("project_list_experience_fallback")
+
+        # === P2 FIX: Rule 5: Entity scope filtering ===
+        # Filter facts to match entity scope (e.g., only facts from specific company)
+        if entity_scope:
+            company_keys = self._extract_company_keys(entity_scope)
+            if company_keys:
+                before_scope = len(filtered)
+                filtered = self._filter_by_company_scope(filtered, company_keys)
+                scope_removed = before_scope - len(filtered)
+                if scope_removed > 0:
+                    rules_applied.append(f"entity_scope_filter:{company_keys[0]}:{scope_removed}")
+                    logger.info(
+                        "Entity scope filter applied: removed %d facts not matching companies %s",
+                        scope_removed,
+                        company_keys,
+                    )
 
         # === Apply limit after filtering ===
         removed_by_limit = 0
@@ -172,26 +236,6 @@ class FactNormalizer:
             rendered_text=rendered,
         )
 
-    # Known technologies by category for strict filtering of projects
-    CATEGORY_TECHNOLOGIES = {
-        "database": frozenset({
-            "postgresql", "postgres", "ms sql server", "mssql", "sql server",
-            "mongodb", "mongo", "redis", "chromadb", "chroma", "qdrant",
-            "mysql", "sqlite", "oracle", "mariadb", "pgvector",
-        }),
-        "vector_store": frozenset({
-            "chromadb", "chroma", "qdrant", "pgvector", "pinecone", "weaviate", "milvus",
-        }),
-        "ml_framework": frozenset({
-            "langchain", "langgraph", "langsmith", "pytorch", "tensorflow", "keras",
-            "scikit-learn", "sklearn", "huggingface", "transformers", "detectron2",
-            "ultralytics", "yolo", "mlflow", "vllm", "gigachain", "llm", "rag",
-        }),
-        "message_broker": frozenset({
-            "rabbitmq", "kafka", "redis", "celery", "nats",
-        }),
-    }
-
     def _filter_by_category_strict(
         self,
         facts: list[FactItem],
@@ -200,33 +244,29 @@ class FactNormalizer:
         """
         STRICT filtering: only return facts with exact category match.
 
-        For technology documents, checks metadata.category.
-        For project/experience documents, checks if technologies include
-        any from the target category.
+        Simplified P2 version - relies on metadata.category from graph queries
+        instead of hardcoded technology lists.
+
+        For technology documents, checks metadata.category directly.
+        For project documents, checks metadata.tech_category if present.
         """
         category_lower = category.lower()
         result = []
-        known_techs = self.CATEGORY_TECHNOLOGIES.get(category_lower, frozenset())
 
         for fact in facts:
             md = fact.metadata or {}
             fact_category = (md.get("category") or "").lower()
+            tech_category = (md.get("tech_category") or "").lower()
 
-            # Technologies: check metadata.category directly
+            # Primary: check metadata.category
             if fact_category == category_lower:
                 result.append(fact)
                 continue
 
-            # Projects/experience: check if their technologies match category
-            if fact.type in ("project", "experience", "experience_project"):
-                technologies_csv = md.get("technologies_csv", "")
-                technologies_str = md.get("technologies", "")
-                all_techs = f"{technologies_csv} {technologies_str}".lower()
-
-                # Check if any known tech from this category is in project's techs
-                if known_techs and any(tech in all_techs for tech in known_techs):
-                    result.append(fact)
-                    continue
+            # Projects tagged with tech_category from graph query
+            if tech_category == category_lower:
+                result.append(fact)
+                continue
 
             # Fallback: check if category keyword mentioned in text
             if category_lower in fact.text.lower():
@@ -300,12 +340,75 @@ class FactNormalizer:
 
         return "\n\n".join(lines)
 
+    def _extract_company_keys(self, entity_scope: list) -> list[str]:
+        """
+        Extract company keys from entity scope.
+
+        Handles both dict and object access patterns.
+        Returns lowercase keys for case-insensitive matching.
+        """
+        company_keys = []
+        for entity in entity_scope:
+            entity_type = ""
+            entity_id = ""
+
+            if isinstance(entity, dict):
+                entity_type = entity.get("type", "")
+                entity_id = entity.get("id", "")
+            elif hasattr(entity, "type"):
+                entity_type = getattr(entity, "type", "")
+                entity_id = getattr(entity, "id", "")
+
+            if entity_type == "company" and entity_id:
+                # Extract key from "company:aston" format
+                if ":" in entity_id:
+                    key = entity_id.split(":", 1)[1]
+                else:
+                    key = entity_id
+                company_keys.append(key.lower())
+
+        return company_keys
+
+    def _filter_by_company_scope(
+        self,
+        facts: list[FactItem],
+        company_keys: list[str],
+    ) -> list[FactItem]:
+        """
+        Filter facts to only include those from specified companies.
+
+        Facts without company info are kept (may be general facts).
+        Facts with company info must match one of the company_keys.
+        """
+        result = []
+        for fact in facts:
+            md = fact.metadata or {}
+
+            # Extract company info from fact metadata
+            fact_company_slug = (md.get("company_slug") or "").lower()
+            fact_company_name = (md.get("company_name") or "").lower()
+            fact_company = fact_company_slug or fact_company_name
+
+            # If fact has no company info, keep it (may be general fact)
+            if not fact_company:
+                result.append(fact)
+                continue
+
+            # Check if fact's company matches any of the scoped companies
+            for key in company_keys:
+                if key in fact_company or fact_company in key:
+                    result.append(fact)
+                    break
+
+        return result
+
 
 def normalize_facts(
     facts: list[FactItem],
     intent: str | IntentV3,
     tech_filter: TechFilter | None = None,
     max_items: int = 20,
+    entity_scope: list | None = None,
 ) -> NormalizerOutput:
     """
     Convenience function for fact normalization.
@@ -315,9 +418,10 @@ def normalize_facts(
         intent: Query intent
         tech_filter: Technology filter
         max_items: Maximum items
+        entity_scope: P2 FIX - List of entities for scoped filtering
 
     Returns:
         NormalizerOutput
     """
     normalizer = FactNormalizer()
-    return normalizer.normalize(facts, intent, tech_filter, max_items)
+    return normalizer.normalize(facts, intent, tech_filter, max_items, entity_scope)

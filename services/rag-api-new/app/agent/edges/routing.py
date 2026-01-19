@@ -4,11 +4,13 @@ Conditional edge routing functions for RAG agent.
 These functions determine which node to execute next
 based on the current state.
 
-Available routers:
-1. route_scope - Routes based on scope_category
-2. route_needs_search - Routes based on critic's additional search decision
-3. route_answer - Routes to deterministic or LLM answer
-4. route_grounding - Routes based on grounding verification result
+Active routers (simplified architecture):
+1. route_scope - Routes based on scope_category (portfolio -> planner, other -> simple_llm)
+
+Legacy routers (kept for backward compatibility with legacy graph):
+2. route_needs_search - DEPRECATED: Routes based on critic's additional search decision
+3. route_answer - DEPRECATED: Routes to deterministic or LLM answer
+4. route_grounding - DEPRECATED: Routes based on grounding verification result
 """
 from __future__ import annotations
 

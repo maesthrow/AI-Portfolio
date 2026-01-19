@@ -196,11 +196,22 @@ class PlannerLLM:
             logger.warning("Plan has no tool_calls")
             return False
 
-        known_tools = {"graph_query_tool", "portfolio_search_tool"}
+        # New specialized tools (2-LLM architecture)
+        # + legacy tools for backward compatibility
+        known_tools = {
+            # New tools
+            "get_company_projects",
+            "get_project_details",
+            "get_technologies",
+            "search_portfolio",
+            # Legacy tools (for rollback to 4-LLM architecture)
+            "graph_query_tool",
+            "portfolio_search_tool",
+        }
         for tc in plan.tool_calls:
             if tc.tool not in known_tools:
                 logger.warning("Unknown tool in plan: %s", tc.tool)
-                # Don't fail, just log - might be a new tool
+                # Don't fail, just log - tool_executor will handle unknown tools
 
         return True
 

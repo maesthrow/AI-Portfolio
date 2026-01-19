@@ -104,13 +104,13 @@ docker compose -p ai-portfolio-local -f docker-compose.local.yaml --env-file .en
 
 ```bash
 # Статистика коллекции ChromaDB (количество документов по типам)
-curl "http://localhost:8004/admin/stats"
+curl.exe "http://localhost:8004/api/v1/admin/stats"
 
 # Красивый вывод JSON
-curl -s "http://localhost:8004/admin/stats" | python -m json.tool
+curl.exe "http://localhost:8004/api/v1/admin/stats" | python -m json.tool
 
 # Очистить коллекцию (ОСТОРОЖНО!)
-curl -X DELETE "http://localhost:8004/admin/collection"
+curl.exe -X DELETE "http://localhost:8004/api/v1/admin/collection"
 ```
 
 ---

@@ -111,7 +111,7 @@ def simple_llm_node(state: RAGState) -> dict:
         logger.error(f"SimpleLLM error: {e}")
         # Fallback to deterministic response
         scope_guard = get_scope_guard()
-        from app.agent.scope_guard.schemas import ScopeDecision
+        from app.agent.planner.schemas_v3 import ScopeDecision
 
         decision = ScopeDecision(
             in_scope=False,
