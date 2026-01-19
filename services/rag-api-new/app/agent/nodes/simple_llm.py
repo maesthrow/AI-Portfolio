@@ -69,11 +69,32 @@ def simple_llm_node(state: RAGState) -> dict:
 
     # Determine context for the LLM
     if scope_category == "small_talk":
-        context = (
-            "Пользователь приветствует или благодарит. "
-            "Ответь дружелюбно, представься как AI-ассистент портфолио Дмитрия "
-            "и предложи спросить о проектах, технологиях или опыте."
-        )
+        # Distinguish small_talk subtypes for appropriate response
+        q_lower = question.lower().strip()
+
+        if any(word in q_lower for word in ["спасибо", "thanks", "thank you", "благодар"]):
+            # Thanks - short acknowledgment, offer to help more
+            context = (
+                "Пользователь благодарит. "
+                "Ответь коротко и тепло (1 предложение). "
+                "НЕ представляйся заново. "
+                "Скажи что-то вроде 'Пожалуйста! Если будут ещё вопросы по портфолио — обращайтесь.'"
+            )
+        elif any(word in q_lower for word in ["пока", "bye", "goodbye", "до свидания", "всего доброго"]):
+            # Goodbye - warm farewell
+            context = (
+                "Пользователь прощается. "
+                "Ответь коротко и тепло (1 предложение). "
+                "НЕ представляйся заново. "
+                "Скажи что-то вроде 'До свидания! Удачи!' или 'Всего доброго!'"
+            )
+        else:
+            # Greeting (привет, hello, etc.) - introduce and offer to help
+            context = (
+                "Пользователь приветствует. "
+                "Ответь дружелюбно, представься как AI-ассистент портфолио Дмитрия "
+                "и предложи спросить о проектах, технологиях или опыте."
+            )
     elif scope_category == "harmful":
         context = (
             "Пользователь задает потенциально вредный вопрос. "
