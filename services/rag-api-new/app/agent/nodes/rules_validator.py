@@ -32,9 +32,10 @@ COMPANY_PATTERNS: dict[str, list[str]] = {
 }
 
 PROJECT_PATTERNS: dict[str, list[str]] = {
-    "t2": ["t2", "tier2", "tier-2", "т2", "тиер2"],
-    "ai-portfolio": ["ai-portfolio", "ai portfolio", "портфолио", "portfolio"],
-    "alor-broker": ["alor-broker", "alor broker", "алор брокер", "alor"],
+    "t2": ["t2", "tele2", "tele-2", "т2", "теле2", "теле-2"],
+    "ai-portfolio": ["ai-portfolio", "ai portfolio", "ии-портфолио", "портфолио", "portfolio"],
+    "alor-broker": ["alor-broker", "alor broker", "алор брокер", "alor", "алор"],
+    "f3-tail": ["f3-tail", "f3 tail", "f3tail"],
     "hyperkeeper": ["hyperkeeper", "hyper-keeper", "hyper keeper", "гиперкипер"],
 }
 
@@ -111,10 +112,16 @@ def rules_validator_node(state: RAGState) -> dict[str, Any]:
 
     # 3. Validate and update tool_calls if plan exists
     if plan:
+        # Get primary intent from plan for fallback
+        primary_intent = None
+        if plan.intents:
+            primary_intent = plan.intents[0].value if hasattr(plan.intents[0], "value") else str(plan.intents[0])
+
         updated_tool_calls = _validate_tool_calls(
             plan.tool_calls,
             validated_entities,
             question,
+            primary_intent=primary_intent,
         )
 
         # Create updated plan
@@ -230,6 +237,7 @@ def _validate_tool_calls(
     tool_calls: list[ToolCallV3],
     validated_entities: dict[str, Any],
     question: str,
+    primary_intent: str | None = None,
 ) -> list[ToolCallV3]:
     """
     Validate and update tool_calls with session context.
@@ -239,10 +247,14 @@ def _validate_tool_calls(
     - Planner passes project_name='t2' but session has 't2-ml'
     - User asks "какой там был стек?" referencing previous project
 
+    Also corrects tool choice when Planner picks wrong tool for intent:
+    - project_tech_stack intent + resolved project → get_technologies
+
     Args:
         tool_calls: Original tool calls from Planner
         validated_entities: Validated company/project from rules
         question: Original question
+        primary_intent: Primary intent from plan (fallback if not in args)
 
     Returns:
         Updated list of ToolCallV3
@@ -256,6 +268,44 @@ def _validate_tool_calls(
     for tc in tool_calls:
         tool_name = tc.tool
         args = dict(tc.args)  # Make a copy
+
+        # === TOOL CORRECTION BASED ON INTENT ===
+        # Planner sometimes picks wrong tool for intent (e.g., get_company_projects for project_tech_stack)
+        # We fix this by checking intent in args and switching to correct tool
+        # Use args intent first, fallback to plan-level primary_intent
+        intent = args.get("intent", "").lower() or (primary_intent or "").lower()
+
+        # Case 1: project_tech_stack intent + resolved project → get_technologies
+        if intent in ("project_tech_stack", "technology_overview", "technology_usage"):
+            if project and tool_name != "get_technologies":
+                logger.info(
+                    "Correcting tool for intent '%s': %s -> get_technologies (project=%s)",
+                    intent,
+                    tool_name,
+                    project,
+                )
+                tool_name = "get_technologies"
+                # Set project_name for get_technologies
+                args["project_name"] = project
+                # Remove legacy args that don't apply to get_technologies
+                args.pop("intent", None)
+                args.pop("entity_id", None)
+                args.pop("scope", None)
+
+        # Case 2: project_details/project_achievements intent + resolved project → get_project_details
+        elif intent in ("project_details", "project_achievements"):
+            if project and tool_name not in ("get_project_details", "search_portfolio"):
+                logger.info(
+                    "Correcting tool for intent '%s': %s -> get_project_details (project=%s)",
+                    intent,
+                    tool_name,
+                    project,
+                )
+                tool_name = "get_project_details"
+                args["project_name"] = project
+                args.pop("intent", None)
+                args.pop("entity_id", None)
+                args.pop("scope", None)
 
         # Inject/override company context
         if company:
