@@ -808,15 +808,35 @@ def _projects_by_company_query(
 
     logger.info("Found company: %s (slug=%s)", company.name, company.slug)
 
-    # 2. Найти проекты этой компании
+    # 2. Найти проекты этой компании (STRICT matching)
     projects = []
-    for p in store.get_nodes_by_type(NodeType.PROJECT):
-        company_slug = (p.data.get("company_slug") or "").lower()
-        company_name = (p.data.get("company_name") or "").lower()
+    company_slug_lower = company.slug.lower()
 
-        if (key_lower in company_slug or company_slug in key_lower or
-            key_lower in company_name or company_name in key_lower or
-            company.slug.lower() in company_slug):
+    for p in store.get_nodes_by_type(NodeType.PROJECT):
+        proj_company_slug = (p.data.get("company_slug") or "").lower().strip()
+        proj_company_name = (p.data.get("company_name") or "").lower().strip()
+
+        # Skip projects without company info
+        if not proj_company_slug and not proj_company_name:
+            continue
+
+        # STRICT matching: project's company must match the target company
+        matches = False
+
+        # 1. Exact slug match (highest priority)
+        if proj_company_slug and company_slug_lower == proj_company_slug:
+            matches = True
+        # 2. Project's company_slug contains target company slug (e.g., "spargo" in "spargo-technologies")
+        elif proj_company_slug and company_slug_lower in proj_company_slug:
+            matches = True
+        # 3. Target key is contained in project's company_slug
+        elif proj_company_slug and key_lower in proj_company_slug:
+            matches = True
+        # 4. Target key is contained in project's company_name (for Russian names)
+        elif proj_company_name and key_lower in proj_company_name:
+            matches = True
+
+        if matches:
             projects.append(p)
 
     if not projects:

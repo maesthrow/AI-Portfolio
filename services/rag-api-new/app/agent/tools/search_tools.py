@@ -11,6 +11,7 @@ from typing import Any
 
 from ..planner.schemas import FactItem
 from .schemas import ToolResult, TOOL_SEARCH_PORTFOLIO
+from .normalize import normalize_project_name, normalize_company_name
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +62,9 @@ def search_portfolio(
     # Build filters dict
     filters = {}
     if company_filter:
-        filters["company_id"] = _normalize_company(company_filter)
+        filters["company_id"] = normalize_company_name(company_filter)
     if project_filter:
-        filters["project_id"] = _normalize_project(project_filter)
+        filters["project_id"] = normalize_project_name(project_filter)
 
     logger.info(
         "search_portfolio: query=%r, company=%s, project=%s, types=%s, k=%d",
@@ -95,7 +96,7 @@ def search_portfolio(
 
         # Post-filter by company if graph didn't filter
         if company_filter and facts:
-            company_key = _normalize_company(company_filter)
+            company_key = normalize_company_name(company_filter)
             facts = _filter_by_company(facts, company_key)
 
         logger.info(
@@ -131,53 +132,6 @@ def search_portfolio(
             params={"query": query},
             error=str(e),
         )
-
-
-def _normalize_company(company: str) -> str:
-    """Normalize company name to slug."""
-    company_lower = company.lower().strip()
-
-    mappings = {
-        "aston": "aston",
-        "астон": "aston",
-        "spargo": "spargo",
-        "спарго": "spargo",
-        "alor": "alor",
-        "алор": "alor",
-        "freelance": "freelance",
-        "фриланс": "freelance",
-    }
-
-    if company_lower in mappings:
-        return mappings[company_lower]
-
-    for pattern, slug in mappings.items():
-        if pattern in company_lower:
-            return slug
-
-    return company_lower.replace(" ", "-")
-
-
-def _normalize_project(project: str) -> str:
-    """Normalize project name to slug."""
-    project_lower = project.lower().strip()
-
-    mappings = {
-        "t2": "t2",
-        "tier2": "t2",
-        "ai-portfolio": "ai-portfolio",
-        "alor-broker": "alor-broker",
-        "hyperkeeper": "hyperkeeper",
-    }
-
-    if project_lower in mappings:
-        return mappings[project_lower]
-
-    for pattern, slug in mappings.items():
-        if pattern in project_lower:
-            return slug
-
-    return project_lower.replace(" ", "-")
 
 
 def _filter_by_company(facts: list[FactItem], company_key: str) -> list[FactItem]:

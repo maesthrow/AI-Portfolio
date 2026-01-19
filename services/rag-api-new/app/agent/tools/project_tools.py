@@ -11,6 +11,7 @@ from typing import Any
 
 from ..planner.schemas import FactItem
 from .schemas import ToolResult, TOOL_GET_PROJECT_DETAILS
+from .normalize import normalize_project_name
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def get_project_details(
         )
 
     # Normalize project name to slug-like format
-    project_key = _normalize_project_name(project_name)
+    project_key = normalize_project_name(project_name)
 
     logger.info(
         "get_project_details: project_name=%s, project_key=%s",
@@ -101,52 +102,6 @@ def get_project_details(
             params={"project_name": project_name},
             error=str(e),
         )
-
-
-def _normalize_project_name(name: str) -> str:
-    """
-    Normalize project name to slug-like format.
-
-    Handles common variations:
-    - "t2" -> "t2"
-    - "AI-Portfolio" -> "ai-portfolio"
-    - "ALOR Broker" -> "alor-broker"
-    """
-    name_lower = name.lower().strip()
-
-    # Known project mappings
-    project_mappings = {
-        # T2 variations
-        "t2": "t2",
-        "tier2": "t2",
-        "т2": "t2",
-        "tier-2": "t2",
-        # AI-Portfolio variations
-        "ai-portfolio": "ai-portfolio",
-        "ai portfolio": "ai-portfolio",
-        "портфолио": "ai-portfolio",
-        # ALOR Broker variations
-        "alor-broker": "alor-broker",
-        "alor broker": "alor-broker",
-        "алор брокер": "alor-broker",
-        "alor": "alor-broker",
-        # HyperKeeper variations
-        "hyperkeeper": "hyperkeeper",
-        "hyper-keeper": "hyperkeeper",
-        "гиперкипер": "hyperkeeper",
-    }
-
-    # Check for direct match
-    if name_lower in project_mappings:
-        return project_mappings[name_lower]
-
-    # Check for partial match
-    for pattern, slug in project_mappings.items():
-        if pattern in name_lower or name_lower in pattern:
-            return slug
-
-    # Fallback: simple normalization
-    return name_lower.replace(" ", "-")
 
 
 def _item_to_fact(

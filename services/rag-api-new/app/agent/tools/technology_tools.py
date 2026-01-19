@@ -11,6 +11,7 @@ from typing import Any
 
 from ..planner.schemas import FactItem
 from .schemas import ToolResult, TOOL_GET_TECHNOLOGIES
+from .normalize import normalize_project_name
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ def get_technologies(
     try:
         if project_name:
             # Get technologies for specific project
-            project_key = _normalize_project_name(project_name)
+            project_key = normalize_project_name(project_name)
             result = _technologies_query(project_key)
             context = {"project_name": project_name, "project_key": project_key}
         elif category:
@@ -110,32 +111,6 @@ def get_technologies(
             params={"project_name": project_name, "category": category},
             error=str(e),
         )
-
-
-def _normalize_project_name(name: str) -> str:
-    """Normalize project name to slug-like format."""
-    name_lower = name.lower().strip()
-
-    # Known project mappings
-    project_mappings = {
-        "t2": "t2",
-        "tier2": "t2",
-        "т2": "t2",
-        "ai-portfolio": "ai-portfolio",
-        "портфолио": "ai-portfolio",
-        "alor-broker": "alor-broker",
-        "alor": "alor-broker",
-        "hyperkeeper": "hyperkeeper",
-    }
-
-    if name_lower in project_mappings:
-        return project_mappings[name_lower]
-
-    for pattern, slug in project_mappings.items():
-        if pattern in name_lower or name_lower in pattern:
-            return slug
-
-    return name_lower.replace(" ", "-")
 
 
 def _normalize_category(category: str) -> str:

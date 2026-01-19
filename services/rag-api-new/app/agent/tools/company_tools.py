@@ -11,6 +11,7 @@ from typing import Any
 
 from ..planner.schemas import FactItem
 from .schemas import ToolResult, TOOL_GET_COMPANY_PROJECTS
+from .normalize import normalize_company_name
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def get_company_projects(
         )
 
     # Normalize company name to slug-like format
-    company_key = _normalize_company_name(company_name)
+    company_key = normalize_company_name(company_name)
 
     logger.info(
         "get_company_projects: company_name=%s, company_key=%s, limit=%d",
@@ -103,52 +104,6 @@ def get_company_projects(
             params={"company_name": company_name},
             error=str(e),
         )
-
-
-def _normalize_company_name(name: str) -> str:
-    """
-    Normalize company name to slug-like format.
-
-    Handles common variations:
-    - "Aston" -> "aston"
-    - "Спарго" -> "spargo"
-    - "ALOR" -> "alor"
-    """
-    name_lower = name.lower().strip()
-
-    # Known company mappings (Russian variations to slugs)
-    company_mappings = {
-        # Aston variations
-        "aston": "aston",
-        "астон": "aston",
-        "астоне": "aston",
-        "астона": "aston",
-        # Spargo variations
-        "spargo": "spargo",
-        "спарго": "spargo",
-        "спарге": "spargo",
-        "spargo-technologies": "spargo",
-        "спарго технологии": "spargo",
-        # ALOR variations
-        "alor": "alor",
-        "алор": "alor",
-        # Freelance/personal
-        "freelance": "freelance",
-        "фриланс": "freelance",
-        "personal": "personal",
-    }
-
-    # Check for direct match
-    if name_lower in company_mappings:
-        return company_mappings[name_lower]
-
-    # Check for partial match
-    for pattern, slug in company_mappings.items():
-        if pattern in name_lower or name_lower in pattern:
-            return slug
-
-    # Fallback: simple normalization
-    return name_lower.replace(" ", "-")
 
 
 def _item_to_fact(item: dict[str, Any], include_achievements: bool) -> FactItem | None:

@@ -195,25 +195,30 @@ def _execute_fallback(
 
     Args:
         question: Original question
-        validated_entities: Validated company/project
+        validated_entities: Validated company/project from session
 
     Returns:
         State update dict with merged_facts, sources, retrieval_found
     """
     company = validated_entities.get("company")
+    project = validated_entities.get("project")
 
     args = {
         "query": question,
         "k": 8,
     }
 
+    # Add filters from session context
     if company:
         args["company_filter"] = company
+    if project:
+        args["project_filter"] = project
 
     logger.info(
-        "ToolExecutor fallback: search_portfolio query=%r, company=%s",
+        "ToolExecutor fallback: search_portfolio query=%r, company=%s, project=%s",
         question[:50],
         company,
+        project,
     )
 
     result = execute_tool(TOOL_SEARCH_PORTFOLIO, args)

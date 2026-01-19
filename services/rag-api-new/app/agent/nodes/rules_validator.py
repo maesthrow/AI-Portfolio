@@ -234,9 +234,10 @@ def _validate_tool_calls(
     """
     Validate and update tool_calls with session context.
 
-    - Injects company_filter into search_portfolio
-    - Adds company_name to get_company_projects if missing
-    - Adds project_name to get_project_details if missing
+    IMPORTANT: When entities are resolved from session (from_session=True),
+    we OVERRIDE the tool args with resolved values. This handles cases like:
+    - Planner passes project_name='t2' but session has 't2-ml'
+    - User asks "какой там был стек?" referencing previous project
 
     Args:
         tool_calls: Original tool calls from Planner
@@ -248,6 +249,7 @@ def _validate_tool_calls(
     """
     company = validated_entities.get("company")
     project = validated_entities.get("project")
+    from_session = validated_entities.get("from_session", False)
 
     updated_calls = []
 
@@ -255,33 +257,47 @@ def _validate_tool_calls(
         tool_name = tc.tool
         args = dict(tc.args)  # Make a copy
 
-        # Inject company context
+        # Inject/override company context
         if company:
             if tool_name == "search_portfolio":
-                # Add company_filter if not present
-                if "company_filter" not in args:
+                # Always set company_filter when we have company context
+                if "company_filter" not in args or from_session:
                     args["company_filter"] = company
-                    logger.debug("Injected company_filter=%s into search_portfolio", company)
+                    logger.debug("Set company_filter=%s in search_portfolio", company)
 
             elif tool_name == "get_company_projects":
                 # Add company_name if not present
                 if not args.get("company_name"):
                     args["company_name"] = company
-                    logger.debug("Injected company_name=%s into get_company_projects", company)
+                    logger.debug("Set company_name=%s in get_company_projects", company)
 
-        # Inject project context
+        # Inject/override project context
+        # KEY FIX: When from_session=True, OVERRIDE the project_name even if already set
+        # This ensures "t2" gets replaced with "t2-ml" from session
         if project:
             if tool_name == "get_project_details":
-                # Add project_name if not present
-                if not args.get("project_name"):
+                current_project = args.get("project_name")
+                # Override if: no project set, OR from_session and different value
+                if not current_project or (from_session and current_project != project):
                     args["project_name"] = project
-                    logger.debug("Injected project_name=%s into get_project_details", project)
+                    logger.info("Set project_name=%s in get_project_details (was: %s)", project, current_project)
 
             elif tool_name == "get_technologies":
-                # Add project_name if not present and no category specified
-                if not args.get("project_name") and not args.get("category"):
+                current_project = args.get("project_name")
+                # Override if: (no project and no category), OR from_session
+                if not current_project and not args.get("category"):
                     args["project_name"] = project
-                    logger.debug("Injected project_name=%s into get_technologies", project)
+                    logger.info("Set project_name=%s in get_technologies", project)
+                elif from_session and current_project and current_project != project:
+                    # Override with resolved project from session
+                    args["project_name"] = project
+                    logger.info("Override project_name=%s in get_technologies (was: %s)", project, current_project)
+
+            elif tool_name == "search_portfolio":
+                # Add project_filter when we have project context
+                if "project_filter" not in args or from_session:
+                    args["project_filter"] = project
+                    logger.debug("Set project_filter=%s in search_portfolio", project)
 
         # Create updated ToolCallV3
         updated_call = ToolCallV3(tool=tool_name, args=args)
