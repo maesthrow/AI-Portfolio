@@ -9,10 +9,11 @@ from .graph_query_tool import execute_graph_query
 from .portfolio_search_tool import execute_portfolio_search
 
 # New specialized tools
-from .schemas import ToolResult, TOOL_GET_COMPANY_PROJECTS, TOOL_GET_PROJECT_DETAILS, TOOL_GET_TECHNOLOGIES, TOOL_SEARCH_PORTFOLIO
+from .schemas import ToolResult, TOOL_GET_COMPANY_PROJECTS, TOOL_GET_PROJECT_DETAILS, TOOL_GET_TECHNOLOGIES, TOOL_GET_CONTACTS, TOOL_SEARCH_PORTFOLIO
 from .company_tools import get_company_projects
 from .project_tools import get_project_details
 from .technology_tools import get_technologies
+from .contact_tools import get_contacts
 from .search_tools import search_portfolio
 from .tool_registry import execute_tool, get_tools_description, get_tool_names, is_valid_tool, TOOL_REGISTRY
 
@@ -25,6 +26,7 @@ __all__ = [
     "get_company_projects",
     "get_project_details",
     "get_technologies",
+    "get_contacts",
     "search_portfolio",
     # Tool registry
     "execute_tool",
@@ -36,5 +38,6 @@ __all__ = [
     "TOOL_GET_COMPANY_PROJECTS",
     "TOOL_GET_PROJECT_DETAILS",
     "TOOL_GET_TECHNOLOGIES",
+    "TOOL_GET_CONTACTS",
     "TOOL_SEARCH_PORTFOLIO",
 ]

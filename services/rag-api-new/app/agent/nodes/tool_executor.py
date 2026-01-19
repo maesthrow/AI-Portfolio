@@ -156,6 +156,7 @@ def _map_tool_name(tool_name: str, args: dict[str, Any]) -> str:
         "get_company_projects",
         "get_project_details",
         "get_technologies",
+        "get_contacts",
         "search_portfolio",
     ):
         return tool_name
@@ -179,6 +180,10 @@ def _map_tool_name(tool_name: str, args: dict[str, Any]) -> str:
         # Technologies
         if intent in ("technology_overview", "technology_usage", "languages"):
             return "get_technologies"
+
+        # Contacts - P0 FIX: route to get_contacts instead of search_portfolio
+        if intent == "contacts":
+            return "get_contacts"
 
         # Default to search
         return "search_portfolio"

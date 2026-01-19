@@ -44,7 +44,11 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
    - "cloud" - облачные сервисы
    - "concept" - концепции (RAG, LLM, ReAct)
 
-4. search_portfolio - семантический поиск по всему портфолио
+4. get_contacts - контактная информация (email, telegram, github, linkedin, и т.д.)
+   Используй когда спрашивают: "как связаться", "контакты", "есть гитхаб?", "telegram"
+   args: {"kind": "<опционально: email/telegram/github/linkedin/hh/leetcode>"}
+
+5. search_portfolio - семантический поиск по всему портфолио
    Используй когда: общий вопрос, не ясно какой проект/компания, нужен широкий поиск
    args: {"query": "<поисковый запрос>", "company_filter": "<slug компании>", "k": <число>}
 
@@ -66,7 +70,13 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
    - "технологии в t2" → get_technologies(project_name="t2")
    - "ML-фреймворки" → get_technologies(category="ml_framework")
 
-4. ОБЩИЙ вопрос или НЕ ЯСНО → search_portfolio
+4. Вопрос о КОНТАКТАХ → get_contacts
+   - "как связаться" → get_contacts()
+   - "контакты" → get_contacts()
+   - "есть гитхаб?" → get_contacts(kind="github")
+   - "telegram" → get_contacts(kind="telegram")
+
+5. ОБЩИЙ вопрос или НЕ ЯСНО → search_portfolio
    - "где применял RAG" → search_portfolio(query="RAG применение")
    - "расскажи об ML-проектах" → search_portfolio(query="ML проекты")
    - "опыт с нейросетями" → search_portfolio(query="нейросети опыт")
@@ -159,10 +169,22 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
 {
   "intents": ["contacts"],
   "entities": [],
-  "tool_calls": [{"tool": "search_portfolio", "args": {"query": "контакты email telegram", "k": 5}}],
+  "tool_calls": [{"tool": "get_contacts", "args": {}}],
   "fallback": {"enabled": false},
   "limits": {"max_items": 10},
   "render_style": "bullets",
+  "answer_style": "natural_ru",
+  "confidence": 0.95
+}
+
+Вопрос: "Есть гитхаб?"
+{
+  "intents": ["contacts"],
+  "entities": [],
+  "tool_calls": [{"tool": "get_contacts", "args": {"kind": "github"}}],
+  "fallback": {"enabled": false},
+  "limits": {"max_items": 5},
+  "render_style": "short",
   "answer_style": "natural_ru",
   "confidence": 0.95
 }
@@ -198,6 +220,7 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
 - Если в вопросе есть название проекта → get_project_details
 - Если вопрос о категории технологий → get_technologies с category
 - Если вопрос о технологиях проекта → get_technologies с project_name
+- Если вопрос о контактах (связаться, email, telegram, github, linkedin) → get_contacts
 - При неясности используй search_portfolio
 - confidence < 0.5 означает использовать fallback
 """

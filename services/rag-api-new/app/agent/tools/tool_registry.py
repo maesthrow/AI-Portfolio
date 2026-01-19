@@ -14,11 +14,13 @@ from .schemas import (
     TOOL_GET_COMPANY_PROJECTS,
     TOOL_GET_PROJECT_DETAILS,
     TOOL_GET_TECHNOLOGIES,
+    TOOL_GET_CONTACTS,
     TOOL_SEARCH_PORTFOLIO,
 )
 from .company_tools import get_company_projects
 from .project_tools import get_project_details
 from .technology_tools import get_technologies
+from .contact_tools import get_contacts
 from .search_tools import search_portfolio
 
 logger = logging.getLogger(__name__)
@@ -103,6 +105,23 @@ TOOL_REGISTRY = {
             "какие базы данных использует",
             "технологии в проекте t2",
             "ML-фреймворки",
+        ],
+    },
+    TOOL_GET_CONTACTS: {
+        "function": get_contacts,
+        "description": "Get contact information (email, telegram, github, etc.)",
+        "parameters": {
+            "kind": {
+                "type": "string",
+                "required": False,
+                "description": "Contact kind filter: email, telegram, github, linkedin, hh, leetcode",
+            },
+        },
+        "examples": [
+            "как связаться",
+            "контакты",
+            "есть гитхаб?",
+            "telegram",
         ],
     },
     TOOL_SEARCH_PORTFOLIO: {

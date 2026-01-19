@@ -317,6 +317,19 @@ def _validate_tool_calls(
                 args.pop("entity_id", None)
                 args.pop("scope", None)
 
+        # Case 3: contacts intent → ALWAYS use get_contacts
+        # P0 FIX: Planner often chooses search_portfolio for contacts,
+        # but graph query returns all 6 contacts reliably
+        elif intent == "contacts":
+            if tool_name != "get_contacts":
+                logger.info(
+                    "Correcting tool for intent 'contacts': %s -> get_contacts",
+                    tool_name,
+                )
+                tool_name = "get_contacts"
+                # Clear irrelevant args for get_contacts
+                args = {}  # get_contacts has optional 'kind' param only
+
         # Inject/override company context
         if company:
             if tool_name == "search_portfolio":

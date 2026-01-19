@@ -70,6 +70,7 @@ class ToolResult:
 TOOL_GET_COMPANY_PROJECTS = "get_company_projects"
 TOOL_GET_PROJECT_DETAILS = "get_project_details"
 TOOL_GET_TECHNOLOGIES = "get_technologies"
+TOOL_GET_CONTACTS = "get_contacts"
 TOOL_SEARCH_PORTFOLIO = "search_portfolio"
 
 # All available tools
@@ -77,5 +78,6 @@ ALL_TOOLS = [
     TOOL_GET_COMPANY_PROJECTS,
     TOOL_GET_PROJECT_DETAILS,
     TOOL_GET_TECHNOLOGIES,
+    TOOL_GET_CONTACTS,
     TOOL_SEARCH_PORTFOLIO,
 ]
