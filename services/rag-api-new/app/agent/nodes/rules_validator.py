@@ -294,7 +294,17 @@ def _validate_tool_calls(
 
         # Case 2: project_details/project_achievements intent + resolved project → get_project_details
         elif intent in ("project_details", "project_achievements"):
-            if project and tool_name not in ("get_project_details", "search_portfolio"):
+            # For project_achievements, ALWAYS use get_project_details (it has structured achievements)
+            # For project_details, allow search_portfolio as alternative
+            should_correct = False
+            if intent == "project_achievements":
+                # Achievements require get_project_details specifically
+                should_correct = project and tool_name != "get_project_details"
+            else:
+                # project_details can use either get_project_details or search_portfolio
+                should_correct = project and tool_name not in ("get_project_details", "search_portfolio")
+
+            if should_correct:
                 logger.info(
                     "Correcting tool for intent '%s': %s -> get_project_details (project=%s)",
                     intent,

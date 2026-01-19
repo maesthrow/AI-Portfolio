@@ -161,12 +161,15 @@ def answer_llm_node(state: RAGState) -> dict:
     # Get style instruction
     style_instruction = _get_style_instruction(plan)
 
+    # Build context note from session (for follow-up questions)
+    context_note = _build_context_note(state)
+
     # Build user prompt
     user_prompt = ANSWER_USER_TEMPLATE.format(
         question=question,
         facts=rendered_facts,
         style_instruction=style_instruction,
-        warnings="",
+        warnings=context_note,
     )
 
     logger.info(
@@ -264,6 +267,32 @@ def _answer_technology_usage(question: str, facts: list) -> str | None:
         lines.extend([f"- {p}" for p in unique_projects])
 
     return "\n".join(lines) if lines else None
+
+
+def _build_context_note(state: "RAGState") -> str:
+    """Build context note from session state for follow-up questions."""
+    validated_entities = state.get("validated_entities", {})
+    if not validated_entities:
+        return ""
+
+    project = validated_entities.get("project")
+    company = validated_entities.get("company")
+    from_session = validated_entities.get("from_session", False)
+
+    # Only add context note for follow-up questions (from_session=True)
+    if not from_session:
+        return ""
+
+    notes = []
+    if project:
+        notes.append(f"проект: {project}")
+    if company:
+        notes.append(f"компания: {company}")
+
+    if notes:
+        return f"КОНТЕКСТ ВОПРОСА (обязательно упомяни в ответе): {', '.join(notes)}"
+
+    return ""
 
 
 def _answer_contacts(facts: list) -> str | None:

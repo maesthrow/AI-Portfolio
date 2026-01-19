@@ -379,7 +379,14 @@ class FactNormalizer:
 
         Facts without company info are kept (may be general facts).
         Facts with company info must match one of the company_keys.
+
+        Uses fuzzy matching to handle Russian/English variations:
+        - "spargo" matches "АО «Спарго Технологии»"
+        - "aston" matches "Астон"
         """
+        # Build expanded keys with Russian transliterations
+        expanded_keys = self._expand_company_keys(company_keys)
+
         result = []
         for fact in facts:
             md = fact.metadata or {}
@@ -387,18 +394,57 @@ class FactNormalizer:
             # Extract company info from fact metadata
             fact_company_slug = (md.get("company_slug") or "").lower()
             fact_company_name = (md.get("company_name") or "").lower()
-            fact_company = fact_company_slug or fact_company_name
 
             # If fact has no company info, keep it (may be general fact)
-            if not fact_company:
+            if not fact_company_slug and not fact_company_name:
                 result.append(fact)
                 continue
 
             # Check if fact's company matches any of the scoped companies
-            for key in company_keys:
-                if key in fact_company or fact_company in key:
-                    result.append(fact)
-                    break
+            matched = False
+            for key, variations in expanded_keys.items():
+                # Check against slug
+                if fact_company_slug:
+                    if key in fact_company_slug or fact_company_slug in key:
+                        matched = True
+                        break
+
+                # Check against name (with variations for Russian)
+                if fact_company_name:
+                    for var in variations:
+                        if var in fact_company_name or fact_company_name in var:
+                            matched = True
+                            break
+                    if matched:
+                        break
+
+            if matched:
+                result.append(fact)
+
+        return result
+
+    def _expand_company_keys(self, company_keys: list[str]) -> dict[str, list[str]]:
+        """
+        Expand company keys with Russian transliterations.
+
+        Returns dict mapping original key to list of variations.
+        """
+        # Known mappings: English slug → Russian variations
+        known_mappings = {
+            "spargo": ["spargo", "спарго", "спарге", "спарга"],
+            "aston": ["aston", "астон", "астоне", "астона", "астоном"],
+            "alor": ["alor", "алор", "алоре", "алора"],
+            "freelance": ["freelance", "фриланс", "фрилансе"],
+        }
+
+        result = {}
+        for key in company_keys:
+            key_lower = key.lower()
+            if key_lower in known_mappings:
+                result[key_lower] = known_mappings[key_lower]
+            else:
+                # No known mapping, use key as-is
+                result[key_lower] = [key_lower]
 
         return result
 
