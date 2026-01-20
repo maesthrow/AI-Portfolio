@@ -29,72 +29,170 @@ class RAGState(TypedDict, total=False):
     All nodes read from and write to this state.
     Uses total=False to allow partial updates.
 
+    IMPORTANT: Field Lifecycle
+    ==========================
+    Fields are classified into two categories:
+
+    1. PER-REQUEST fields: Reset at the start of each request pipeline.
+       These fields contain data specific to the current question and
+       MUST NOT leak between requests. Cleared by state_cleanup_node.
+
+    2. PERSISTENT fields: Maintained across requests within a session.
+       These fields provide context continuity (e.g., "там" referring
+       to previous company). Persisted by LangGraph MemorySaver.
+
     Flow:
-    1. Input → scope_guard
-    2. scope_guard → route (portfolio/small_talk/off_topic/harmful)
-    3. portfolio path: planner → retrieval → merge → critic → normalizer → fact_bundler → answer → grounding → output
-    4. other paths: simple_llm → output
+    1. Input → state_cleanup (clears per-request fields)
+    2. state_cleanup → scope_guard
+    3. scope_guard → route (portfolio/small_talk/off_topic/harmful)
+    4. portfolio path: planner → rules_validator → tool_executor → normalizer → answer → output
+    5. other paths: simple_llm → output
     """
 
-    # === Input (set at graph invocation) ===
-    messages: Annotated[list[BaseMessage], add_messages]
-    question: str
-    session_id: str
+    # =====================================================================
+    # INPUT FIELDS (set at graph invocation)
+    # =====================================================================
+    messages: Annotated[list[BaseMessage], add_messages]  # PERSISTENT: conversation history
+    question: str              # PER-REQUEST: current question
+    session_id: str            # PERSISTENT: session identifier
 
-    # === Scope Guard Output ===
+    # =====================================================================
+    # PER-REQUEST FIELDS (cleared at start of each request)
+    # These fields are specific to the current question and must not
+    # leak data between requests.
+    # =====================================================================
+
+    # --- Scope Guard Output ---
     in_scope: bool
     scope_category: Literal["portfolio", "small_talk", "off_topic", "harmful"]
     scope_reason: str
     suggested_prompts: list[str]
 
-    # === Planner Output ===
+    # --- Planner Output ---
     plan: QueryPlanV3 | None
     plan_confidence: float
 
-    # === Retrieval Output (parallel: graph + search) ===
+    # --- Retrieval Output ---
     graph_facts: list[FactItem]
     search_facts: list[FactItem]
-    graph_sources: list[dict]  # Raw sources from graph retriever (merged later)
-    search_sources: list[dict]  # Raw sources from search retriever (merged later)
-    sources: list[SourceInfo]  # Final merged sources (set by merge_results_node)
-    evidence_text: str
+    graph_sources: list[dict]
+    search_sources: list[dict]
+    sources: list[SourceInfo]
+    evidence_text: str              # CRITICAL: must be cleared to prevent state pollution
     retrieval_found: bool
 
-    # === Merge Output ===
+    # --- Merge Output ---
     merged_facts: list[FactItem]
 
-    # === Critic Output ===
+    # --- Critic Output ---
     critic_decision: CriticDecision | None
     needs_additional_search: bool
     additional_search_query: str
 
-    # === Normalizer Output ===
+    # --- Normalizer Output ---
     normalized_facts: list[FactBundleItem]
     removed_facts_count: int
     normalization_rules_applied: list[str]
 
-    # === Fact Bundler Output ===
+    # --- Fact Bundler Output ---
     fact_bundle: FactBundle | None
 
-    # === Answer Output ===
+    # --- Answer Output ---
     answer: str
     answer_is_deterministic: bool
 
-    # === Grounding Output ===
+    # --- Grounding Output ---
     grounding_result: GroundingResult | None
     grounding_action: Literal["accept", "rewrite", "refuse"]
 
-    # === Final Output ===
+    # --- Final Output ---
     final_response: dict[str, Any]
 
-    # === Session Context (P0: persistent context between questions) ===
+    # --- Rules Validator Output ---
+    validated_entities: dict[str, str | None]
+
+    # =====================================================================
+    # PERSISTENT FIELDS (maintained across requests in session)
+    # These fields provide context continuity for follow-up questions
+    # like "а там?", "какой стек?", etc.
+    # =====================================================================
+
+    # --- Session Context ---
     last_company: str | None          # Last mentioned company (slug)
     last_project: str | None          # Last mentioned project (slug)
     last_technology: str | None       # Last mentioned technology
     context_entities: list[dict]      # All entities mentioned in session
 
-    # === Rules Validator Output ===
-    validated_entities: dict[str, str | None]  # Validated company/project from rules
+
+# =========================================================================
+# PER-REQUEST FIELD CLEANUP
+# =========================================================================
+# These fields must be explicitly cleared at the start of each request
+# to prevent state pollution from previous requests in the same session.
+
+PER_REQUEST_FIELDS_CLEANUP: dict[str, Any] = {
+    # Scope Guard
+    "in_scope": None,
+    "scope_category": None,
+    "scope_reason": "",
+    "suggested_prompts": [],
+
+    # Planner
+    "plan": None,
+    "plan_confidence": 0.0,
+
+    # Retrieval - CRITICAL: evidence_text was causing state pollution
+    "graph_facts": [],
+    "search_facts": [],
+    "graph_sources": [],
+    "search_sources": [],
+    "sources": [],
+    "evidence_text": "",  # MUST be cleared to prevent contamination
+    "retrieval_found": False,
+
+    # Merge
+    "merged_facts": [],
+
+    # Critic
+    "critic_decision": None,
+    "needs_additional_search": False,
+    "additional_search_query": "",
+
+    # Normalizer
+    "normalized_facts": [],
+    "removed_facts_count": 0,
+    "normalization_rules_applied": [],
+
+    # Fact Bundler
+    "fact_bundle": None,
+
+    # Answer
+    "answer": "",
+    "answer_is_deterministic": False,
+
+    # Grounding
+    "grounding_result": None,
+    "grounding_action": None,
+
+    # Final
+    "final_response": {},
+
+    # Rules Validator
+    "validated_entities": {},
+}
+
+
+def get_cleanup_state() -> dict[str, Any]:
+    """
+    Get a state update dict that clears all per-request fields.
+
+    Use this at the start of each request pipeline to prevent
+    state pollution from previous requests.
+
+    Returns:
+        Dict with all per-request fields set to their default values
+    """
+    return PER_REQUEST_FIELDS_CLEANUP.copy()
 
 
 def create_initial_state(

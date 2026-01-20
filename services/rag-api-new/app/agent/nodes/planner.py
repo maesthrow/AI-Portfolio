@@ -4,6 +4,10 @@ Planner node for RAG agent.
 Uses LLM to generate QueryPlanV3 from user question.
 This is the first LLM call in the portfolio pipeline.
 
+SYSTEMIC FIX: Uses EntityExtractor to deterministically extract
+entities BEFORE calling LLM. This removes the burden from LLM
+to parse questions and decide if explicit entities override context.
+
 Outputs:
 - Detected intents (CURRENT_JOB, PROJECT_DETAILS, etc.)
 - Extracted entities (project IDs, company IDs, technology keys)
@@ -18,6 +22,7 @@ from typing import TYPE_CHECKING
 from langchain_core.messages import HumanMessage, AIMessage
 
 from app.agent.planner.planner_llm import create_planner
+from app.agent.entity_extractor import extract_entities, format_extraction_for_planner
 
 if TYPE_CHECKING:
     from app.agent.state import RAGState
@@ -89,6 +94,10 @@ def planner_node(state: RAGState) -> dict:
     """
     Generate query plan using LLM.
 
+    SYSTEMIC FIX: Uses EntityExtractor to deterministically extract
+    entities BEFORE calling LLM. Planner receives EXPLICIT info about
+    what entities are mentioned in question vs session context.
+
     Uses structured output to produce QueryPlanV3 with:
     - intents: What the user wants to know
     - entities: Extracted project/company/technology references
@@ -109,12 +118,42 @@ def planner_node(state: RAGState) -> dict:
     question = state.get("question", "")
     messages = state.get("messages", [])
 
+    # Get session context
+    last_company = state.get("last_company")
+    last_project = state.get("last_project")
+
+    # SYSTEMIC FIX: Extract entities DETERMINISTICALLY before calling LLM
+    # This removes the burden from LLM to parse questions and decide
+    # if explicit entities override session context
+    extraction = extract_entities(question)
+
+    # Format extraction result for Planner - gives EXPLICIT info about:
+    # 1. What entities are mentioned in question (ОБНАРУЖЕНО В ВОПРОСЕ)
+    # 2. What session context is (КОНТЕКСТ СЕССИИ)
+    # 3. Clear instruction on what to use
+    entity_context = format_extraction_for_planner(
+        extraction,
+        last_company,
+        last_project,
+    )
+
     # Extract dialog context for multi-turn understanding
     dialog_context = _extract_dialog_context(messages, question)
 
-    logger.info(f"Planner processing: {question[:100]}...")
+    # Combine entity context with dialog context
     if dialog_context:
-        logger.debug(f"Planner dialog context: {dialog_context[:200]}...")
+        full_context = f"{entity_context}\n--- Предыдущий диалог ---\n{dialog_context}"
+    else:
+        full_context = entity_context
+
+    logger.info(
+        "Planner: question=%r, extracted=%s, session=(company=%s, project=%s)",
+        question[:50],
+        [(e.type, e.value) for e in extraction.entities],
+        last_company,
+        last_project,
+    )
+    logger.debug("Planner context:\n%s", full_context[:500])
 
     # Get planner LLM and create planner instance
     # Lazy import to avoid circular imports
@@ -122,8 +161,8 @@ def planner_node(state: RAGState) -> dict:
     llm = planner_llm()
     planner = create_planner(llm)
 
-    # Generate plan with context
-    plan = planner.plan(question, context=dialog_context)
+    # Generate plan with full context (entity extraction + dialog)
+    plan = planner.plan(question, context=full_context)
 
     logger.info(
         f"Planner result: intents={[i.value for i in plan.intents]}, "

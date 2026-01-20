@@ -1,69 +1,110 @@
 """
-Rules Validator Node - validates and augments Planner output.
+Rules Validator Node - validates Planner output and computes intents.
 
-Applies deterministic rules to:
-1. Extract entities from question text (backup if Planner missed them)
-2. Resolve reference patterns ("там", "в ней") using session context
-3. Validate tool_calls from Planner
-4. Inject session context (last_company, last_project) into tool params
+SIMPLIFIED VERSION (after systemic fixes):
+- Planner now receives EXPLICIT session context, so it should choose correct tools
+- This node only: computes intents from tools, injects args as backup safety net
 
 Part of the simplified 2-LLM architecture.
 """
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
 
 from ..state import RAGState
-from ..planner.schemas_v3 import QueryPlanV3, ToolCallV3
+from ..planner.schemas_v3 import QueryPlanV3, ToolCallV3, IntentV3
 
 logger = logging.getLogger(__name__)
 
 
-# === Entity Patterns ===
-# These patterns are loaded at module init and can be extended dynamically
+# === Intent Derivation from Tool ===
+# SYSTEMIC SOLUTION: compute intent deterministically from tool_name + args
+# This removes LLM confusion between intents and tool names
 
-COMPANY_PATTERNS: dict[str, list[str]] = {
-    "aston": ["aston", "астон", "астоне", "астона", "астоном"],
-    "spargo": ["spargo", "спарго", "спарге", "спарга", "spargo-technologies", "спарго технологии"],
-    "alor": ["alor", "алор", "алоре", "алора"],
-    "freelance": ["freelance", "фриланс", "фрилансе", "самозанят"],
+TOOL_TO_INTENT_MAP: dict[str, str] = {
+    "get_company_projects": "project_list",
+    "get_project_details": "project_details",
+    "get_technologies": "technology_overview",
+    "get_contacts": "contacts",
+    "search_portfolio": "general_unstructured",
+    # Legacy tools
+    "graph_query_tool": "general_unstructured",
+    "portfolio_search_tool": "general_unstructured",
 }
 
-PROJECT_PATTERNS: dict[str, list[str]] = {
-    "t2": ["t2", "tele2", "tele-2", "т2", "теле2", "теле-2"],
-    "ai-portfolio": ["ai-portfolio", "ai portfolio", "ии-портфолио", "портфолио", "portfolio"],
-    "alor-broker": ["alor-broker", "alor broker", "алор брокер", "alor", "алор"],
-    "f3-tail": ["f3-tail", "f3 tail", "f3tail"],
-    "hyperkeeper": ["hyperkeeper", "hyper-keeper", "hyper keeper", "гиперкипер"],
-}
 
-# Reference patterns that indicate anaphora (reference to previous entity)
-REFERENCE_PATTERNS = [
-    "там", "туда", "оттуда", "в ней", "в нём", "в нем",
-    "этой", "этого", "этом", "этим",
-    "той", "того", "том", "тем",
-    "какой там", "что там", "какие там",
-    "а там", "а что там",
-]
+def derive_intent_from_tool(tool_name: str, args: dict, question: str = "") -> str:
+    """
+    Derive intent deterministically from tool name, arguments, and question.
+
+    SYSTEMIC SOLUTION: instead of asking LLM to output both tool and intent
+    (which leads to confusion), we compute intent from the chosen tool.
+
+    NOTE: For search_portfolio, we need question analysis because it's a
+    GENERIC tool that can search different types of information. The intent
+    determines how Normalizer filters results.
+
+    This is NOT a hack - it's necessary semantics for generic search.
+
+    Args:
+        tool_name: Name of the tool being called
+        args: Tool arguments
+        question: Original question (for search_portfolio intent refinement)
+
+    Returns:
+        Valid intent string that matches IntentV3 enum values
+    """
+    intent = TOOL_TO_INTENT_MAP.get(tool_name, "general_unstructured")
+
+    # Refinement based on args
+    if tool_name == "get_technologies":
+        if args.get("project_name"):
+            intent = "project_tech_stack"
+        # category → technology_overview (default)
+
+    # For search_portfolio: determine WHAT TYPE of info user wants
+    # This is necessary because search_portfolio is a generic tool
+    if tool_name == "search_portfolio" and question:
+        q_lower = question.lower()
+
+        # Project-related keywords → project_list
+        project_kw = ["проект", "project", "ml-проект", "rag-проект", "cv-проект"]
+        if any(kw in q_lower for kw in project_kw):
+            intent = "project_list"
+
+        # Current job keywords → current_job
+        elif any(kw in q_lower for kw in ["сейчас работа", "текущ", "current", "где работает"]):
+            intent = "current_job"
+
+        # Technology usage keywords → technology_usage
+        elif any(kw in q_lower for kw in ["где применял", "где использовал", "опыт с"]):
+            intent = "technology_usage"
+
+        # Experience keywords → experience_summary
+        elif any(kw in q_lower for kw in ["опыт работы", "experience", "карьер"]):
+            intent = "experience_summary"
+
+    logger.debug("Derived intent '%s' from tool '%s'", intent, tool_name)
+    return intent
 
 
 def rules_validator_node(state: RAGState) -> dict[str, Any]:
     """
-    Validate and augment Planner output with session context.
+    Validate Planner output and compute intents from tools.
 
-    Steps:
-    1. Extract entities from question using regex patterns
-    2. Check for reference patterns and resolve using session context
-    3. Validate tool_calls from Planner
-    4. Update tool_calls with validated entities
+    SIMPLIFIED after systemic fix:
+    - Planner now receives explicit session context (last_company, last_project)
+    - Planner should choose correct tool with correct args
+    - This node only:
+      1. Computes intents from tool_calls (systemic solution)
+      2. Injects session context into args as backup safety net
 
     Args:
         state: Current RAG state with plan from Planner
 
     Returns:
-        State update with validated_entities and possibly updated plan
+        State update with computed intents and validated plan
     """
     plan = state.get("plan")
     question = state.get("question", "")
@@ -77,343 +118,103 @@ def rules_validator_node(state: RAGState) -> dict[str, Any]:
         last_project,
     )
 
-    # 1. Extract entities from question text
-    extracted_company = extract_company(question)
-    extracted_project = extract_project(question)
+    if not plan:
+        return {}
 
-    logger.debug(
-        "Extracted: company=%s, project=%s",
-        extracted_company,
-        extracted_project,
+    # === STEP 1: Compute intents from tool_calls (SYSTEMIC SOLUTION) ===
+    # This removes dependency on LLM outputting correct intents
+    derived_intents = []
+    for tc in plan.tool_calls:
+        intent_str = derive_intent_from_tool(tc.tool, tc.args, question)
+        try:
+            derived_intents.append(IntentV3(intent_str))
+        except ValueError:
+            derived_intents.append(IntentV3.GENERAL_UNSTRUCTURED)
+
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_intents = []
+    for intent in derived_intents:
+        if intent not in seen:
+            seen.add(intent)
+            unique_intents.append(intent)
+
+    # === STEP 2: Safety net - inject session context into args if missing ===
+    # Planner SHOULD have done this, but we double-check as backup
+    updated_tool_calls = _ensure_session_context(
+        plan.tool_calls,
+        last_company,
+        last_project,
     )
 
-    # 2. Check for reference patterns and resolve using session context
-    has_reference = has_reference_pattern(question)
+    # === STEP 3: Build updated plan ===
+    old_intents = [i.value for i in plan.intents] if plan.intents else []
+    new_intents = [i.value for i in unique_intents]
 
-    if has_reference:
-        logger.info("Reference pattern detected in question")
+    if old_intents != new_intents:
+        logger.info("Computed intents: %s (was: %s)", new_intents, old_intents)
 
-        # Resolve company reference
-        if not extracted_company and last_company:
-            extracted_company = last_company
-            logger.info("Resolved company reference to: %s", extracted_company)
+    plan_dict = plan.model_dump()
+    plan_dict["tool_calls"] = [tc.model_dump() for tc in updated_tool_calls]
+    plan_dict["intents"] = new_intents
 
-        # Resolve project reference
-        if not extracted_project and last_project:
-            extracted_project = last_project
-            logger.info("Resolved project reference to: %s", extracted_project)
-
-    # Build validated_entities dict
-    validated_entities = {
-        "company": extracted_company,
-        "project": extracted_project,
-        "from_session": has_reference and (extracted_company == last_company or extracted_project == last_project),
-    }
-
-    # 3. Validate and update tool_calls if plan exists
-    if plan:
-        # Get primary intent from plan for fallback
-        primary_intent = None
-        if plan.intents:
-            primary_intent = plan.intents[0].value if hasattr(plan.intents[0], "value") else str(plan.intents[0])
-
-        updated_tool_calls = _validate_tool_calls(
-            plan.tool_calls,
-            validated_entities,
-            question,
-            primary_intent=primary_intent,
-        )
-
-        # Create updated plan
-        if updated_tool_calls != plan.tool_calls:
-            logger.info("Updated tool_calls with validated entities")
-
-            # Update plan with new tool_calls
-            # Note: We can't directly modify Pydantic model, so we create a new one
-            plan_dict = plan.model_dump()
-            plan_dict["tool_calls"] = [tc.model_dump() for tc in updated_tool_calls]
-
-            # Also update scope if we have company context
-            if validated_entities.get("company") and plan_dict.get("scope"):
-                plan_dict["scope"]["company_id"] = f"company:{validated_entities['company']}"
-                plan_dict["scope"]["level"] = "company"
-
-            try:
-                updated_plan = QueryPlanV3.model_validate(plan_dict)
-                return {
-                    "plan": updated_plan,
-                    "validated_entities": validated_entities,
-                }
-            except Exception as e:
-                logger.warning("Failed to update plan: %s", e)
-
-    return {
-        "validated_entities": validated_entities,
-    }
+    try:
+        updated_plan = QueryPlanV3.model_validate(plan_dict)
+        return {"plan": updated_plan}
+    except Exception as e:
+        logger.warning("Failed to update plan: %s", e)
+        return {}
 
 
-def extract_company(text: str) -> str | None:
-    """
-    Extract company slug from text using pattern matching.
-
-    Args:
-        text: Question text
-
-    Returns:
-        Company slug if found, None otherwise
-    """
-    if not text:
-        return None
-
-    text_lower = text.lower()
-
-    for slug, patterns in COMPANY_PATTERNS.items():
-        for pattern in patterns:
-            # Use word boundary matching to avoid partial matches
-            if re.search(rf"\b{re.escape(pattern)}\b", text_lower):
-                return slug
-
-            # Also check without word boundaries for Russian morphology
-            if pattern in text_lower:
-                return slug
-
-    return None
-
-
-def extract_project(text: str) -> str | None:
-    """
-    Extract project slug from text using pattern matching.
-
-    Args:
-        text: Question text
-
-    Returns:
-        Project slug if found, None otherwise
-    """
-    if not text:
-        return None
-
-    text_lower = text.lower()
-
-    for slug, patterns in PROJECT_PATTERNS.items():
-        for pattern in patterns:
-            # Use word boundary matching
-            if re.search(rf"\b{re.escape(pattern)}\b", text_lower):
-                return slug
-
-            # Also check without word boundaries
-            if pattern in text_lower:
-                return slug
-
-    return None
-
-
-def has_reference_pattern(text: str) -> bool:
-    """
-    Check if text contains reference patterns (anaphora).
-
-    These patterns indicate the user is referring to a previously
-    mentioned entity ("там", "в ней", "этой компании", etc.)
-
-    Args:
-        text: Question text
-
-    Returns:
-        True if reference pattern found
-    """
-    if not text:
-        return False
-
-    text_lower = text.lower()
-
-    for pattern in REFERENCE_PATTERNS:
-        if pattern in text_lower:
-            return True
-
-    return False
-
-
-def _validate_tool_calls(
+def _ensure_session_context(
     tool_calls: list[ToolCallV3],
-    validated_entities: dict[str, Any],
-    question: str,
-    primary_intent: str | None = None,
+    last_company: str | None,
+    last_project: str | None,
 ) -> list[ToolCallV3]:
     """
-    Validate and update tool_calls with session context.
+    Safety net: inject session context into tool args if Planner missed them.
 
-    IMPORTANT: When entities are resolved from session (from_session=True),
-    we OVERRIDE the tool args with resolved values. This handles cases like:
-    - Planner passes project_name='t2' but session has 't2-ml'
-    - User asks "какой там был стек?" referencing previous project
+    IMPORTANT: Only for tools that REQUIRE a specific entity:
+    - get_company_projects REQUIRES company_name
+    - get_project_details REQUIRES project_name
 
-    Also corrects tool choice when Planner picks wrong tool for intent:
-    - project_tech_stack intent + resolved project → get_technologies
+    DO NOT inject filters into search_portfolio - Planner decides if filtering is needed.
+    General questions should search globally, not be filtered by stale context.
 
     Args:
-        tool_calls: Original tool calls from Planner
-        validated_entities: Validated company/project from rules
-        question: Original question
-        primary_intent: Primary intent from plan (fallback if not in args)
+        tool_calls: Tool calls from Planner
+        last_company: Last company from session
+        last_project: Last project from session
 
     Returns:
-        Updated list of ToolCallV3
+        Tool calls with session context injected where missing
     """
-    company = validated_entities.get("company")
-    project = validated_entities.get("project")
-    from_session = validated_entities.get("from_session", False)
-
     updated_calls = []
 
     for tc in tool_calls:
         tool_name = tc.tool
-        args = dict(tc.args)  # Make a copy
+        args = dict(tc.args)
 
-        # === TOOL CORRECTION BASED ON INTENT ===
-        # Planner sometimes picks wrong tool for intent (e.g., get_company_projects for project_tech_stack)
-        # We fix this by checking intent in args and switching to correct tool
-        # Use args intent first, fallback to plan-level primary_intent
-        intent = args.get("intent", "").lower() or (primary_intent or "").lower()
+        # Inject company ONLY for tools that require it
+        if last_company:
+            if tool_name == "get_company_projects" and not args.get("company_name"):
+                args["company_name"] = last_company
+                logger.info("Safety net: added company_name=%s to %s", last_company, tool_name)
+            # NOTE: Do NOT add company_filter to search_portfolio automatically!
+            # Planner decides if filtering is needed based on question context.
 
-        # Case 1: project_tech_stack intent + resolved project → get_technologies
-        if intent in ("project_tech_stack", "technology_overview", "technology_usage"):
-            if project and tool_name != "get_technologies":
-                logger.info(
-                    "Correcting tool for intent '%s': %s -> get_technologies (project=%s)",
-                    intent,
-                    tool_name,
-                    project,
-                )
-                tool_name = "get_technologies"
-                # Set project_name for get_technologies
-                args["project_name"] = project
-                # Remove legacy args that don't apply to get_technologies
-                args.pop("intent", None)
-                args.pop("entity_id", None)
-                args.pop("scope", None)
+        # Inject project ONLY for tools that require it
+        if last_project:
+            if tool_name == "get_project_details" and not args.get("project_name"):
+                args["project_name"] = last_project
+                logger.info("Safety net: added project_name=%s to %s", last_project, tool_name)
 
-        # Case 2: project_details/project_achievements intent + resolved project → get_project_details
-        elif intent in ("project_details", "project_achievements"):
-            # For project_achievements, ALWAYS use get_project_details (it has structured achievements)
-            # For project_details, allow search_portfolio as alternative
-            should_correct = False
-            if intent == "project_achievements":
-                # Achievements require get_project_details specifically
-                should_correct = project and tool_name != "get_project_details"
-            else:
-                # project_details can use either get_project_details or search_portfolio
-                should_correct = project and tool_name not in ("get_project_details", "search_portfolio")
+            elif tool_name == "get_technologies" and not args.get("project_name") and not args.get("category"):
+                # Only if neither project_name nor category specified
+                args["project_name"] = last_project
+                logger.info("Safety net: added project_name=%s to %s", last_project, tool_name)
+            # NOTE: Do NOT add project_filter to search_portfolio automatically!
 
-            if should_correct:
-                logger.info(
-                    "Correcting tool for intent '%s': %s -> get_project_details (project=%s)",
-                    intent,
-                    tool_name,
-                    project,
-                )
-                tool_name = "get_project_details"
-                args["project_name"] = project
-                args.pop("intent", None)
-                args.pop("entity_id", None)
-                args.pop("scope", None)
-
-        # Case 3: contacts intent → ALWAYS use get_contacts
-        # P0 FIX: Planner often chooses search_portfolio for contacts,
-        # but graph query returns all 6 contacts reliably
-        elif intent == "contacts":
-            if tool_name != "get_contacts":
-                logger.info(
-                    "Correcting tool for intent 'contacts': %s -> get_contacts",
-                    tool_name,
-                )
-                tool_name = "get_contacts"
-                # Clear irrelevant args for get_contacts
-                args = {}  # get_contacts has optional 'kind' param only
-
-        # Inject/override company context
-        if company:
-            if tool_name == "search_portfolio":
-                # Always set company_filter when we have company context
-                if "company_filter" not in args or from_session:
-                    args["company_filter"] = company
-                    logger.debug("Set company_filter=%s in search_portfolio", company)
-
-            elif tool_name == "get_company_projects":
-                # Add company_name if not present
-                if not args.get("company_name"):
-                    args["company_name"] = company
-                    logger.debug("Set company_name=%s in get_company_projects", company)
-
-        # Inject/override project context
-        # KEY FIX: When from_session=True, OVERRIDE the project_name even if already set
-        # This ensures "t2" gets replaced with "t2-ml" from session
-        if project:
-            if tool_name == "get_project_details":
-                current_project = args.get("project_name")
-                # Override if: no project set, OR from_session and different value
-                if not current_project or (from_session and current_project != project):
-                    args["project_name"] = project
-                    logger.info("Set project_name=%s in get_project_details (was: %s)", project, current_project)
-
-            elif tool_name == "get_technologies":
-                current_project = args.get("project_name")
-                # Override if: (no project and no category), OR from_session
-                if not current_project and not args.get("category"):
-                    args["project_name"] = project
-                    logger.info("Set project_name=%s in get_technologies", project)
-                elif from_session and current_project and current_project != project:
-                    # Override with resolved project from session
-                    args["project_name"] = project
-                    logger.info("Override project_name=%s in get_technologies (was: %s)", project, current_project)
-
-            elif tool_name == "search_portfolio":
-                # Add project_filter when we have project context
-                if "project_filter" not in args or from_session:
-                    args["project_filter"] = project
-                    logger.debug("Set project_filter=%s in search_portfolio", project)
-
-        # Create updated ToolCallV3
-        updated_call = ToolCallV3(tool=tool_name, args=args)
-        updated_calls.append(updated_call)
+        updated_calls.append(ToolCallV3(tool=tool_name, args=args))
 
     return updated_calls
-
-
-# === Dynamic Pattern Loading ===
-
-def load_patterns_from_graph() -> None:
-    """
-    Load company and project patterns from knowledge graph.
-
-    Called at startup to populate patterns with actual data.
-    This allows patterns to be dynamically updated when new
-    companies/projects are added.
-    """
-    try:
-        from ...graph.store import get_graph_store
-        from ...graph.schema import NodeType
-
-        store = get_graph_store()
-
-        # Load companies
-        companies = store.get_nodes_by_type(NodeType.COMPANY)
-        for c in companies:
-            slug = c.slug.lower()
-            if slug not in COMPANY_PATTERNS:
-                COMPANY_PATTERNS[slug] = [slug, c.name.lower()]
-
-        # Load projects
-        projects = store.get_nodes_by_type(NodeType.PROJECT)
-        for p in projects:
-            slug = p.slug.lower()
-            if slug not in PROJECT_PATTERNS:
-                PROJECT_PATTERNS[slug] = [slug, p.name.lower()]
-
-        logger.info(
-            "Loaded %d company patterns and %d project patterns from graph",
-            len(COMPANY_PATTERNS),
-            len(PROJECT_PATTERNS),
-        )
-
-    except Exception as e:
-        logger.warning("Failed to load patterns from graph: %s", e)

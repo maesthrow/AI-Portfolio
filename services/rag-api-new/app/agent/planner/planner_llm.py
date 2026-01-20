@@ -126,11 +126,9 @@ class PlannerLLM:
                     if self._validate_plan(result):
                         sanitized = self._sanitize_plan(question, result)
                         logger.info(
-                            "Plan generated: intents=%s, entities=%d, tool_calls=%d, tech_filter=%s, confidence=%.2f",
-                            [i.value for i in sanitized.intents],
-                            len(sanitized.entities),
+                            "Plan generated: tool_calls=%d, entities=%d, confidence=%.2f (intents will be computed in rules_validator)",
                             len(sanitized.tool_calls),
-                            sanitized.tech_filter.model_dump() if sanitized.tech_filter else None,
+                            len(sanitized.entities),
                             sanitized.confidence,
                         )
                         logger.info(
@@ -183,14 +181,11 @@ class PlannerLLM:
         Validate generated plan.
 
         Checks for:
-        - At least one intent
-        - At least one tool_call
+        - At least one tool_call (intents are computed in rules_validator)
         - Known tool names
-        - Reasonable confidence
         """
-        if not plan.intents:
-            logger.warning("Plan has no intents")
-            return False
+        # NOTE: intents are no longer required from LLM - they're computed in rules_validator
+        # from tool_calls using derive_intent_from_tool()
 
         if not plan.tool_calls:
             logger.warning("Plan has no tool_calls")
@@ -203,6 +198,7 @@ class PlannerLLM:
             "get_company_projects",
             "get_project_details",
             "get_technologies",
+            "get_contacts",
             "search_portfolio",
             # Legacy tools (for rollback to 4-LLM architecture)
             "graph_query_tool",
@@ -311,6 +307,10 @@ class PlannerLLM:
                 if normalized:
                     args["entity_id"] = normalized
                 tc["args"] = args
+
+        # NOTE: intents are now computed in rules_validator from tool_calls
+        # No need for intent fixing here - LLM no longer outputs intents
+        # and even if it does, rules_validator will override with computed values
 
         sanitized = QueryPlanV3.model_validate(data)
         if sanitized.model_dump(mode="json") != original:

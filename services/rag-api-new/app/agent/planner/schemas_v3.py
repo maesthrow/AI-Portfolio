@@ -243,10 +243,11 @@ class FallbackConfigV3(BaseModel):
 
 class QueryPlanV3(BaseModel):
     """
-    LLM-generated query plan with parameterized intents.
+    LLM-generated query plan.
 
     Main output of Planner LLM v3.
-    Uses universal intents with slots/filters for specificity.
+    LLM outputs: tool_calls, entities, confidence
+    Computed in rules_validator: intents (derived from tool_calls)
 
     Based on TZ section 4.1.
 
@@ -254,9 +255,10 @@ class QueryPlanV3(BaseModel):
     (intents, tool_calls, render_style, answer_style) while adding new V3 features.
     """
     # Backward compatible fields (same as V2)
+    # NOTE: intents are computed in rules_validator from tool_calls, not from LLM output
     intents: list[IntentV3] = Field(
         default_factory=list,
-        description="Detected intents (primary first)"
+        description="Intents (computed from tool_calls in rules_validator)"
     )
     entities: list[dict[str, Any]] = Field(
         default_factory=list,
@@ -302,6 +304,10 @@ class QueryPlanV3(BaseModel):
         default=InfoNeed.SUMMARY,
         description="Type of information needed (V3 feature)"
     )
+
+    # NOTE: intents are now computed in rules_validator from tool_calls
+    # No need for @field_validator fix - LLM no longer outputs intents
+    # The validator was removed as part of systemic fix (derive intents from tools)
 
     class Config:
         json_schema_extra = {

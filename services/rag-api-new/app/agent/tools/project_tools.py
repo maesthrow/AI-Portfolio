@@ -138,10 +138,22 @@ def _item_to_fact(
             meta.append(f"период: {period}")
         text_parts.append(" | ".join(meta))
 
-    # Description
-    description = item.get("long_description") or item.get("description")
-    if description:
-        text_parts.append(str(description))
+    # Description - collect ALL available descriptions (not OR, but AND)
+    # long_description is detailed, description is short summary - both are useful
+    long_desc = item.get("long_description") or item.get("long_description_md")
+    short_desc = item.get("description") or item.get("description_md")
+
+    if long_desc:
+        text_parts.append(str(long_desc))
+    if short_desc and short_desc != long_desc:  # Avoid duplication
+        text_parts.append(str(short_desc))
+
+    # Fallback: if no description at all, synthesize from achievements
+    if not long_desc and not short_desc:
+        achievements = item.get("achievements", [])
+        if achievements and isinstance(achievements, list) and len(achievements) > 0:
+            ach_summary = "; ".join(str(a)[:100] for a in achievements[:3])
+            text_parts.append(f"Основные достижения проекта: {ach_summary}")
 
     # Technologies
     if include_technologies:

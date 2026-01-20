@@ -143,11 +143,11 @@ def answer_llm_node(state: RAGState) -> dict:
     render_style = plan.render_style if plan else None
     rendered_facts = renderer.render(facts=fact_items, style=render_style, intents=intents)
 
-    # Add evidence_text as additional context if rendered_facts is short
-    evidence_text = state.get("evidence_text", "")
-    if evidence_text and len(rendered_facts) < 200:
-        rendered_facts = f"{rendered_facts}\n\n--- Дополнительный контекст ---\n{evidence_text}"
-        logger.info(f"AnswerLLM: added evidence_text ({len(evidence_text)} chars) as fallback")
+    # NOTE: We deliberately DO NOT add evidence_text as fallback here.
+    # Previously this caused state pollution between requests.
+    # If facts are insufficient, the fix should be in the tool itself,
+    # not by dumping raw text into the answer prompt.
+    # See: state_cleanup_node, PER_REQUEST_FIELDS_CLEANUP
 
     if not rendered_facts:
         # Fallback to not found
@@ -270,27 +270,72 @@ def _answer_technology_usage(question: str, facts: list) -> str | None:
 
 
 def _build_context_note(state: "RAGState") -> str:
-    """Build context note from session state for follow-up questions."""
-    validated_entities = state.get("validated_entities", {})
-    if not validated_entities:
-        return ""
+    """
+    Build context note from plan entities and session state.
 
-    project = validated_entities.get("project")
-    company = validated_entities.get("company")
-    from_session = validated_entities.get("from_session", False)
+    IMPORTANT: Context injection is CONDITIONAL based on intent:
+    - For "contacts", "technology_overview" → NO context (these are general questions)
+    - For other intents → add as BACKGROUND context (don't force LLM to mention it)
 
-    # Only add context note for follow-up questions (from_session=True)
-    if not from_session:
-        return ""
+    This prevents contamination like "На проекте alor-broker..." in contacts response.
+    """
+    plan = state.get("plan")
+
+    # === CRITICAL: Don't inject context for general/global intents ===
+    # These intents are NOT about a specific project/company
+    CONTEXT_FREE_INTENTS = {
+        "contacts",           # "как связаться" - global, not project-specific
+        "technology_overview", # "какой опыт с БД" - global tech summary
+        "general_unstructured", # General questions
+    }
+
+    if plan and plan.intents:
+        intent = plan.intents[0]
+        intent_str = intent.value if hasattr(intent, "value") else str(intent).lower()
+        if intent_str in CONTEXT_FREE_INTENTS:
+            logger.debug(
+                "Context note skipped for intent '%s' (context-free intent)",
+                intent_str,
+            )
+            return ""
 
     notes = []
-    if project:
-        notes.append(f"проект: {project}")
-    if company:
-        notes.append(f"компания: {company}")
+
+    # 1. Try to get context from plan entities (most reliable)
+    if plan and plan.entities:
+        for entity in plan.entities:
+            if isinstance(entity, dict):
+                etype = entity.get("type", "")
+                ename = entity.get("name", "")
+                if etype == "project" and ename:
+                    notes.append(f"проект: {ename}")
+                elif etype == "company" and ename:
+                    notes.append(f"компания: {ename}")
+
+    # 2. Try to get context from tool_calls args (explicit params)
+    if plan and plan.tool_calls and not notes:
+        for tc in plan.tool_calls:
+            args = tc.args or {}
+            if args.get("project_name"):
+                notes.append(f"проект: {args['project_name']}")
+            if args.get("company_name"):
+                notes.append(f"компания: {args['company_name']}")
+
+    # 3. Fallback to session context (for follow-up questions like "а стек?")
+    if not notes:
+        last_project = state.get("last_project")
+        last_company = state.get("last_company")
+        if last_project:
+            notes.append(f"проект: {last_project}")
+        if last_company:
+            notes.append(f"компания: {last_company}")
 
     if notes:
-        return f"КОНТЕКСТ ВОПРОСА (обязательно упомяни в ответе): {', '.join(notes)}"
+        # Dedupe notes
+        unique_notes = list(dict.fromkeys(notes))
+        # CHANGED: "фоновый контекст" instead of "упомяни в ответе"
+        # This tells LLM it's for understanding, not mandatory inclusion
+        return f"ФОНОВЫЙ КОНТЕКСТ (для понимания, НЕ упоминай если не относится к вопросу): {', '.join(unique_notes)}"
 
     return ""
 

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def get_company_projects(
     company_name: str,
-    include_achievements: bool = False,
+    include_achievements: bool = True,  # Always include achievements - users expect them
     limit: int = 10,
 ) -> ToolResult:
     """
@@ -146,11 +146,14 @@ def _item_to_fact(item: dict[str, Any], include_achievements: bool) -> FactItem 
             tech_str += f" и ещё {len(technologies) - 5}"
         text_parts.append(f"технологии: {tech_str}")
 
-    # Include achievements if requested
+    # Include achievements (enabled by default)
     if include_achievements:
         achievements = item.get("achievements", [])
         if achievements and isinstance(achievements, list):
-            ach_str = "; ".join(str(a)[:100] for a in achievements[:3])
+            # Include all achievements (up to 5) for completeness
+            ach_str = "; ".join(str(a)[:100] for a in achievements[:5])
+            if len(achievements) > 5:
+                ach_str += f" и ещё {len(achievements) - 5}"
             text_parts.append(f"достижения: {ach_str}")
 
     text = " — ".join(text_parts)

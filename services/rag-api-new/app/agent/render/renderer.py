@@ -323,6 +323,14 @@ FORBIDDEN_PHRASES = [
     "конкретных упоминаний не найдено",
     "других данных нет",
     "больше информации не обнаружено",
+    "не описана подробно",
+    "не описан подробно",
+    "не указан подробный контекст",
+    "не указан контекст использования",
+    "контекст использования не найден",
+    "не найдено подробной информации",
+    "информации недостаточно",
+    "к сожалению, информации",
     "according to the data",
     "based on the provided",
 ]
@@ -336,10 +344,22 @@ ARTIFACT_PATTERNS = [
     re.compile(r"metadata[:\s]*", re.IGNORECASE),  # Metadata mentions
 ]
 
+# Patterns for sentences that should be REMOVED entirely
+# (entire sentence containing these patterns will be removed)
+SENTENCE_REMOVAL_PATTERNS = [
+    # "X: на этом проекте технология Y не описана подробно."
+    re.compile(r"[^.!?]*(?:не описан|не найден|не указан)[^.!?]*(?:подробно|контекст)[^.!?]*[.!?]", re.IGNORECASE),
+    # "Технология X не упоминается подробно в проекте Y."
+    re.compile(r"[^.!?]*(?:не упоминается|не применя)[^.!?]*подробно[^.!?]*[.!?]", re.IGNORECASE),
+]
+
 
 def post_process_answer(answer: str) -> tuple[str, list[str]]:
     """
-    Post-process answer to remove artifacts.
+    Post-process answer to remove artifacts and forbidden phrases.
+
+    SYSTEMIC SOLUTION: Removes not just phrases, but entire sentences
+    containing patterns like "X не описана подробно", "не найден контекст".
 
     Args:
         answer: Raw answer text
@@ -350,7 +370,16 @@ def post_process_answer(answer: str) -> tuple[str, list[str]]:
     warnings = []
     cleaned = answer
 
-    # Remove forbidden phrases
+    # 1. Remove entire sentences matching removal patterns
+    # This handles "F3 TAIL: на этом проекте технология RAG не описана подробно."
+    for pattern in SENTENCE_REMOVAL_PATTERNS:
+        matches = pattern.findall(cleaned)
+        if matches:
+            for match in matches:
+                warnings.append(f"Removed sentence: {match[:50]}...")
+            cleaned = pattern.sub("", cleaned)
+
+    # 2. Remove forbidden phrases
     for phrase in FORBIDDEN_PHRASES:
         if phrase.lower() in cleaned.lower():
             warnings.append(f"Removed forbidden phrase: {phrase[:20]}...")
@@ -361,13 +390,17 @@ def post_process_answer(answer: str) -> tuple[str, list[str]]:
                 flags=re.IGNORECASE,
             )
 
-    # Remove artifact patterns
+    # 3. Remove artifact patterns
     for pattern in ARTIFACT_PATTERNS:
         if pattern.search(cleaned):
             warnings.append(f"Removed artifact pattern")
             cleaned = pattern.sub("", cleaned)
 
-    # Clean up whitespace
+    # 4. Clean up: remove empty list items like "- " or bullet points with just whitespace
+    cleaned = re.sub(r"^-\s*$", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\n-\s*\n", "\n", cleaned)
+
+    # 5. Clean up whitespace
     cleaned = re.sub(r" {2,}", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
 

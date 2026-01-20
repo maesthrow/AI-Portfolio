@@ -2,12 +2,13 @@
 LangGraph RAG agent with simplified 2-LLM architecture.
 
 Simplified Quality-Focused architecture:
-- scope_guard -> [portfolio/other] -> ...
+- state_cleanup -> scope_guard -> [portfolio/other] -> ...
 - Portfolio path: planner -> rules_validator -> tool_executor -> normalizer -> answer_llm -> session_updater -> output
 - Other path: simple_llm -> END
 
 Key features:
 - 2 LLM calls only (Planner + Answer) instead of 4
+- State cleanup at pipeline start (prevents state pollution between requests)
 - Rules-based validation and entity extraction
 - Specialized tools (get_company_projects, get_project_details, get_technologies, search_portfolio)
 - Session context persistence (last_company, last_project)
@@ -24,6 +25,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from app.agent.state import RAGState
 
 # Import nodes
+from app.agent.nodes.state_cleanup import state_cleanup_node
 from app.agent.nodes.scope_guard import scope_guard_node
 from app.agent.nodes.simple_llm import simple_llm_node
 from app.agent.nodes.planner import planner_node
@@ -47,6 +49,9 @@ def build_rag_graph():
 
     Graph structure:
     START
+      |
+      v
+    state_cleanup (deterministic) <-- CRITICAL: Clears per-request fields
       |
       v
     scope_guard (deterministic)
@@ -102,6 +107,7 @@ def build_rag_graph():
     graph = StateGraph(RAGState)
 
     # === Add nodes ===
+    graph.add_node("state_cleanup", state_cleanup_node)  # CRITICAL: prevents state pollution
     graph.add_node("scope_guard", scope_guard_node)
     graph.add_node("simple_llm", simple_llm_node)
     graph.add_node("planner", planner_node)           # LLM #1
@@ -114,9 +120,13 @@ def build_rag_graph():
     graph.add_node("output", output_formatter_node)
 
     # === Set entry point ===
-    graph.set_entry_point("scope_guard")
+    # CRITICAL: state_cleanup MUST be first to prevent state pollution
+    graph.set_entry_point("state_cleanup")
 
     # === Add edges ===
+
+    # 0. State cleanup -> scope_guard (always)
+    graph.add_edge("state_cleanup", "scope_guard")
 
     # 1. Scope guard -> route to planner or simple_llm
     graph.add_conditional_edges(

@@ -57,6 +57,7 @@ def tool_executor_node(state: RAGState) -> dict[str, Any]:
 
     all_facts: list[FactItem] = []
     all_sources: list[dict[str, Any]] = []
+    all_evidence: list[str] = []  # Collect evidence_text from tools
     any_found = False
     max_confidence = 0.0
 
@@ -97,6 +98,10 @@ def tool_executor_node(state: RAGState) -> dict[str, Any]:
         all_facts.extend(result.facts)
         all_sources.extend(result.sources)
 
+        # Collect evidence_text from this tool (if any)
+        if result.evidence_text:
+            all_evidence.append(result.evidence_text)
+
         if result.found:
             any_found = True
 
@@ -123,16 +128,27 @@ def tool_executor_node(state: RAGState) -> dict[str, Any]:
         all_sources.extend(fallback_result.get("sources", []))
         any_found = fallback_result.get("retrieval_found", False)
 
+        # Add fallback evidence
+        fallback_evidence = fallback_result.get("evidence_text", "")
+        if fallback_evidence:
+            all_evidence.append(fallback_evidence)
+
     logger.info(
         "ToolExecutor: total %d unique facts, found=%s",
         len(unique_facts),
         any_found,
     )
 
+    # Combine evidence from current request's tools only
+    current_evidence = "\n\n".join(all_evidence) if all_evidence else ""
+
     return {
         "merged_facts": unique_facts,
         "sources": _deduplicate_sources(all_sources),
         "retrieval_found": any_found,
+        # CRITICAL FIX: Set evidence_text to ONLY current request's data
+        # This prevents state pollution from previous requests
+        "evidence_text": current_evidence,
     }
 
 
@@ -232,6 +248,7 @@ def _execute_fallback(
         "merged_facts": result.facts,
         "sources": result.sources,
         "retrieval_found": result.found,
+        "evidence_text": result.evidence_text,
     }
 
 

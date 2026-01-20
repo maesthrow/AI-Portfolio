@@ -99,6 +99,11 @@ def search_portfolio(
             company_key = normalize_company_name(company_filter)
             facts = _filter_by_company(facts, company_key)
 
+        # SYSTEMIC FIX: Post-filter by keywords from query
+        # If query mentions specific technology, filter out results that don't mention it
+        # This prevents "F3 TAIL: технология RAG не описана подробно" issues
+        facts = _filter_by_query_keywords(facts, query)
+
         logger.info(
             "search_portfolio: found %d facts for query '%s'",
             len(facts),
@@ -152,6 +157,112 @@ def _filter_by_company(facts: list[FactItem], company_key: str) -> list[FactItem
         # If no company info, include by default (might be relevant)
         if not company_slug and not company_name:
             filtered.append(fact)
+
+    return filtered
+
+
+# Known technology keywords for post-filtering
+KNOWN_TECHNOLOGIES = {
+    # ML/AI
+    "rag", "llm", "langchain", "langgraph", "chromadb", "vector", "embedding",
+    "ml", "machine learning", "deep learning", "neural", "нейросет",
+    "gpt", "gigachat", "openai", "transformer", "bert", "vllm",
+    # Languages
+    "python", "javascript", "typescript", "c#", "java", "go", "rust", "sql",
+    # Frameworks
+    "fastapi", "django", "flask", "react", "next.js", "nextjs", "vue",
+    "asp.net", "dotnet", ".net",
+    # Databases
+    "postgresql", "postgres", "mongodb", "redis", "mysql", "sqlite",
+    # Tools
+    "docker", "kubernetes", "k8s", "git", "ci/cd", "mlflow",
+    # Concepts
+    "microservice", "api", "rest", "graphql", "websocket",
+}
+
+
+def _filter_by_query_keywords(facts: list[FactItem], query: str) -> list[FactItem]:
+    """
+    Post-filter facts by technology keywords from query.
+
+    CONTEXT: This is NOT related to state pollution (fixed by state_cleanup_node).
+    This addresses a DIFFERENT issue: semantic search quality.
+
+    PROBLEM: Dense embeddings (vector similarity) find semantically similar documents,
+    but don't guarantee presence of query keywords. Example:
+    - Query: "где применял RAG?"
+    - Vector search might return "F3 TAIL" (semantically similar: ML, inference)
+    - But F3 TAIL doesn't actually use RAG technology
+
+    TODO: Better long-term solution:
+    - Improve hybrid retrieval BM25 keyword weighting
+    - Use ChromaDB metadata filtering by technologies array
+    This post-filter is a pragmatic workaround until proper hybrid tuning.
+
+    Args:
+        facts: List of facts from search
+        query: Original search query
+
+    Returns:
+        Filtered list - facts mentioning at least one query technology
+    """
+    if not facts:
+        return facts
+
+    query_lower = query.lower()
+
+    # Find technology keywords in query
+    query_techs = []
+    for tech in KNOWN_TECHNOLOGIES:
+        if tech in query_lower:
+            query_techs.append(tech)
+
+    # If no specific technology mentioned, return all facts
+    if not query_techs:
+        return facts
+
+    logger.info(
+        "_filter_by_query_keywords: found techs %s in query '%s'",
+        query_techs,
+        query[:50],
+    )
+
+    # Filter: keep facts that mention at least one of the query technologies
+    filtered = []
+    for fact in facts:
+        # Check text content
+        text_lower = (fact.text or "").lower()
+
+        # Check metadata
+        md = fact.metadata or {}
+        technologies = md.get("technologies", [])
+        if isinstance(technologies, str):
+            technologies = [t.strip() for t in technologies.split(",")]
+        tech_str = " ".join(str(t).lower() for t in technologies)
+
+        # Also check technologies_csv
+        tech_csv = (md.get("technologies_csv") or "").lower()
+
+        # Combined searchable text
+        searchable = f"{text_lower} {tech_str} {tech_csv}"
+
+        # Check if any query tech is mentioned
+        matches = any(tech in searchable for tech in query_techs)
+
+        if matches:
+            filtered.append(fact)
+        else:
+            logger.debug(
+                "_filter_by_query_keywords: filtered out fact '%s' - no tech match",
+                fact.text[:50] if fact.text else "no text",
+            )
+
+    # If filtering removed ALL facts, return original (safety fallback)
+    if not filtered and facts:
+        logger.warning(
+            "_filter_by_query_keywords: all facts filtered out, returning original"
+        )
+        return facts
 
     return filtered
 

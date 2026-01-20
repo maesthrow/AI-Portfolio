@@ -197,6 +197,13 @@ class FactNormalizer:
                         company_keys,
                     )
 
+        # NOTE: Rule 6 (contacts_only_filter) was REMOVED.
+        # It was a workaround for state pollution (evidence_text leaking between requests).
+        # Root cause fixed by: state_cleanup_node, explicit evidence_text reset in tool_executor,
+        # and removal of "if len < 200: add evidence" hack in answer_llm.
+        # When intent=contacts, planner calls get_contacts which returns ONLY contact facts.
+        # No need for defensive filtering here anymore.
+
         # === Apply limit after filtering ===
         removed_by_limit = 0
         if len(filtered) > max_items:
