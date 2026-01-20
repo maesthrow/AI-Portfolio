@@ -121,7 +121,23 @@ def tool_executor_node(state: RAGState) -> dict[str, Any]:
     # If no results and fallback enabled, try fallback search
     if not any_found and plan.fallback and plan.fallback.enabled:
         logger.info("ToolExecutor: no results, trying fallback search")
-        fallback_result = _execute_fallback(question, validated_entities)
+
+        # P1 FIX: Pass intent and type_filter for intent-aware fallback
+        original_intent = None
+        original_type_filter = None
+        if plan.intents:
+            intent = plan.intents[0]
+            original_intent = intent.value if hasattr(intent, "value") else str(intent)
+        # Try to get type_filter from first tool call
+        if tool_calls:
+            original_type_filter = tool_calls[0].args.get("type_filter")
+
+        fallback_result = _execute_fallback(
+            question,
+            validated_entities,
+            original_intent=original_intent,
+            original_type_filter=original_type_filter,
+        )
 
         # Merge fallback results
         unique_facts.extend(fallback_result.get("merged_facts", []))
@@ -210,13 +226,21 @@ def _map_tool_name(tool_name: str, args: dict[str, Any]) -> str:
 def _execute_fallback(
     question: str,
     validated_entities: dict[str, Any],
+    original_intent: str | None = None,
+    original_type_filter: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Execute fallback search when primary tools fail.
 
+    P1 FIX: Intent-aware fallback preserves type_filter from original request.
+    This prevents fallback from returning meta-documents (stats, work_approach)
+    when user asked about projects.
+
     Args:
         question: Original question
         validated_entities: Validated company/project from session
+        original_intent: Intent from original plan (for type_filter inference)
+        original_type_filter: Explicit type_filter from original tool call
 
     Returns:
         State update dict with merged_facts, sources, retrieval_found
@@ -224,7 +248,7 @@ def _execute_fallback(
     company = validated_entities.get("company")
     project = validated_entities.get("project")
 
-    args = {
+    args: dict[str, Any] = {
         "query": question,
         "k": 8,
     }
@@ -235,11 +259,25 @@ def _execute_fallback(
     if project:
         args["project_filter"] = project
 
+    # P1 FIX: Preserve type_filter for intent-aware fallback
+    if original_type_filter:
+        args["type_filter"] = original_type_filter
+    elif original_intent:
+        # Infer type_filter from intent
+        intent_lower = original_intent.lower() if original_intent else ""
+        if intent_lower in ("project_list", "project_details"):
+            args["type_filter"] = ["project", "experience_project"]
+        elif intent_lower == "technology_usage":
+            args["type_filter"] = ["technology", "project"]
+        elif intent_lower == "technology_overview":
+            args["type_filter"] = ["technology"]
+
     logger.info(
-        "ToolExecutor fallback: search_portfolio query=%r, company=%s, project=%s",
+        "ToolExecutor fallback: search_portfolio query=%r, company=%s, project=%s, type_filter=%s",
         question[:50],
         company,
         project,
+        args.get("type_filter"),
     )
 
     result = execute_tool(TOOL_SEARCH_PORTFOLIO, args)

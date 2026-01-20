@@ -104,6 +104,10 @@ def search_portfolio(
         # This prevents "F3 TAIL: технология RAG не описана подробно" issues
         facts = _filter_by_query_keywords(facts, query)
 
+        # P1 FIX: Apply domain filtering for AI/ML queries
+        # This prioritizes projects with AI/ML domains (ml_platform, rag, AI-agents)
+        facts = _filter_by_domain(facts, query)
+
         logger.info(
             "search_portfolio: found %d facts for query '%s'",
             len(facts),
@@ -164,8 +168,9 @@ def _filter_by_company(facts: list[FactItem], company_key: str) -> list[FactItem
 # Known technology keywords for post-filtering
 KNOWN_TECHNOLOGIES = {
     # ML/AI
+    "ai", "ml",  # P0 FIX: Added "ai" - was missing, causing inconsistent behavior
     "rag", "llm", "langchain", "langgraph", "chromadb", "vector", "embedding",
-    "ml", "machine learning", "deep learning", "neural", "нейросет",
+    "machine learning", "deep learning", "neural", "нейросет",
     "gpt", "gigachat", "openai", "transformer", "bert", "vllm",
     # Languages
     "python", "javascript", "typescript", "c#", "java", "go", "rust", "sql",
@@ -181,6 +186,55 @@ KNOWN_TECHNOLOGIES = {
 }
 
 
+# P0 FIX: Semantic aliases for keyword expansion
+# When user asks about "ml", we should also match "llm", "rag", "langchain", etc.
+TECHNOLOGY_ALIASES: dict[str, set[str]] = {
+    # ML/AI aliases - "ml" expands to all related terms
+    "ml": {
+        "ml", "llm", "rag", "langchain", "langgraph", "machine learning",
+        "deep learning", "neural", "нейросет", "embedding", "vector",
+        "transformer", "bert", "gpt", "vllm",
+    },
+    "ai": {
+        "ai", "ml", "llm", "rag", "langchain", "langgraph", "machine learning",
+        "deep learning", "neural", "нейросет", "embedding", "vector",
+        "искусственный интеллект",
+    },
+    "нейросет": {"нейросет", "ml", "llm", "neural", "deep learning", "machine learning"},
+
+    # Database aliases
+    "database": {
+        "database", "postgresql", "postgres", "mysql", "mongodb", "redis",
+        "chromadb", "sqlite", "clickhouse", "бд", "база данных",
+    },
+    "бд": {"бд", "база данных", "database", "postgresql", "postgres", "mysql"},
+
+    # Backend aliases
+    "backend": {"backend", "fastapi", "django", "flask", "python", "api", "rest"},
+    "api": {"api", "rest", "fastapi", "graphql", "grpc"},
+}
+
+
+# P1: Domain-based filtering for AI/ML queries
+AI_ML_DOMAINS = {"ml_platform", "rag", "AI-agents"}
+BOT_WITH_LLM_KEYWORDS = {"llm", "langchain", "langgraph", "gpt", "rag"}
+
+
+def _expand_keywords_with_aliases(keywords: list[str]) -> set[str]:
+    """
+    Expand keywords using TECHNOLOGY_ALIASES.
+
+    P0 FIX: "ml" expands to ["ml", "llm", "rag", "langchain", ...]
+    This ensures "ML-проекты" finds all ML/AI related projects.
+    """
+    expanded = set()
+    for kw in keywords:
+        expanded.add(kw)
+        if kw in TECHNOLOGY_ALIASES:
+            expanded.update(TECHNOLOGY_ALIASES[kw])
+    return expanded
+
+
 def _filter_by_query_keywords(facts: list[FactItem], query: str) -> list[FactItem]:
     """
     Post-filter facts by technology keywords from query.
@@ -194,17 +248,15 @@ def _filter_by_query_keywords(facts: list[FactItem], query: str) -> list[FactIte
     - Vector search might return "F3 TAIL" (semantically similar: ML, inference)
     - But F3 TAIL doesn't actually use RAG technology
 
-    TODO: Better long-term solution:
-    - Improve hybrid retrieval BM25 keyword weighting
-    - Use ChromaDB metadata filtering by technologies array
-    This post-filter is a pragmatic workaround until proper hybrid tuning.
+    P0 FIX: Now uses TECHNOLOGY_ALIASES for semantic expansion.
+    "ml" query now matches documents with "llm", "rag", "langchain", etc.
 
     Args:
         facts: List of facts from search
         query: Original search query
 
     Returns:
-        Filtered list - facts mentioning at least one query technology
+        Filtered list - facts mentioning at least one query technology (or alias)
     """
     if not facts:
         return facts
@@ -221,13 +273,16 @@ def _filter_by_query_keywords(facts: list[FactItem], query: str) -> list[FactIte
     if not query_techs:
         return facts
 
+    # P0 FIX: Expand keywords using aliases
+    expanded_techs = _expand_keywords_with_aliases(query_techs)
+
     logger.info(
-        "_filter_by_query_keywords: found techs %s in query '%s'",
+        "_filter_by_query_keywords: found techs %s -> expanded to %s",
         query_techs,
-        query[:50],
+        sorted(expanded_techs)[:10],  # Log first 10 for brevity
     )
 
-    # Filter: keep facts that mention at least one of the query technologies
+    # Filter: keep facts that mention at least one of the expanded technologies
     filtered = []
     for fact in facts:
         # Check text content
@@ -246,8 +301,8 @@ def _filter_by_query_keywords(facts: list[FactItem], query: str) -> list[FactIte
         # Combined searchable text
         searchable = f"{text_lower} {tech_str} {tech_csv}"
 
-        # Check if any query tech is mentioned
-        matches = any(tech in searchable for tech in query_techs)
+        # Check if any expanded tech is mentioned
+        matches = any(tech in searchable for tech in expanded_techs)
 
         if matches:
             filtered.append(fact)
@@ -264,6 +319,73 @@ def _filter_by_query_keywords(facts: list[FactItem], query: str) -> list[FactIte
         )
         return facts
 
+    return filtered
+
+
+def _filter_by_domain(facts: list[FactItem], query: str) -> list[FactItem]:
+    """
+    P1: Filter facts by domain for AI/ML queries.
+
+    Projects have a 'domain' field in metadata: ml_platform, rag, AI-agents, Bot, backend, cv.
+    When user asks about AI/ML projects, prioritize facts from AI_ML_DOMAINS.
+
+    Args:
+        facts: List of facts from search
+        query: Original search query
+
+    Returns:
+        Filtered list prioritizing AI/ML domain facts
+    """
+    if not facts:
+        return facts
+
+    query_lower = query.lower()
+
+    # Check if query is about AI/ML
+    ai_ml_keywords = {"ml", "ai", "нейросет", "machine learning", "искусственный интеллект"}
+    is_ai_ml_query = any(kw in query_lower for kw in ai_ml_keywords)
+
+    if not is_ai_ml_query:
+        return facts
+
+    logger.info("_filter_by_domain: AI/ML query detected, applying domain filter")
+
+    filtered = []
+    for fact in facts:
+        md = fact.metadata or {}
+        domain = (md.get("domain") or "").lower()
+
+        # Direct match with AI/ML domains (case-insensitive)
+        domain_matches = domain in {d.lower() for d in AI_ML_DOMAINS}
+        if domain_matches:
+            filtered.append(fact)
+            continue
+
+        # Bot with LLM technologies
+        if domain == "bot":
+            technologies = md.get("technologies", [])
+            if isinstance(technologies, str):
+                technologies = [t.strip() for t in technologies.split(",")]
+            tech_lower = {str(t).lower() for t in technologies}
+            if tech_lower & BOT_WITH_LLM_KEYWORDS:
+                filtered.append(fact)
+                continue
+
+        # Fallback: check tech stack for AI/ML keywords
+        technologies = md.get("technologies", [])
+        if isinstance(technologies, str):
+            technologies = [t.strip() for t in technologies.split(",")]
+        tech_lower = {str(t).lower() for t in technologies}
+        ml_aliases = TECHNOLOGY_ALIASES.get("ml", set())
+        if tech_lower & ml_aliases:
+            filtered.append(fact)
+
+    # Don't return empty result - fallback to original
+    if not filtered and facts:
+        logger.warning("_filter_by_domain: all facts filtered out, returning original")
+        return facts
+
+    logger.info("_filter_by_domain: %d -> %d facts after domain filter", len(facts), len(filtered))
     return filtered
 
 

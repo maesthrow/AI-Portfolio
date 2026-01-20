@@ -14,7 +14,9 @@
       "Bash(docker logs:*)",
       "Bash(docker ps:*)",
       "Bash(docker inspect:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(xargs:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,3 +1,4 @@
+
 """
 Entity Extractor - Deterministic extraction of entities from questions.
 
@@ -59,6 +60,22 @@ NEW_ENTITY_PATTERNS = [
     r"расскажи (?:о|про|об)\s+([^\s?.,!]+)",
     r"что это за\s+([^\s?.,!]+)",
 ]
+
+
+# P2 FIX: Category patterns - these are NOT project names
+# Prevents "AI-проектах" from being interpreted as a project called "AI-проектах"
+CATEGORY_PATTERNS: dict[str, str] = {
+    r"(?:ml|мл)[\-\s]*проект": "category:ai_ml",
+    r"(?:ai|ии)[\-\s]*проект": "category:ai_ml",
+    r"(?:нейросет)[\w]*[\-\s]*проект": "category:ai_ml",
+    r"(?:machine learning)[\-\s]*проект": "category:ai_ml",
+    r"(?:rag)[\-\s]*проект": "category:rag",
+    r"(?:backend|бэкенд|бекенд)[\-\s]*проект": "category:backend",
+    r"(?:frontend|фронтенд)[\-\s]*проект": "category:frontend",
+    r"(?:cv|computer vision)[\-\s]*проект": "category:cv",
+    r"проект.*(?:ml|ai|ии|нейросет)": "category:ai_ml",
+    r"проект.*(?:backend|бэкенд)": "category:backend",
+}
 
 
 def extract_entities(question: str) -> ExtractionResult:
@@ -124,6 +141,27 @@ def _has_reference_words(text: str) -> bool:
     return False
 
 
+def is_category_pattern(text: str) -> tuple[bool, str | None]:
+    """
+    P2 FIX: Check if text contains a category pattern, NOT a project name.
+
+    This prevents patterns like "AI-проектах", "ML-проекты", "backend-проекты"
+    from being interpreted as project names.
+
+    Args:
+        text: Text to check
+
+    Returns:
+        Tuple of (is_category, category_name)
+    """
+    text_lower = text.lower()
+    for pattern, category in CATEGORY_PATTERNS.items():
+        if re.search(pattern, text_lower):
+            logger.debug("is_category_pattern: matched '%s' -> %s", pattern, category)
+            return True, category
+    return False, None
+
+
 def _extract_from_patterns(text: str) -> list[ExtractedEntity]:
     """Extract entities using regex patterns like 'что за X'."""
     entities = []
@@ -144,7 +182,19 @@ def _resolve_entity_type(name: str) -> ExtractedEntity | None:
     Try to resolve entity type by matching against known entities.
 
     Tries project first, then company.
+
+    P2 FIX: First check if this is a category pattern (not a project name).
     """
+    # P2 FIX: Check if this is a category, not a project name
+    # Prevents "AI-проектах" from being treated as a project
+    is_cat, category = is_category_pattern(name)
+    if is_cat:
+        logger.info(
+            "_resolve_entity_type: '%s' is category pattern (%s), not entity",
+            name, category
+        )
+        return None  # This is a category descriptor, not an entity
+
     # Try project match
     project_slug = _fuzzy_match_project(name)
     if project_slug:
@@ -165,14 +215,14 @@ def _resolve_entity_type(name: str) -> ExtractedEntity | None:
             confidence=0.9,
         )
 
-    # Unknown entity - still return as project (most common case)
-    # This will be passed to get_project_details which can fail gracefully
-    return ExtractedEntity(
-        type="project",
-        value=name.lower().replace(" ", "-"),
-        original=name,
-        confidence=0.5,  # Low confidence - may not exist
+    # P2 FIX: Don't return unknown entity with low confidence
+    # This was causing "AI-проектах" to become get_project_details(project_name="ai-проектах")
+    # Better to return None and let Planner use search_portfolio instead
+    logger.debug(
+        "_resolve_entity_type: '%s' not matched to known entity, returning None",
+        name
     )
+    return None
 
 
 def _try_match_project(text: str) -> ExtractedEntity | None:

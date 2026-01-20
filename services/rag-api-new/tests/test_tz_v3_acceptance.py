@@ -2,16 +2,14 @@
 Acceptance tests for TZ v3 - RAG Agent Hardening.
 
 Tests cover:
-1. GroundingVerifier - hallucination detection
-2. Normalizer - deterministic fact filtering
-3. FactBundle - entity extraction for grounding
+1. Normalizer - deterministic fact filtering
+2. FactBundle - entity extraction for answer generation
 
-NOTE: Off-topic rejection is now handled by agent's system prompt (see graph.py).
-Agent decides whether to call portfolio_rag_tool or respond directly.
-ScopeGuard module is no longer used in the main pipeline.
+NOTE: Off-topic rejection is handled by scope_guard node.
+GroundingVerifier was removed in the 2-LLM architecture simplification.
 
 Based on TZ section 11 acceptance cases:
-- "расскажи сказку" → agent refuses without calling tool
+- "расскажи сказку" → scope_guard rejects
 - "какие БД использовал" → only actual DBs from data
 - "какие языки программирования" → only category=language
 - "чем занимался в АЛОР" → experience/responsibilities
@@ -21,7 +19,6 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent.grounding.grounding_verifier import GroundingVerifier
 from app.agent.normalizer.normalizer import FactNormalizer
 from app.agent.normalizer.fact_bundle import build_fact_bundle
 from app.agent.planner.schemas import FactItem
@@ -30,135 +27,7 @@ from app.agent.planner.schemas_v3 import (
     FactBundleItem,
     TechCategory,
     TechFilter,
-    GroundingResult,
 )
-
-
-class TestGroundingVerifier:
-    """Tests for GroundingVerifier - hallucination detection."""
-
-    def setup_method(self):
-        self.verifier = GroundingVerifier()
-
-    def _make_fact_bundle(
-        self,
-        technologies: list[str] | None = None,
-        companies: list[str] | None = None,
-        projects: list[str] | None = None,
-    ) -> FactBundle:
-        """Helper to create a FactBundle for testing."""
-        return FactBundle(
-            facts=[],
-            technologies=technologies or [],
-            companies=companies or [],
-            projects=projects or [],
-            roles=[],
-            dates=[],
-        )
-
-    def test_grounded_answer_accepted(self):
-        """Answer with only known entities should be accepted."""
-        bundle = self._make_fact_bundle(
-            technologies=["Python", "PostgreSQL", "FastAPI"],
-            companies=["ALOR"],
-        )
-
-        answer = "Использую Python и PostgreSQL для разработки в ALOR."
-        result = self.verifier.verify(answer, bundle)
-
-        assert result.grounded is True
-        assert result.action == "accept"
-
-    def test_hallucinated_technology_detected(self):
-        """Answer mentioning unknown technology should be flagged."""
-        bundle = self._make_fact_bundle(
-            technologies=["Python", "PostgreSQL"],
-        )
-
-        # MySQL not in bundle
-        answer = "Использую MySQL и MongoDB для хранения данных."
-        result = self.verifier.verify(answer, bundle)
-
-        # Should detect MySQL/MongoDB as ungrounded
-        assert result.grounded is False
-        assert len(result.ungrounded_entities) > 0
-
-    def test_speculation_markers_detected(self):
-        """Speculation markers like 'вероятно' should trigger rewrite."""
-        bundle = self._make_fact_bundle(technologies=["Python"])
-
-        answer = "Вероятно использовал Python для разработки."
-        result = self.verifier.verify(answer, bundle)
-
-        assert result.grounded is False
-        assert "вероятно" in [u.lower() for u in result.ungrounded_entities]
-        assert result.action == "rewrite"
-
-    def test_speculation_maybe_detected(self):
-        """English speculation 'maybe' should be detected."""
-        bundle = self._make_fact_bundle(technologies=["Python"])
-
-        answer = "Maybe used Python for the project."
-        result = self.verifier.verify(answer, bundle)
-
-        assert result.grounded is False
-        assert result.action == "rewrite"
-
-    def test_empty_answer_accepted(self):
-        """Empty answer should be accepted."""
-        bundle = self._make_fact_bundle()
-        result = self.verifier.verify("", bundle)
-
-        assert result.grounded is True
-
-    def test_camelcase_technology_matched(self):
-        """CamelCase technologies should be matched."""
-        bundle = self._make_fact_bundle(
-            technologies=["FastAPI", "LangChain", "PostgreSQL"],
-        )
-
-        answer = "Разработка на FastAPI с использованием LangChain."
-        result = self.verifier.verify(answer, bundle)
-
-        assert result.grounded is True
-
-    def test_fuzzy_match_works(self):
-        """Partial matches like 'postgres' for 'PostgreSQL' should work."""
-        bundle = self._make_fact_bundle(
-            technologies=["PostgreSQL"],
-        )
-
-        # 'postgres' should match 'PostgreSQL'
-        answer = "Использую postgres для хранения данных."
-        result = self.verifier.verify(answer, bundle)
-
-        assert result.grounded is True
-
-    def test_many_ungrounded_triggers_refuse(self):
-        """Too many ungrounded entities should trigger refuse."""
-        bundle = self._make_fact_bundle(technologies=["Python"])
-
-        # Many unknown technologies
-        answer = "Использую MySQL, MongoDB, Redis, Elasticsearch и Cassandra."
-        result = self.verifier.verify(answer, bundle)
-
-        assert result.grounded is False
-        # With 5 unknown entities, should refuse
-        assert result.action == "refuse"
-
-    def test_suggested_rewrite_removes_ungrounded(self):
-        """Suggested rewrite should not contain ungrounded entities."""
-        bundle = self._make_fact_bundle(
-            technologies=["Python", "PostgreSQL"],
-        )
-
-        answer = "Использую Python и PostgreSQL. Также работал с MySQL и Redis."
-        result = self.verifier.verify(answer, bundle)
-
-        if result.action == "rewrite" and result.suggested_rewrite:
-            # MySQL and Redis should not be in rewritten text
-            assert "MySQL" not in result.suggested_rewrite
-            assert "Redis" not in result.suggested_rewrite
 
 
 class TestNormalizer:

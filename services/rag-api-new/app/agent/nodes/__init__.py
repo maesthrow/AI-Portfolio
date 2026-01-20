@@ -15,17 +15,8 @@ Simplified architecture (2 LLM):
 8. answer_llm - Generates response (LLM #2)
 9. session_updater - Updates last_company/project context
 10. output - Formats final response
-
-Legacy nodes (kept for rollback to 4-LLM architecture):
-- retrieval (graph_retriever_node, search_retriever_node)
-- merge (merge_results_node)
-- critic (critic_node)
-- grounding (grounding_verifier_node)
-- rewrite (rewrite_llm_node)
-- answer_deterministic_node
 """
 
-# New simplified architecture nodes
 from app.agent.nodes.state_cleanup import state_cleanup_node
 from app.agent.nodes.scope_guard import scope_guard_node
 from app.agent.nodes.simple_llm import simple_llm_node
@@ -38,16 +29,7 @@ from app.agent.nodes.answer import answer_llm_node
 from app.agent.nodes.session_updater import session_updater_node
 from app.agent.nodes.output import output_formatter_node
 
-# Legacy nodes (for backward compatibility with legacy graph)
-from app.agent.nodes.retrieval import graph_retriever_node, search_retriever_node
-from app.agent.nodes.merge import merge_results_node
-from app.agent.nodes.critic import critic_node
-from app.agent.nodes.answer import answer_deterministic_node
-from app.agent.nodes.grounding import grounding_verifier_node
-from app.agent.nodes.rewrite import rewrite_llm_node
-
 __all__ = [
-    # New architecture nodes
     "state_cleanup_node",
     "scope_guard_node",
     "simple_llm_node",
@@ -59,12 +41,4 @@ __all__ = [
     "answer_llm_node",
     "session_updater_node",
     "output_formatter_node",
-    # Legacy nodes
-    "graph_retriever_node",
-    "search_retriever_node",
-    "merge_results_node",
-    "critic_node",
-    "answer_deterministic_node",
-    "grounding_verifier_node",
-    "rewrite_llm_node",
 ]

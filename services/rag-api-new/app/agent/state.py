@@ -12,12 +12,10 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
-from app.agent.critic.schemas import CriticDecision
 from app.agent.planner.schemas import FactItem, SourceInfo
 from app.agent.planner.schemas_v3 import (
     FactBundle,
     FactBundleItem,
-    GroundingResult,
     QueryPlanV3,
 )
 
@@ -72,22 +70,11 @@ class RAGState(TypedDict, total=False):
     plan: QueryPlanV3 | None
     plan_confidence: float
 
-    # --- Retrieval Output ---
-    graph_facts: list[FactItem]
-    search_facts: list[FactItem]
-    graph_sources: list[dict]
-    search_sources: list[dict]
+    # --- Retrieval/Tool Executor Output ---
     sources: list[SourceInfo]
     evidence_text: str              # CRITICAL: must be cleared to prevent state pollution
     retrieval_found: bool
-
-    # --- Merge Output ---
     merged_facts: list[FactItem]
-
-    # --- Critic Output ---
-    critic_decision: CriticDecision | None
-    needs_additional_search: bool
-    additional_search_query: str
 
     # --- Normalizer Output ---
     normalized_facts: list[FactBundleItem]
@@ -100,10 +87,6 @@ class RAGState(TypedDict, total=False):
     # --- Answer Output ---
     answer: str
     answer_is_deterministic: bool
-
-    # --- Grounding Output ---
-    grounding_result: GroundingResult | None
-    grounding_action: Literal["accept", "rewrite", "refuse"]
 
     # --- Final Output ---
     final_response: dict[str, Any]
@@ -141,22 +124,11 @@ PER_REQUEST_FIELDS_CLEANUP: dict[str, Any] = {
     "plan": None,
     "plan_confidence": 0.0,
 
-    # Retrieval - CRITICAL: evidence_text was causing state pollution
-    "graph_facts": [],
-    "search_facts": [],
-    "graph_sources": [],
-    "search_sources": [],
+    # Retrieval/Tool Executor - CRITICAL: evidence_text was causing state pollution
     "sources": [],
     "evidence_text": "",  # MUST be cleared to prevent contamination
     "retrieval_found": False,
-
-    # Merge
     "merged_facts": [],
-
-    # Critic
-    "critic_decision": None,
-    "needs_additional_search": False,
-    "additional_search_query": "",
 
     # Normalizer
     "normalized_facts": [],
@@ -169,10 +141,6 @@ PER_REQUEST_FIELDS_CLEANUP: dict[str, Any] = {
     # Answer
     "answer": "",
     "answer_is_deterministic": False,
-
-    # Grounding
-    "grounding_result": None,
-    "grounding_action": None,
 
     # Final
     "final_response": {},
