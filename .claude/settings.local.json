@@ -16,7 +16,8 @@
       "Bash(docker inspect:*)",
       "Bash(findstr:*)",
       "Bash(xargs:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(docker restart:*)"
     ],
     "deny": [],
     "ask": []

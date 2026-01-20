@@ -31,7 +31,21 @@ TOOL_TO_INTENT_MAP: dict[str, str] = {
     # Legacy tools
     "graph_query_tool": "general_unstructured",
     "portfolio_search_tool": "general_unstructured",
+    # New tools (ТЗ v3)
+    "get_work_history": "work_history",
+    "get_company_achievements": "company_achievements",
+    "get_project_achievements": "project_achievements",
+    "get_project_summary": "entity_definition",
+    "get_company_summary": "entity_definition",
 }
+
+# Keyword triggers for intent refinement (ТЗ v3 section 7)
+ENTITY_DEFINITION_KEYWORDS = ["что такое", "что за", "расскажи о", "опиши", "объясни"]
+WORK_HISTORY_KEYWORDS = ["ранее", "до этого", "предыдущ", "раньше", "прошл", "до aston", "до астон"]
+ACHIEVEMENTS_KEYWORDS = ["достижен", "результат", "impact", "чего добился", "успех", "улучшил", "ускорил", "сократил"]
+# NOTE: "чем занимался в [company]" is handled by Planner (rule 5 + example).
+# These keywords are for search_portfolio fallback refinement only.
+COMPANY_DETAILS_KEYWORDS = ["чем занимался в компании", "что делал в компании", "задачи в"]
 
 
 def derive_intent_from_tool(tool_name: str, args: dict, question: str = "") -> str:
@@ -68,9 +82,35 @@ def derive_intent_from_tool(tool_name: str, args: dict, question: str = "") -> s
     if tool_name == "search_portfolio" and question:
         q_lower = question.lower()
 
+        # === NEW: Entity definition keywords (ТЗ v3) ===
+        if any(kw in q_lower for kw in ENTITY_DEFINITION_KEYWORDS):
+            intent = "entity_definition"
+
+        # === NEW: Work history keywords (ТЗ v3) ===
+        elif any(kw in q_lower for kw in WORK_HISTORY_KEYWORDS):
+            intent = "work_history"
+
+        # === NEW: Achievements keywords (ТЗ v3) ===
+        elif any(kw in q_lower for kw in ACHIEVEMENTS_KEYWORDS):
+            # Determine company or project achievements based on context
+            if args.get("company_filter"):
+                intent = "company_achievements"
+            elif args.get("project_filter"):
+                intent = "project_achievements"
+            else:
+                # Default to company_achievements if company mentioned in question
+                company_names = ["aston", "астон", "spargo", "спарго", "alor", "алор", "t-bank"]
+                if any(c in q_lower for c in company_names):
+                    intent = "company_achievements"
+                else:
+                    intent = "project_achievements"
+
+        # === NEW: Company details keywords (ТЗ v3) ===
+        elif any(kw in q_lower for kw in COMPANY_DETAILS_KEYWORDS):
+            intent = "company_details"
+
         # Project-related keywords → project_list
-        project_kw = ["проект", "project", "ml-проект", "rag-проект", "cv-проект"]
-        if any(kw in q_lower for kw in project_kw):
+        elif any(kw in q_lower for kw in ["проект", "project", "ml-проект", "rag-проект", "cv-проект"]):
             intent = "project_list"
 
         # Current job keywords → current_job

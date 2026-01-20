@@ -107,7 +107,11 @@ def get_company_projects(
 
 
 def _item_to_fact(item: dict[str, Any], include_achievements: bool) -> FactItem | None:
-    """Convert a project item to FactItem."""
+    """Convert a project item to FactItem.
+
+    IMPORTANT (ТЗ v3): Description FIRST, technical fields (domain/period) LAST.
+    This ensures Answer LLM doesn't start response with "домен: rag".
+    """
     if not isinstance(item, dict):
         return None
 
@@ -115,46 +119,49 @@ def _item_to_fact(item: dict[str, Any], include_achievements: bool) -> FactItem 
     if not name:
         return None
 
-    # Build text representation
-    text_parts = [str(name)]
-
     company = item.get("company_name")
-    if company:
-        text_parts[0] = f"{name} ({company})"
-
-    domain = item.get("domain")
-    if domain:
-        text_parts.append(f"домен: {domain}")
-
-    period = item.get("period")
-    if period:
-        text_parts.append(f"период: {period}")
-
     description = item.get("description") or item.get("long_description")
+    domain = item.get("domain")
+    period = item.get("period")
+
+    # Build text representation - DESCRIPTION FIRST (ТЗ v3 section 5.2)
+    text_parts = []
+
+    # 1. Name with company context
+    if company:
+        text_parts.append(f"{name} ({company})")
+    else:
+        text_parts.append(str(name))
+
+    # 2. Description (main content, before technical fields)
     if description:
-        # Truncate long descriptions
         desc = str(description)[:200]
         if len(str(description)) > 200:
             desc += "..."
         text_parts.append(desc)
 
-    # Include technologies if available
+    # 3. Achievements (if enabled)
+    if include_achievements:
+        achievements = item.get("achievements", [])
+        if achievements and isinstance(achievements, list):
+            ach_str = "; ".join(str(a)[:100] for a in achievements[:5])
+            if len(achievements) > 5:
+                ach_str += f" и ещё {len(achievements) - 5}"
+            text_parts.append(f"Достижения: {ach_str}")
+
+    # 4. Technologies
     technologies = item.get("technologies", [])
     if technologies and isinstance(technologies, list):
         tech_str = ", ".join(str(t) for t in technologies[:5])
         if len(technologies) > 5:
             tech_str += f" и ещё {len(technologies) - 5}"
-        text_parts.append(f"технологии: {tech_str}")
+        text_parts.append(f"Технологии: {tech_str}")
 
-    # Include achievements (enabled by default)
-    if include_achievements:
-        achievements = item.get("achievements", [])
-        if achievements and isinstance(achievements, list):
-            # Include all achievements (up to 5) for completeness
-            ach_str = "; ".join(str(a)[:100] for a in achievements[:5])
-            if len(achievements) > 5:
-                ach_str += f" и ещё {len(achievements) - 5}"
-            text_parts.append(f"достижения: {ach_str}")
+    # 5. Domain and period LAST (not first!)
+    if domain:
+        text_parts.append(f"Домен: {domain}")
+    if period:
+        text_parts.append(f"Период: {period}")
 
     text = " — ".join(text_parts)
 

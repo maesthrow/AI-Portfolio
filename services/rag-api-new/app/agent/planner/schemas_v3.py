@@ -59,6 +59,12 @@ class IntentV3(str, Enum):
     EXPERIENCE_SUMMARY = "experience_summary"
     CONTACTS = "contacts"
     GENERAL_UNSTRUCTURED = "general_unstructured"
+    # New intents for improved quality (ТЗ v3)
+    ENTITY_DEFINITION = "entity_definition"        # "что такое X", "что за X"
+    WORK_HISTORY = "work_history"                  # "где работал ранее/до"
+    COMPANY_LIST = "company_list"                  # "где работал" (список компаний)
+    COMPANY_DETAILS = "company_details"            # "чем занимался в компании X"
+    COMPANY_ACHIEVEMENTS = "company_achievements"  # "достижения в компании X"
 
 
 class RenderStyleV3(str, Enum):

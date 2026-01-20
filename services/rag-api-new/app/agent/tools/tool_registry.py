@@ -16,12 +16,22 @@ from .schemas import (
     TOOL_GET_TECHNOLOGIES,
     TOOL_GET_CONTACTS,
     TOOL_SEARCH_PORTFOLIO,
+    # New tools (ТЗ v3)
+    TOOL_GET_WORK_HISTORY,
+    TOOL_GET_COMPANY_ACHIEVEMENTS,
+    TOOL_GET_PROJECT_ACHIEVEMENTS,
+    TOOL_GET_PROJECT_SUMMARY,
+    TOOL_GET_COMPANY_SUMMARY,
 )
 from .company_tools import get_company_projects
 from .project_tools import get_project_details
 from .technology_tools import get_technologies
 from .contact_tools import get_contacts
 from .search_tools import search_portfolio
+# New tools (ТЗ v3)
+from .history_tools import get_work_history
+from .achievements_tools import get_company_achievements, get_project_achievements
+from .summary_tools import get_project_summary, get_company_summary
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +168,92 @@ TOOL_REGISTRY = {
             "где применял RAG",
             "расскажи об ML-проектах",
             "опыт работы с нейросетями",
+        ],
+    },
+    # ========== NEW TOOLS (ТЗ v3) ==========
+    TOOL_GET_WORK_HISTORY: {
+        "function": get_work_history,
+        "description": "Get work history (list of companies with roles and periods)",
+        "parameters": {
+            "include_current": {
+                "type": "boolean",
+                "default": False,
+                "description": "Whether to include current workplace",
+            },
+            "order": {
+                "type": "string",
+                "default": "chronological_desc",
+                "description": "Sort order: chronological_desc (latest first) or chronological_asc",
+            },
+        },
+        "examples": [
+            "где работал ранее",
+            "предыдущие места работы",
+            "до этого где работал",
+        ],
+    },
+    TOOL_GET_COMPANY_ACHIEVEMENTS: {
+        "function": get_company_achievements,
+        "description": "Get achievements for a specific company",
+        "parameters": {
+            "company_name": {
+                "type": "string",
+                "required": True,
+                "description": "Company name or slug",
+            },
+        },
+        "examples": [
+            "достижения в Спарго",
+            "результаты в АЛОР",
+            "чего добился в Aston",
+        ],
+    },
+    TOOL_GET_PROJECT_ACHIEVEMENTS: {
+        "function": get_project_achievements,
+        "description": "Get achievements for a specific project",
+        "parameters": {
+            "project_name": {
+                "type": "string",
+                "required": True,
+                "description": "Project name or slug",
+            },
+        },
+        "examples": [
+            "достижения в t2",
+            "результаты AI-Portfolio",
+            "чего добился в проекте",
+        ],
+    },
+    TOOL_GET_PROJECT_SUMMARY: {
+        "function": get_project_summary,
+        "description": "Get project summary for 'what is X' questions",
+        "parameters": {
+            "project_name": {
+                "type": "string",
+                "required": True,
+                "description": "Project name or slug",
+            },
+        },
+        "examples": [
+            "что такое t2",
+            "что за проект AI-Portfolio",
+            "расскажи о проекте",
+        ],
+    },
+    TOOL_GET_COMPANY_SUMMARY: {
+        "function": get_company_summary,
+        "description": "Get company summary for 'what is company X' questions",
+        "parameters": {
+            "company_name": {
+                "type": "string",
+                "required": True,
+                "description": "Company name or slug",
+            },
+        },
+        "examples": [
+            "что за компания АЛОР",
+            "расскажи о компании Aston",
+            "что за Спарго",
         ],
     },
 }

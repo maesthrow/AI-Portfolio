@@ -181,6 +181,24 @@ class FactNormalizer:
                 filtered = experience_facts
                 rules_applied.append("project_list_experience_fallback")
 
+        # === NEW Rule 5: Work history - only experience facts (ТЗ v3) ===
+        if intent_str == "work_history":
+            filtered = [f for f in filtered if f.type in ("experience", "company_summary")]
+            rules_applied.append("work_history_filter")
+
+        # === NEW Rule 6: Entity definition - exclude tech lists (ТЗ v3) ===
+        if intent_str == "entity_definition":
+            filtered = [f for f in filtered if f.type not in ("technology", "catalog", "tech_focus")]
+            rules_applied.append("entity_definition_filter")
+
+        # === NEW Rule 7: Company/project achievements (ТЗ v3) ===
+        if intent_str in ("company_achievements", "project_achievements"):
+            # Prioritize achievement facts
+            achievement_facts = [f for f in filtered if f.type == "achievement"]
+            if achievement_facts:
+                filtered = achievement_facts
+            rules_applied.append("achievements_filter")
+
         # === P2 FIX: Rule 5: Entity scope filtering ===
         # Filter facts to match entity scope (e.g., only facts from specific company)
         if entity_scope:
@@ -329,21 +347,22 @@ class FactNormalizer:
         return category_map.get(category_lower, TechCategory.OTHER)
 
     def _render_facts(self, facts: list[FactBundleItem]) -> str:
-        """Render facts as text for Answer LLM."""
+        """Render facts as text for Answer LLM.
+
+        IMPORTANT (ТЗ v3 section 5.2): NO [type] prefix!
+        Human-readable text only, no debug format.
+        """
         if not facts:
             return ""
 
         lines = []
         for fact in facts:
-            type_label = f"[{fact.type}]"
-            if fact.category:
-                type_label = f"[{fact.type}:{fact.category.value}]"
-
+            # NO [type] prefix - just clean text
             text = fact.text.strip()
             if len(text) > 500:
                 text = text[:500] + "..."
 
-            lines.append(f"{type_label} {text}")
+            lines.append(text)
 
         return "\n\n".join(lines)
 

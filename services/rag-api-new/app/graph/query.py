@@ -905,3 +905,378 @@ def _projects_by_company_query(
         intent=Intent.PROJECT_DETAILS,
         entity_key=company_key,
     )
+
+
+# ============================================================
+# NEW QUERIES FOR TZ V3 (work_history, achievements, summary)
+# ============================================================
+
+
+def _work_history_query(
+    include_current: bool = False,
+    order: str = "chronological_desc"
+) -> GraphQueryResult:
+    """
+    Запрос истории работы (список компаний).
+
+    Args:
+        include_current: Включать ли текущее место работы
+        order: "chronological_asc" или "chronological_desc"
+
+    Returns:
+        GraphQueryResult со списком компаний, ролей и периодов
+    """
+    store = get_graph_store()
+    companies = store.get_nodes_by_type(NodeType.COMPANY)
+
+    if not include_current:
+        companies = [c for c in companies if not c.data.get("is_current")]
+
+    # Sort by end_date (or start_date if no end_date)
+    def sort_key(c: GraphNode) -> str:
+        end = c.data.get("end_date") or "9999"
+        start = c.data.get("start_date") or "0000"
+        return end if order == "chronological_desc" else start
+
+    reverse = order == "chronological_desc"
+    companies = sorted(companies, key=sort_key, reverse=reverse)
+
+    items = []
+    for c in companies:
+        role = c.data.get("role")
+        start = c.data.get("start_date") or ""
+        end = c.data.get("end_date") or "н.в."
+        period = f"{start} — {end}" if start else ""
+
+        items.append({
+            "company": c.name,
+            "company_slug": c.slug,
+            "role": role,
+            "period": period,
+            "start_date": start,
+            "end_date": c.data.get("end_date"),
+            "is_current": c.data.get("is_current", False),
+            "text": f"{c.name} ({period}) — {role}" if role else f"{c.name} ({period})",
+        })
+
+    return GraphQueryResult(
+        items=items,
+        found=len(items) > 0,
+        sources=[_node_to_source(c) for c in companies[:10]],
+        confidence=0.95 if items else 0.0,
+        intent=Intent.EXPERIENCE,
+        entity_key="work_history",
+    )
+
+
+def _company_achievements_query(company_key: str) -> GraphQueryResult:
+    """
+    Запрос достижений в конкретной компании.
+
+    Собирает достижения из всех проектов компании.
+
+    Args:
+        company_key: Slug или часть названия компании
+
+    Returns:
+        GraphQueryResult со списком достижений
+    """
+    store = get_graph_store()
+
+    if not company_key:
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.ACHIEVEMENTS,
+        )
+
+    key_lower = company_key.lower()
+
+    # Find company
+    company = store.get_node_by_slug(company_key)
+    if not company or company.type != NodeType.COMPANY:
+        companies = store.get_nodes_by_type(NodeType.COMPANY)
+        for c in companies:
+            if key_lower in c.slug.lower() or key_lower in c.name.lower():
+                company = c
+                break
+
+    if not company:
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.ACHIEVEMENTS,
+            entity_key=company_key,
+        )
+
+    # Find all achievements for this company's projects
+    achievements = store.get_nodes_by_type(NodeType.ACHIEVEMENT)
+    company_achievements = []
+
+    for ach in achievements:
+        ach_company_slug = (ach.data.get("company_slug") or "").lower()
+        ach_company_name = (ach.data.get("company_name") or "").lower()
+
+        if (key_lower in ach_company_slug or key_lower in ach_company_name or
+            company.slug.lower() in ach_company_slug):
+            company_achievements.append(ach)
+
+    items = [
+        {
+            "text": a.data.get("text", a.name),
+            "project": a.data.get("project_name"),
+            "project_slug": a.data.get("project_slug"),
+            "company": company.name,
+            "company_slug": company.slug,
+        }
+        for a in company_achievements
+    ]
+
+    return GraphQueryResult(
+        items=items,
+        found=len(items) > 0,
+        sources=[_node_to_source(a) for a in company_achievements[:10]],
+        confidence=0.9 if items else 0.0,
+        intent=Intent.ACHIEVEMENTS,
+        entity_key=company_key,
+    )
+
+
+def _project_achievements_query(project_key: str) -> GraphQueryResult:
+    """
+    Запрос достижений конкретного проекта.
+
+    Args:
+        project_key: Slug или часть названия проекта
+
+    Returns:
+        GraphQueryResult со списком достижений проекта
+    """
+    store = get_graph_store()
+
+    if not project_key:
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.ACHIEVEMENTS,
+        )
+
+    key_lower = project_key.lower()
+
+    # Find project
+    project = store.get_node_by_slug(project_key)
+    if not project or project.type != NodeType.PROJECT:
+        projects = store.get_nodes_by_type(NodeType.PROJECT)
+        for p in projects:
+            if key_lower in p.slug.lower() or key_lower in p.name.lower():
+                project = p
+                break
+
+    if not project:
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.ACHIEVEMENTS,
+            entity_key=project_key,
+        )
+
+    # Find achievements for this project
+    achievements = store.get_nodes_by_type(NodeType.ACHIEVEMENT)
+    project_achievements = []
+
+    for ach in achievements:
+        ach_project_slug = (ach.data.get("project_slug") or "").lower()
+        if project.slug.lower() == ach_project_slug or key_lower in ach_project_slug:
+            project_achievements.append(ach)
+
+    items = [
+        {
+            "text": a.data.get("text", a.name),
+            "project": project.name,
+            "project_slug": project.slug,
+            "company": a.data.get("company_name"),
+        }
+        for a in project_achievements
+    ]
+
+    return GraphQueryResult(
+        items=items,
+        found=len(items) > 0,
+        sources=[_node_to_source(a) for a in project_achievements[:10]],
+        confidence=0.9 if items else 0.0,
+        intent=Intent.ACHIEVEMENTS,
+        entity_key=project_key,
+    )
+
+
+def _project_summary_query(project_key: str) -> GraphQueryResult:
+    """
+    Запрос краткого описания проекта для "что такое X".
+
+    Возвращает: название, описание, домен, роль.
+    БЕЗ технического стека на первом месте.
+
+    Args:
+        project_key: Slug или название проекта
+
+    Returns:
+        GraphQueryResult с кратким описанием проекта
+    """
+    store = get_graph_store()
+
+    if not project_key:
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.PROJECT_DETAILS,
+        )
+
+    key_lower = project_key.lower()
+
+    # Find project
+    project = store.get_node_by_slug(project_key)
+    if not project or project.type != NodeType.PROJECT:
+        projects = store.get_nodes_by_type(NodeType.PROJECT)
+        for p in projects:
+            if key_lower in p.slug.lower() or key_lower in p.name.lower():
+                project = p
+                break
+
+    if not project:
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.PROJECT_DETAILS,
+            entity_key=project_key,
+        )
+
+    # Build summary text (description first, NOT domain/period)
+    description = project.data.get("long_description_md") or project.data.get("description_md") or ""
+    company = project.data.get("company_name")
+    domain = project.data.get("domain")
+    period = project.data.get("period")
+
+    # Human-friendly summary
+    text_parts = [f"{project.name}"]
+    if description:
+        text_parts.append(description[:500])
+    if company:
+        text_parts.append(f"Компания: {company}")
+    if domain:
+        text_parts.append(f"Домен: {domain}")
+    if period:
+        text_parts.append(f"Период: {period}")
+
+    item = {
+        "name": project.name,
+        "slug": project.slug,
+        "description": description,
+        "company_name": company,
+        "domain": domain,
+        "period": period,
+        "text": "\n".join(text_parts),
+    }
+
+    return GraphQueryResult(
+        items=[item],
+        found=True,
+        sources=[_node_to_source(project)],
+        confidence=0.95,
+        intent=Intent.PROJECT_DETAILS,
+        entity_key=project_key,
+    )
+
+
+def _company_summary_query(company_key: str) -> GraphQueryResult:
+    """
+    Запрос краткого описания компании для "что за компания X".
+
+    Возвращает: название, чем занимается, роль Дмитрия, период.
+
+    Args:
+        company_key: Slug или название компании
+
+    Returns:
+        GraphQueryResult с кратким описанием компании
+    """
+    store = get_graph_store()
+
+    if not company_key:
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.EXPERIENCE,
+        )
+
+    key_lower = company_key.lower()
+
+    # Find company
+    company = store.get_node_by_slug(company_key)
+    if not company or company.type != NodeType.COMPANY:
+        companies = store.get_nodes_by_type(NodeType.COMPANY)
+        for c in companies:
+            if key_lower in c.slug.lower() or key_lower in c.name.lower():
+                company = c
+                break
+
+    if not company:
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.EXPERIENCE,
+            entity_key=company_key,
+        )
+
+    # Build summary
+    role = company.data.get("role")
+    summary_md = company.data.get("company_summary_md") or ""
+    role_md = company.data.get("company_role_md") or ""
+    start = company.data.get("start_date") or ""
+    end = company.data.get("end_date") or "н.в."
+    period = f"{start} — {end}" if start else ""
+
+    text_parts = [company.name]
+    if summary_md:
+        text_parts.append(summary_md)
+    if role:
+        text_parts.append(f"Роль: {role}")
+    if role_md:
+        text_parts.append(role_md)
+    if period:
+        text_parts.append(f"Период: {period}")
+
+    item = {
+        "company": company.name,
+        "company_slug": company.slug,
+        "role": role,
+        "period": period,
+        "summary": summary_md,
+        "role_description": role_md,
+        "is_current": company.data.get("is_current", False),
+        "text": "\n".join(text_parts),
+    }
+
+    return GraphQueryResult(
+        items=[item],
+        found=True,
+        sources=[_node_to_source(company)],
+        confidence=0.95,
+        intent=Intent.EXPERIENCE,
+        entity_key=company_key,
+    )

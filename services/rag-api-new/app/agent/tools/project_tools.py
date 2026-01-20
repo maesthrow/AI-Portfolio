@@ -109,7 +109,11 @@ def _item_to_fact(
     include_technologies: bool,
     include_achievements: bool,
 ) -> FactItem | None:
-    """Convert a project details item to FactItem."""
+    """Convert a project details item to FactItem.
+
+    IMPORTANT (ТЗ v3): Description FIRST, technical fields (domain/period) LAST.
+    This ensures Answer LLM doesn't start response with "домен: rag".
+    """
     if not isinstance(item, dict):
         return None
 
@@ -117,35 +121,26 @@ def _item_to_fact(
     if not name:
         return None
 
-    # Build comprehensive text representation
+    company = item.get("company_name")
+    domain = item.get("domain")
+    period = item.get("period")
+
+    # Build comprehensive text representation - DESCRIPTION FIRST (ТЗ v3)
     text_parts = []
 
-    # Project name and company
-    company = item.get("company_name")
+    # 1. Project name and company
     if company:
         text_parts.append(f"{name} ({company})")
     else:
         text_parts.append(str(name))
 
-    # Domain and period
-    domain = item.get("domain")
-    period = item.get("period")
-    if domain or period:
-        meta = []
-        if domain:
-            meta.append(f"домен: {domain}")
-        if period:
-            meta.append(f"период: {period}")
-        text_parts.append(" | ".join(meta))
-
-    # Description - collect ALL available descriptions (not OR, but AND)
-    # long_description is detailed, description is short summary - both are useful
+    # 2. Description FIRST (before domain/period)
     long_desc = item.get("long_description") or item.get("long_description_md")
     short_desc = item.get("description") or item.get("description_md")
 
     if long_desc:
         text_parts.append(str(long_desc))
-    if short_desc and short_desc != long_desc:  # Avoid duplication
+    if short_desc and short_desc != long_desc:
         text_parts.append(str(short_desc))
 
     # Fallback: if no description at all, synthesize from achievements
@@ -155,21 +150,27 @@ def _item_to_fact(
             ach_summary = "; ".join(str(a)[:100] for a in achievements[:3])
             text_parts.append(f"Основные достижения проекта: {ach_summary}")
 
-    # Technologies
-    if include_technologies:
-        technologies = item.get("technologies", [])
-        if technologies and isinstance(technologies, list):
-            tech_str = ", ".join(str(t) for t in technologies)
-            text_parts.append(f"Технологии: {tech_str}")
-
-    # Achievements
+    # 3. Achievements
     if include_achievements:
         achievements = item.get("achievements", [])
         if achievements and isinstance(achievements, list):
             ach_list = [f"• {a}" for a in achievements]
             text_parts.append("Достижения:\n" + "\n".join(ach_list))
 
-    # URLs
+    # 4. Technologies
+    if include_technologies:
+        technologies = item.get("technologies", [])
+        if technologies and isinstance(technologies, list):
+            tech_str = ", ".join(str(t) for t in technologies)
+            text_parts.append(f"Технологии: {tech_str}")
+
+    # 5. Domain and period LAST (not first!)
+    if domain:
+        text_parts.append(f"Домен: {domain}")
+    if period:
+        text_parts.append(f"Период: {period}")
+
+    # 6. URLs
     repo_url = item.get("repo_url")
     demo_url = item.get("demo_url")
     if repo_url or demo_url:

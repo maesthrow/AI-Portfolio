@@ -73,6 +73,13 @@ TOOL_GET_TECHNOLOGIES = "get_technologies"
 TOOL_GET_CONTACTS = "get_contacts"
 TOOL_SEARCH_PORTFOLIO = "search_portfolio"
 
+# New tools for improved quality (ТЗ v3)
+TOOL_GET_WORK_HISTORY = "get_work_history"
+TOOL_GET_COMPANY_ACHIEVEMENTS = "get_company_achievements"
+TOOL_GET_PROJECT_ACHIEVEMENTS = "get_project_achievements"
+TOOL_GET_PROJECT_SUMMARY = "get_project_summary"
+TOOL_GET_COMPANY_SUMMARY = "get_company_summary"
+
 # All available tools
 ALL_TOOLS = [
     TOOL_GET_COMPANY_PROJECTS,
@@ -80,4 +87,10 @@ ALL_TOOLS = [
     TOOL_GET_TECHNOLOGIES,
     TOOL_GET_CONTACTS,
     TOOL_SEARCH_PORTFOLIO,
+    # New tools (ТЗ v3)
+    TOOL_GET_WORK_HISTORY,
+    TOOL_GET_COMPANY_ACHIEVEMENTS,
+    TOOL_GET_PROJECT_ACHIEVEMENTS,
+    TOOL_GET_PROJECT_SUMMARY,
+    TOOL_GET_COMPANY_SUMMARY,
 ]
