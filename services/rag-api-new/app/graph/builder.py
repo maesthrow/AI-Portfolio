@@ -302,6 +302,9 @@ def build_graph_from_export(payload: ExportPayload) -> GraphStore:
         if person_id:
             store.add_edge(GraphEdge(person_id, cid, EdgeType.HAS_CONTACT))
 
+    # Precompute популярных запросов для O(1) доступа
+    store.precompute()
+
     logger.info("Graph built: %s, EntityRegistry: %s",
                 store.stats(), registry.stats())
 

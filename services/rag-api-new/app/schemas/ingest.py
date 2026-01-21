@@ -25,3 +25,5 @@ class IngestResult(BaseModel):
 class IngestBatchResult(BaseModel):
     added: int
     collection: str
+    cache_invalidated: bool = False
+    content_hash: str | None = None

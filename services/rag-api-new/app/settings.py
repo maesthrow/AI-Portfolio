@@ -77,6 +77,19 @@ class Settings(BaseSettings):
     critic_skip_intents: list[str] = ["contacts", "current_job"]
     """Список интентов где Critic всегда пропускается"""
 
+    # === Redis/Cache settings ===
+    redis_url: str = "redis://localhost:6379/0"
+    """Redis connection URL"""
+
+    cache_enabled: bool = True
+    """Глобальное включение/выключение кэширования"""
+
+    plan_cache_ttl: int = 3600
+    """TTL для кэша планов в секундах (1 час)"""
+
+    embedding_cache_ttl: int = 86400
+    """TTL для кэша embeddings в секундах (24 часа)"""
+
     @property
     def chroma_client_kwargs(self) -> dict:
         return {"host": self.chroma_host, "port": self.chroma_port}

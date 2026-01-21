@@ -119,6 +119,21 @@ services:
     depends_on:
       - tei
 
+  # ===== REDIS (cache) =====
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   # ===== RAG API =====
   rag-api:
     build:
@@ -137,11 +152,13 @@ services:
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       FRONTEND_LOCAL_IP: ${FRONTEND_LOCAL_IP:-http://localhost:3000}
       LOG_LEVEL: INFO
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "${RAG_NEW_PORT:-8004}:8000"
     depends_on:
       - chroma
       - litellm
+      - redis
 
   # ===== ONE-SHOT: экспорт из content-api -> ingest в rag-api =====
   # Запускается при `up`, делает ingest и завершается.
@@ -165,3 +182,4 @@ volumes:
   pg_data:
   chroma_data:
   tei_cache:
+  redis_data:

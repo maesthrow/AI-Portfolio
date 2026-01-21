@@ -6,10 +6,13 @@ GraphStore - in-memory хранилище графа знаний.
 """
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set
 
 from .schema import NodeType, EdgeType, GraphNode, GraphEdge
+
+logger = logging.getLogger(__name__)
 
 
 class GraphStore:
@@ -27,6 +30,9 @@ class GraphStore:
         self._incoming: Dict[str, List[GraphEdge]] = defaultdict(list)
         self._by_type: Dict[NodeType, List[str]] = defaultdict(list)
         self._by_slug: Dict[str, str] = {}  # slug -> node_id
+
+        # Precomputed caches (заполняются в precompute())
+        self._cache: Dict[str, Any] = {}
 
     def add_node(self, node: GraphNode) -> None:
         """Добавить узел в граф."""
@@ -138,6 +144,64 @@ class GraphStore:
                 result.append(node)
         return result
 
+    # === Precompute methods ===
+
+    def precompute(self) -> None:
+        """
+        Вычисляет и кэширует популярные запросы.
+        Вызывается после build_graph_from_export().
+        """
+        # Все проекты
+        self._cache["all_projects"] = [
+            n for n in self._nodes.values()
+            if n.type == NodeType.PROJECT
+        ]
+
+        # Все компании
+        self._cache["all_companies"] = [
+            n for n in self._nodes.values()
+            if n.type == NodeType.COMPANY
+        ]
+
+        # Все технологии
+        self._cache["all_technologies"] = [
+            n for n in self._nodes.values()
+            if n.type == NodeType.TECHNOLOGY
+        ]
+
+        # Технологии по категориям
+        self._cache["technologies_by_category"] = self._group_techs_by_category()
+
+        # Текущая работа
+        self._cache["current_job"] = self._find_current_job()
+
+        logger.info(
+            "GraphStore precomputed: projects=%d, companies=%d, technologies=%d",
+            len(self._cache.get("all_projects", [])),
+            len(self._cache.get("all_companies", [])),
+            len(self._cache.get("all_technologies", [])),
+        )
+
+    def get_cached(self, key: str) -> Any:
+        """O(1) доступ к precomputed данным."""
+        return self._cache.get(key)
+
+    def _group_techs_by_category(self) -> Dict[str, List[GraphNode]]:
+        """Группировка технологий по категориям."""
+        result: Dict[str, List[GraphNode]] = {}
+        for node in self._nodes.values():
+            if node.type == NodeType.TECHNOLOGY:
+                category = (node.data.get("category") or "other").lower()
+                result.setdefault(category, []).append(node)
+        return result
+
+    def _find_current_job(self) -> Optional[GraphNode]:
+        """Поиск текущей работы (is_current=True)."""
+        for node in self._nodes.values():
+            if node.type == NodeType.COMPANY and node.data.get("is_current"):
+                return node
+        return None
+
     def clear(self) -> None:
         """Очистить граф."""
         self._nodes.clear()
@@ -146,6 +210,7 @@ class GraphStore:
         self._incoming.clear()
         self._by_type.clear()
         self._by_slug.clear()
+        self._cache.clear()
 
     def stats(self) -> Dict[str, Any]:
         """Статистика графа."""

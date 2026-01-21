@@ -142,6 +142,21 @@ services:
     expose:
       - "4000"
 
+  # ===== REDIS (cache) =====
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+    expose:
+      - "6379"
+
   # ===== RAG API =====
   rag-api:
     build:
@@ -160,9 +175,11 @@ services:
       chroma_collection: ${CHROMA_COLLECTION:-portfolio_new}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       LOG_LEVEL: INFO
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       - chroma
       - litellm
+      - redis
     expose:
       - "8000"
 
@@ -186,3 +203,4 @@ volumes:
   chroma_data:
   caddy_data:
   caddy_config:
+  redis_data:
