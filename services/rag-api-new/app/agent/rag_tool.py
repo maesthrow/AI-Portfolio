@@ -68,10 +68,18 @@ def portfolio_rag_tool(question: str) -> dict:
     from .grounding import GroundingVerifier
 
     try:
-        # 1. Plan
-        planner = PlannerLLM(planner_llm())
-        plan = planner.plan(question)
+        # 1. Plan (shortcut -> LLM fallback)
+        from .planner.shortcuts import try_shortcut
 
+        plan = try_shortcut(question)
+        plan_source = "shortcut" if plan else None
+
+        if not plan:
+            planner = PlannerLLM(planner_llm())
+            plan = planner.plan(question)
+            plan_source = "llm"
+
+        logger.info("Plan source: %s", plan_source)
         logger.info(
             "Plan created: intents=%s, entities=%d, tool_calls=%d, confidence=%.2f",
             [i.value for i in plan.intents],
@@ -86,14 +94,41 @@ def portfolio_rag_tool(question: str) -> dict:
 
         # 2.1 Self-check: if retrieval is insufficient, run hybrid search and merge context
         try:
-            if float(plan.confidence or 0.0) < 0.5:
+            # Determine if Critic should be skipped (Lazy Critic)
+            s = settings()
+            primary_intent = plan.intents[0].value if plan.intents else None
+            plan_confidence = float(plan.confidence or 0.0)
+            facts_count = len(payload.items)
+
+            skip_critic = (
+                not s.critic_enabled
+                or plan_confidence >= s.critic_confidence_threshold
+                or facts_count >= s.critic_min_facts_threshold
+                or primary_intent in s.critic_skip_intents
+            )
+
+            if plan_confidence < 0.5:
+                # Low confidence always triggers search, regardless of skip settings
                 decision = CriticDecision(
                     sufficient=False,
                     need_search=True,
                     query=question,
                     reason="low_plan_confidence",
                 )
-                logger.info("Self-check forcing hybrid search due to low plan confidence=%.2f", float(plan.confidence or 0.0))
+                logger.info("Self-check forcing hybrid search due to low plan confidence=%.2f", plan_confidence)
+            elif skip_critic:
+                logger.info(
+                    "Critic skipped: enabled=%s, confidence=%.2f (threshold=%.2f), "
+                    "facts=%d (threshold=%d), intent=%s (skip_list=%s)",
+                    s.critic_enabled,
+                    plan_confidence,
+                    s.critic_confidence_threshold,
+                    facts_count,
+                    s.critic_min_facts_threshold,
+                    primary_intent,
+                    s.critic_skip_intents,
+                )
+                decision = CriticDecision(sufficient=True, need_search=False, query="", reason="skipped")
             else:
                 critic = CriticLLM(planner_llm())
                 decision = critic.evaluate(question, plan, payload)

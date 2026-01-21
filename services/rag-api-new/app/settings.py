@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     planner_temperature: float = 0.0      # Planner LLM (детерминированный)
     answer_temperature: float = 0.2       # Answer LLM (баланс креативности)
 
+    # === Critic settings ===
+    critic_enabled: bool = True
+    """Глобальное включение/выключение Critic LLM"""
+
+    critic_confidence_threshold: float = 0.7
+    """Порог confidence плана для пропуска Critic (>= threshold = skip)"""
+
+    critic_min_facts_threshold: int = 2
+    """Минимальное кол-во фактов для пропуска Critic (>= threshold = skip)"""
+
+    critic_skip_intents: list[str] = ["contacts", "current_job"]
+    """Список интентов где Critic всегда пропускается"""
+
     @property
     def chroma_client_kwargs(self) -> dict:
         return {"host": self.chroma_host, "port": self.chroma_port}
