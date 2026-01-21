@@ -9,12 +9,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **ALWAYS use these directories:**
 - ✅ `frontend-new/` - Active Next.js frontend (cyberpunk theme)
 - ✅ `services/content-api-new/` - Active Content API with versioned endpoints
-- ✅ `services/rag-api/` - Active RAG & Agent API
+- ✅ `services/rag-api-new/` - **NEW** Active RAG & Agent API (multi-layer pipeline, LLM planner)
 - ✅ `infra/compose.apps.yaml` - Active Docker Compose configuration
 
-**NEVER use these directories (deprecated):**
-- ❌ `frontend/` - Old frontend (deprecated)
-- ❌ `services/content-api/` - Old Content API (deprecated)
+**Legacy service (still available, but use rag-api-new for new development):**
+- ⚠️ `services/rag-api/` - Legacy RAG API (simpler architecture, port 8004)
+
+**NEVER use these directories (removed from codebase):**
+- ❌ `frontend/` - Old frontend (deleted)
+- ❌ `services/content-api/` - Old Content API (deleted)
 - ❌ `infra/docker-compose.yaml` - Old Docker Compose (deprecated)
 
 If you accidentally work with deprecated directories, **STOP** and switch to the correct active directories immediately.
@@ -80,8 +83,139 @@ Key modules:
 - `app/settings.py` - Application settings
 - `alembic/` - Database migrations
 
-### 2. **RAG API** (`services/rag-api/`)
-- Semantic search and question answering over portfolio data
+### 2. **RAG API New** (`services/rag-api-new/`) ⭐ RECOMMENDED
+**Multi-layer RAG pipeline with LLM-based planning and deterministic answer generation**
+
+- Advanced semantic search with LLM-based query planning
+- Knowledge Graph for structured data queries
+- Scope Guard for off-topic detection
+- Deterministic fact normalization and answer generation
+- Entry point: `app/main.py`
+- Port: 8014
+- Docs: `/api/swagger`
+
+**Multi-Layer Pipeline Architecture:**
+```
+User Question
+    ↓
+[ScopeGuard] - Off-topic detection (fairy tales, code generation, etc.)
+    ↓
+[PlannerLLM] - QueryPlanV3 generation (intents, entities, tool_calls)
+    ↓
+[PlanExecutor] - Tool execution orchestration
+    ├─ [graph_query_tool] - Knowledge graph queries
+    └─ [portfolio_search_tool] - Hybrid retrieval (dense + BM25 + rerank)
+    ↓
+[FactNormalizer] - Deterministic fact filtering by intent
+    ↓
+[AnswerLLM] - Answer generation with strict prompting (no hallucinations)
+    ↓
+[RenderEngine] - Format to target style (BULLETS, TABLE, GROUPED_BULLETS, etc.)
+    ↓
+User Response (streaming or direct)
+```
+
+**Core Modules:**
+- `app/main.py` - FastAPI app with routers, health endpoints (`/healthz`, `/meta`)
+- `app/settings.py` - Pydantic settings with LLM temperatures
+- `app/deps.py` - Shared dependencies (LLM instances, vectorstore, reranker)
+
+**API Routers** (`app/routers/`):
+- `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON
+- `ingest.py` - POST `/api/v1/ingest` - Single document ingestion
+- `ingest_batch.py` - POST `/api/v1/ingest/batch` - Batch import from ExportPayload
+- `admin.py` - DELETE `/api/v1/admin/collection`, GET `/api/v1/admin/stats`
+
+**Agent System** (`app/agent/`):
+- `graph.py` - LangGraph agent with ReAct pattern and memory
+- `rag_tool.py` - RAG tool for agent
+
+**Planner** (`app/agent/planner/`):
+- `planner_llm.py` - LLM-based query plan generator with structured output
+- `schemas_v3.py` - QueryPlanV3, IntentV3, EntityV2, ToolCall, RenderStyleV3, AnswerStyleV3
+- `prompts.py` - System prompts for planner (intents, tools, entity extraction)
+
+**Intents (IntentV3):**
+- `CURRENT_JOB` - Current position
+- `PROJECT_DETAILS` - Project information
+- `PROJECT_ACHIEVEMENTS` - Achievements in projects
+- `PROJECT_TECH_STACK` - Technologies in projects
+- `TECHNOLOGY_OVERVIEW` - Technology description
+- `TECHNOLOGY_USAGE` - Where technology was used
+- `EXPERIENCE_SUMMARY` - Work experience
+- `CONTACTS` - Contact information
+- `GENERAL_UNSTRUCTURED` - Fallback for general questions
+
+**Scope Guard** (`app/agent/scope_guard/`):
+- `scope_guard.py` - Off-topic detection (fairy tales, jokes, code generation, etc.)
+- `schemas.py` - ScopeDecision with suggested_prompts for redirecting user
+
+**Executor** (`app/agent/executor/`):
+- `execute_plan.py` - PlanExecutor for tool orchestration with fallback handling
+
+**Normalizer** (`app/agent/normalizer/`):
+- `normalizer.py` - FactNormalizer with intent-specific filtering rules
+- `fact_bundle.py` - Fact grouping by type/project
+
+**Answer Generation** (`app/agent/answer/`):
+- `answer_llm.py` - AnswerLLM with strict prompting to prevent hallucinations
+- `prompts.py` - Answer system prompts and style instructions
+
+**Render** (`app/agent/render/`):
+- `renderer.py` - RenderEngine (BULLETS, GROUPED_BULLETS, SHORT, TABLE, PARAGRAPH)
+
+**Critic** (`app/agent/critic/`):
+- `critic_llm.py` - CriticLLM for answer evaluation
+- `prompts.py`, `schemas.py` - Critic prompts and schemas
+
+**Grounding** (`app/agent/grounding/`):
+- `grounding_verifier.py` - Verifies answer is grounded in evidence
+
+**Tools** (`app/agent/tools/`):
+- `portfolio_search_tool.py` - Hybrid search with full RAG pipeline
+- `graph_query_tool.py` - Structured graph queries (project_details, technologies, experience)
+
+**RAG Pipeline** (`app/rag/`):
+- `search.py` - `portfolio_search()` orchestration
+- `retrieval.py` - `HybridRetriever` (dense + BM25 + RRF merge + MMR dedup)
+- `rank.py` - Cross-encoder reranking
+- `evidence.py` - Evidence selection and context packing
+- `entities.py` - EntityRegistry for entity matching
+- `nlp.py` - NLP utilities (keywords, Russian support)
+- `formatter.py` - FormatRenderer for post-processing
+- `search_types.py` - SearchResult, Intent, EntityType
+- `types.py` - Doc, ScoredDoc, SourceInfo
+
+**Knowledge Graph** (`app/graph/`):
+- `schema.py` - NodeType (PERSON, COMPANY, PROJECT, ACHIEVEMENT, TECHNOLOGY, CONTACT), EdgeType
+- `builder.py` - Build graph from ExportPayload
+- `query.py` - Graph query execution
+- `store.py` - In-memory GraphStore singleton
+
+**Indexing** (`app/indexing/`):
+- `normalizer.py` - Document normalization from ExportPayload
+- `chunker.py` - Text chunking (~900 chars, Russian-aware)
+- `bm25.py` - BM25Index implementation
+- `persistence.py` - BM25 persistence (`~/.bm25.{collection}.pkl`)
+
+**LLM Adapters** (`app/llm/`):
+- `gigachat_adapter.py` - GigaChat adapter for LangChain
+
+**Schemas** (`app/schemas/`):
+- `chat.py` - ChatRequest, ChatMessage (streaming types)
+- `ingest.py` - IngestItem, IngestRequest, IngestResult
+- `export.py` - ExportPayload with all entity types
+- `admin.py` - AdminStats
+- `ask.py` - AskRequest, AskResponse
+
+**Utilities** (`app/utils/`):
+- `logging_utils.py` - Compact JSON, text truncation
+- `metadata.py` - Document ID generation, content hashing
+
+### 3. **RAG API Legacy** (`services/rag-api/`) ⚠️ LEGACY
+**Simpler RAG architecture - still available but use rag-api-new for new features**
+
+- Basic semantic search and question answering
 - LangGraph agent with memory (ReAct pattern)
 - Hybrid retrieval: dense embeddings + BM25
 - Cross-encoder reranking
@@ -89,64 +223,9 @@ Key modules:
 - Entry point: `app/main.py`
 - Port: 8004
 
-**Architecture** (modular design):
-- `app/main.py` - FastAPI app with routers
-- `app/settings.py` - Pydantic settings with environment variables
-- `app/deps.py` - Shared dependencies (LLM, vectorstore, reranker, agent)
+See legacy documentation in previous CLAUDE.md versions.
 
-**API Routers:**
-- `app/api_ask.py` - Question answering endpoints:
-  - POST `/ask` - Single question with session memory support
-  - POST `/api/v1/agent/chat/stream` - Streaming chat with LLM
-- `app/api_ingest.py` - Single document ingestion:
-  - POST `/ingest` - Add individual documents
-- `app/api_ingest_batch.py` - Batch ingestion:
-  - POST `/ingest/batch` - Batch import from ExportPayload
-- `app/api_admin.py` - Admin endpoints:
-  - DELETE `/admin/collection` - Clear ChromaDB collection and BM25 index
-  - GET `/admin/stats` - Get collection statistics with type breakdown
-
-**RAG Pipeline** (`app/rag/`):
-- `core.py` - Main RAG function `portfolio_rag_answer()`
-- `retrieval.py` - `HybridRetriever` combining dense and BM25 search
-- `rank.py` - Cross-encoder reranking
-- `evidence.py` - Evidence selection and context packing
-- `prompting.py` - Prompt templates and message building
-- `types.py` - Type definitions (Doc, ScoredDoc, Retriever, ReRanker, SourceInfo)
-- `nlp.py` - NLP utilities (keywords extraction, sentence filtering with Russian support)
-- `index.py` - BM25 index persistence (load/save to pickle)
-
-**Utilities** (`app/utils/`):
-- `bm25_index.py` - BM25 index implementation using rank_bm25.BM25Okapi
-- `normalize.py` - Basic normalization utilities
-- `normalize_export_rich.py` - Rich document normalization for batch ingestion:
-  - Creates document chunks with smart text splitting
-  - Generates multiple document types: project, achievement, technology, company, document, catalog
-  - Uses SHA1 hashing for change tracking
-  - Supports chunking with max_chars=900
-
-**Agent System** (`app/agent/`):
-- `graph.py` - LangGraph agent with tools and memory
-- `tools.py` - RAG tools for the agent (portfolio_rag_tool, list_projects_tool)
-
-**LLM Adapters** (`app/llm/`):
-- `gigachat_adapter.py` - GigaChat adapter implementing LangChain BaseChatModel:
-  - Supports tool binding for LangGraph agent
-  - Streaming responses support
-  - Uses official GigaChat SDK
-
-**Schemas** (`app/schemas/`):
-- `ingest_schema.py` - Ingestion schemas:
-  - `IngestItem` - Base item for ingestion
-  - `IngestRequest` - Request for adding documents
-  - `ProjectExport` - Project structure (with kind, weight, repo_url, demo_url)
-  - `TechnologyExport` - Technology structure
-  - `CompanyExport` - Company structure
-  - `AchievementExport` - Achievement structure
-  - `DocumentExport` - External document structure
-  - `ExportPayload` - Full export structure for batch ingestion
-
-### 3. **Frontend** (`frontend-new/`)
+### 4. **Frontend** (`frontend-new/`)
 **IMPORTANT: Use `frontend-new`, NOT `frontend` (old version)**
 
 - Next.js 14 with App Router
@@ -228,9 +307,9 @@ Key modules:
   - `HeroTag`, `FocusArea`, `FocusAreaBullet`
   - `WorkApproach`, `WorkApproachBullet`, `SectionMeta`
 
-### 4. **Infrastructure** (`infra/`)
+### 5. **Infrastructure** (`infra/`)
 - Docker Compose orchestration (compose.apps.yaml - primary compose file)
-- Alternative compose files: `compose.apps.new.yaml`, `compose.db.yaml`, `compose.ml.yaml`
+- Alternative compose files: `compose.db.yaml`
 - Services:
   - PostgreSQL (external, accessed via host.docker.internal)
   - ChromaDB (vector database, port 8001 external / 8000 internal)
@@ -238,14 +317,12 @@ Key modules:
   - TEI (Text Embeddings Inference for multilingual-e5-base, port 8006)
   - LiteLLM (unified proxy for LLM/embeddings, port 8005 external / 4000 internal)
   - content-api (port 8003) - builds from content-api-new/
-  - rag-api (port 8004)
+  - rag-api (port 8004) - legacy RAG service
+  - rag-api-new (port 8014) - new multi-layer RAG service
 
-**Note:** There are multiple compose files:
-- `compose.apps.yaml` - Main file (service: `content-api` builds from content-api-new/)
-- `compose.apps.new.yaml` - Alternative (service: `content-api-new`, port 8013)
+**Note:** Compose files:
+- `compose.apps.yaml` - Main file with all services
 - `compose.db.yaml` - Database configuration
-- `compose.ml.yaml` - ML services configuration
-- `docker-compose.yaml` - Old file (DEPRECATED)
 
 Use `compose.apps.yaml` as the primary configuration.
 
@@ -267,7 +344,7 @@ npm run lint         # Run ESLint
 Environment variables (`.env.local`):
 ```bash
 NEXT_PUBLIC_CONTENT_API_BASE=http://localhost:8003/api/v1
-NEXT_PUBLIC_AGENT_API_BASE=http://localhost:8004
+NEXT_PUBLIC_AGENT_API_BASE=http://localhost:8014  # Use rag-api-new
 ```
 
 ### Content API (content-api-new)
@@ -299,34 +376,50 @@ LOG_LEVEL=INFO
 APP_ENV=dev
 ```
 
-### RAG API
+### RAG API New (rag-api-new) ⭐ RECOMMENDED
 
 ```bash
-cd services/rag-api
+cd services/rag-api-new
 
 # Run the API (development)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
+# API Documentation
+# Visit http://localhost:8000/api/swagger
+
 # Ingest documents into ChromaDB (after content-api is populated)
-# Use the /api/v1/rag/documents endpoint from content-api
-# Then POST to /ingest/batch endpoint on rag-api
+# 1. Export from content-api: GET http://localhost:8003/api/v1/rag/documents
+# 2. Import to rag-api-new: POST http://localhost:8014/api/v1/ingest/batch
 ```
 
 Environment variables:
 ```bash
 litellm_base_url=http://localhost:8005/v1
 litellm_api_key=dev-secret-123
-chat_model=Qwen2.5  # Default LLM model (or GigaChat if configured)
+chat_model=Qwen2.5  # LLM model (or GigaChat)
 embedding_model=embedding-default
 reranker_model=BAAI/bge-reranker-base
 CHROMA_HOST=localhost
 CHROMA_PORT=8001
-chroma_collection=portfolio
+chroma_collection=portfolio_new  # Different collection from legacy
 FRONTEND_ORIGIN=http://localhost:3000
 frontend_local_ip=http://localhost:3000
 LOG_LEVEL=INFO
+planner_temperature=0.0   # Deterministic planning
+answer_temperature=0.2    # Balanced generation
 giga_auth_data=  # Base64 GigaChat credentials (optional)
 ```
+
+### RAG API Legacy (rag-api)
+
+```bash
+cd services/rag-api
+
+# Run the API (development)
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Environment variables (same as rag-api-new but with `chroma_collection=portfolio`).
 
 ### Docker Infrastructure
 
@@ -338,24 +431,26 @@ docker compose -f compose.apps.yaml up -d
 
 # Start specific services
 docker compose -f compose.apps.yaml up -d chroma tei litellm
-docker compose -f compose.apps.yaml up -d content-api rag-api
+docker compose -f compose.apps.yaml up -d content-api rag-api rag-api-new
 
 # Check service health
 docker compose -f compose.apps.yaml ps
 
 # View logs
 docker compose -f compose.apps.yaml logs -f content-api
-docker compose -f compose.apps.yaml logs -f rag-api
+docker compose -f compose.apps.yaml logs -f rag-api-new
 
 # Rebuild and restart
-docker compose -f compose.apps.yaml up -d --build content-api
+docker compose -f compose.apps.yaml up -d --build rag-api-new
 ```
 
 ### Running Tests
 
-Currently no test suite is configured. When adding tests, use:
-- Backend: `pytest` (to be added to pyproject.toml)
-- Frontend: Jest/React Testing Library (to be added)
+RAG API New has tests in `services/rag-api-new/tests/`:
+```bash
+cd services/rag-api-new
+pytest tests/
+```
 
 ---
 
@@ -396,42 +491,81 @@ Currently no test suite is configured. When adding tests, use:
 ## Data Flow
 
 1. **Content Management**: Admin/scripts → PostgreSQL (via content-api-new)
-2. **RAG Ingestion**: content-api-new `/api/v1/rag/documents` → rag-api `/ingest/batch` → ChromaDB + BM25 indexing
+2. **RAG Ingestion**: content-api-new `/api/v1/rag/documents` → rag-api-new `/api/v1/ingest/batch` → ChromaDB + BM25 + Knowledge Graph
 3. **Frontend SSR**: Next.js → content-api-new `/api/v1/*` → PostgreSQL → JSON response
-4. **Agent Chat**: User → frontend-new AgentDock → rag-api `/api/v1/agent/chat/stream` → LangGraph agent
-5. **RAG Query Flow**: Agent tool call → Hybrid retrieval (dense + BM25) → Rerank → Evidence selection → LLM generation
+4. **Agent Chat**: User → frontend-new AgentDock → rag-api-new `/api/v1/agent/chat/stream` → Multi-layer pipeline
+5. **RAG Query Flow (rag-api-new)**:
+   - ScopeGuard → PlannerLLM → PlanExecutor
+   - → HybridRetriever (dense + BM25) → Rerank → Evidence
+   - → FactNormalizer → AnswerLLM → RenderEngine → Response
 
 ---
 
 ## Key Architectural Patterns
 
-### RAG Pipeline
-The RAG system uses a sophisticated retrieval pipeline:
-1. **Hybrid Retrieval**: Combines dense embeddings (semantic) with BM25 (keyword-based) via `HybridRetriever`
-2. **Reranking**: Cross-encoder scores candidates for relevance using `BAAI/bge-reranker-base`
-3. **Evidence Selection**: Picks top-k documents with diversity
-4. **Context Packing**: Fits selected evidence into token budget (900 tokens default)
-5. **LLM Generation**: Uses packed context to generate answer
+### Multi-Layer RAG Pipeline (rag-api-new)
 
-See `services/rag-api/app/rag/core.py:portfolio_rag_answer()`
+The new RAG system uses a sophisticated multi-layer architecture:
+
+1. **Scope Guard**: Detects off-topic questions (fairy tales, code generation, general knowledge)
+   - Returns polite refusal with 5 suggested portfolio questions
+   - See `app/agent/scope_guard/scope_guard.py`
+
+2. **LLM Planner**: Generates structured query plan with intents, entities, tool calls
+   - Uses `with_structured_output()` for reliable JSON parsing
+   - Supports retry with repair prompt on validation failure
+   - See `app/agent/planner/planner_llm.py:PlannerLLM.plan()`
+
+3. **Plan Executor**: Orchestrates tool execution with fallback handling
+   - Executes graph_query_tool or portfolio_search_tool based on plan
+   - See `app/agent/executor/execute_plan.py:PlanExecutor.execute()`
+
+4. **Fact Normalizer**: Filters facts by intent and tech category
+   - Removes duplicates, low-confidence facts
+   - See `app/agent/normalizer/normalizer.py:FactNormalizer.normalize()`
+
+5. **Answer LLM**: Generates response with strict prompting
+   - Prevents "probably", "possibly" hallucinations
+   - Only uses provided facts
+   - See `app/agent/answer/answer_llm.py:AnswerLLM.generate()`
+
+6. **Render Engine**: Formats answer to target style
+   - BULLETS, GROUPED_BULLETS, SHORT, TABLE, PARAGRAPH
+   - See `app/agent/render/renderer.py:RenderEngine.render()`
+
+### Knowledge Graph (rag-api-new)
+
+The system builds a knowledge graph from portfolio data:
+- **Node Types**: PERSON, COMPANY, PROJECT, ACHIEVEMENT, TECHNOLOGY, CONTACT
+- **Edge Types**: WORKS_AT, WORKED_AT, CREATED, ACHIEVED, USES, KNOWS, BELONGS_TO, HAS_CONTACT
+- Used for structured queries (project_details, technologies, experience)
+- See `app/graph/builder.py:build_graph()`
+
+### Hybrid Retrieval
+
+Both RAG services use hybrid retrieval:
+1. **Dense Search**: ChromaDB similarity search with embeddings
+2. **BM25 Search**: Lexical keyword matching
+3. **RRF Merge**: Reciprocal Rank Fusion to combine results
+4. **MMR Dedup**: Remove similar documents
+5. **Expand by Project**: Add related project/experience documents
+6. **Cross-encoder Reranking**: Score candidates with `BAAI/bge-reranker-base`
 
 ### Document Types in RAG
-The RAG system creates multiple document types from portfolio data:
-- `project` - Project information with technologies and links
-- `achievement` - Individual achievements from experience projects
-- `technology` - Technologies with projects where they were used
-- `company` - Company information from experience
-- `document` - External documents
-- `catalog` - Catalogs (all technologies, technologies by company)
 
-### Agent System
-The LangGraph agent (`services/rag-api/app/agent/graph.py`) uses ReAct pattern:
-- System prompt enforces RAG tool usage for portfolio questions
-- Memory via `MemorySaver` checkpointer (thread_id based)
-- Tools: `portfolio_rag_tool`, `list_projects_tool`
-- Agent MUST call RAG tool for any portfolio-related questions
+The RAG system creates multiple document types:
+- `profile` - Developer profile information
+- `experience`, `experience_project` - Work experience
+- `project` - Standalone projects (featured)
+- `technology` - Tech stack items
+- `publication` - Articles/blog posts
+- `contact` - Contact information
+- `stat` - Key metrics
+- `focus_area`, `work_approach` - Career information
+- `item` - Atomic documents (achievements, bullets, stats, contacts)
 
 ### BM25 Index Persistence
+
 The BM25 index is persisted to disk:
 - Location: `~/.bm25.{collection}.pkl`
 - Loaded on startup via `bm25_try_load()`
@@ -439,6 +573,7 @@ The BM25 index is persisted to disk:
 - Reset when collection is cleared
 
 ### Hero Section Animations
+
 The hero section includes sophisticated animations:
 
 **Particles Background** (`frontend-new/components/hero/ParticlesBackground.tsx`):
@@ -484,6 +619,7 @@ The hero section includes sophisticated animations:
 - Mobile optimizations: reduced blur, slower animations
 
 ### Performance Optimizations
+
 The frontend includes several performance optimizations:
 - **React.memo** on card components (ProjectCard, ExperienceCard, ContactCard, PublicationCard)
 - **useMemo/useCallback** in HeroIntro and AgentDock for memoized values and callbacks
@@ -496,6 +632,7 @@ The frontend includes several performance optimizations:
 - **prefers-reduced-motion** media query support
 
 ### Database Models
+
 Key models and relationships (`services/content-api-new/app/models/`):
 
 **Profile** (`profile.py`):
@@ -589,7 +726,9 @@ Key variables (see `infra/.env.dev`):
 
 **RAG API Specific:**
 - `reranker_model` - Reranker model (default: `BAAI/bge-reranker-base`)
-- `chroma_collection` - ChromaDB collection name (default: `portfolio`)
+- `chroma_collection` - ChromaDB collection name (default: `portfolio` for legacy, `portfolio_new` for new)
+- `planner_temperature` - LLM temperature for planner (default: 0.0 for deterministic)
+- `answer_temperature` - LLM temperature for answer generation (default: 0.2)
 
 **Vector Database:**
 - `CHROMA_HOST` - ChromaDB host
@@ -599,7 +738,8 @@ Key variables (see `infra/.env.dev`):
 - `CHROMA_PORT` - 8001 (ChromaDB)
 - `VLLM_PORT` - 8002 (vLLM inference)
 - `CONTENT_PORT` - 8003 (content-api-new)
-- `RAG_PORT` - 8004 (rag-api)
+- `RAG_PORT` - 8004 (rag-api legacy)
+- `RAG_NEW_PORT` - 8014 (rag-api-new)
 - `LITELLM_PORT` - 8005 (LiteLLM proxy)
 - `TEI_PORT` - 8006 (Text Embeddings Inference)
 
@@ -608,11 +748,13 @@ Key variables (see `infra/.env.dev`):
 ## Common Pitfalls
 
 1. **Wrong Service Directories**:
-   - ✅ Use `content-api-new` and `frontend-new`
-   - ❌ Do NOT use `content-api` or `frontend` (old versions)
+   - ✅ Use `content-api-new`, `frontend-new`, `rag-api-new`
+   - ⚠️ `rag-api` is legacy - use only for maintenance
+   - ❌ `content-api`, `frontend` directories were deleted
 
 2. **API Versioning**:
    - content-api-new endpoints are prefixed with `/api/v1/`
+   - rag-api-new endpoints are prefixed with `/api/v1/`
    - Frontend must use correct base URL with version prefix
 
 3. **Circular Imports**: Keep `deps.py` for shared dependencies, avoid importing between API routers
@@ -623,11 +765,11 @@ Key variables (see `infra/.env.dev`):
 
 5. **Encoding Issues**: Verify UTF-8 encoding, especially when working with Cyrillic text (MANDATORY from CONTRIBUTING.md)
 
-6. **Agent Tool Usage**: The RAG agent MUST call `portfolio_rag_tool` for portfolio questions - don't let LLM answer directly
+6. **Agent Tool Usage**: The RAG agent MUST call tools for portfolio questions - don't let LLM answer directly
 
 7. **CORS Configuration**:
    - Ensure `FRONTEND_ORIGIN` matches frontend URL
-   - content-api-new and rag-api check CORS strictly
+   - All APIs check CORS strictly
 
 8. **Docker Networking**:
    - PostgreSQL accessed via `host.docker.internal` (external database)
@@ -644,7 +786,12 @@ Key variables (see `infra/.env.dev`):
 
 11. **BM25 Index State**:
     - BM25 index is stored in pickle files (`~/.bm25.{collection}.pkl`)
-    - Clear both ChromaDB and BM25 when resetting collection via `/admin/collection`
+    - Clear both ChromaDB and BM25 when resetting collection via `/api/v1/admin/collection`
+
+12. **Different Collections**:
+    - `rag-api` uses `chroma_collection=portfolio`
+    - `rag-api-new` uses `chroma_collection=portfolio_new`
+    - Data must be ingested separately to each
 
 ---
 
@@ -677,55 +824,86 @@ AI-Portfolio/
 │   ├── package.json
 │   └── .env.local                  # Environment variables
 │
-├── frontend/                        # ❌ OLD VERSION (deprecated)
-│
 ├── services/
 │   ├── content-api-new/            # ✅ ACTIVE Content API (versioned API)
 │   │   ├── app/
-│   │   │   ├── main.py            # FastAPI app entry
-│   │   │   ├── settings.py        # Application settings
-│   │   │   ├── db.py              # Database setup
-│   │   │   ├── models/            # SQLAlchemy models (all listed above)
-│   │   │   ├── routers/           # API endpoints (/api/v1/*)
-│   │   │   ├── schemas/           # Pydantic schemas
-│   │   │   ├── core/config.py     # Core settings
-│   │   │   └── seed/              # Database seeding
-│   │   ├── alembic/               # Database migrations
+│   │   │   ├── main.py             # FastAPI app entry
+│   │   │   ├── settings.py         # Application settings
+│   │   │   ├── db.py               # Database setup
+│   │   │   ├── models/             # SQLAlchemy models (all listed above)
+│   │   │   ├── routers/            # API endpoints (/api/v1/*)
+│   │   │   ├── schemas/            # Pydantic schemas
+│   │   │   ├── core/config.py      # Core settings
+│   │   │   └── seed/               # Database seeding
+│   │   ├── alembic/                # Database migrations
 │   │   │   └── versions/
 │   │   ├── pyproject.toml
 │   │   └── Dockerfile
 │   │
-│   ├── content-api/                # ❌ OLD VERSION (deprecated)
+│   ├── rag-api-new/                # ✅ ACTIVE RAG & Agent API (multi-layer pipeline)
+│   │   ├── app/
+│   │   │   ├── main.py             # FastAPI app with routers
+│   │   │   ├── settings.py         # Pydantic settings (temperatures, etc.)
+│   │   │   ├── deps.py             # Shared dependencies (LLMs, vectorstore)
+│   │   │   ├── agent/              # Agent system
+│   │   │   │   ├── graph.py        # LangGraph agent
+│   │   │   │   ├── rag_tool.py     # RAG tool
+│   │   │   │   ├── planner/        # LLM planner (planner_llm.py, schemas_v3.py, prompts.py)
+│   │   │   │   ├── scope_guard/    # Off-topic detection (scope_guard.py, schemas.py)
+│   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
+│   │   │   │   ├── normalizer/     # Fact normalizer (normalizer.py, fact_bundle.py)
+│   │   │   │   ├── answer/         # Answer generation (answer_llm.py, prompts.py)
+│   │   │   │   ├── render/         # Response rendering (renderer.py)
+│   │   │   │   ├── critic/         # Answer evaluation (critic_llm.py)
+│   │   │   │   ├── grounding/      # Evidence grounding (grounding_verifier.py)
+│   │   │   │   └── tools/          # Agent tools (portfolio_search_tool.py, graph_query_tool.py)
+│   │   │   ├── rag/                # RAG pipeline
+│   │   │   │   ├── search.py       # Main search orchestration
+│   │   │   │   ├── retrieval.py    # HybridRetriever
+│   │   │   │   ├── rank.py         # Reranking
+│   │   │   │   ├── evidence.py     # Evidence selection
+│   │   │   │   ├── entities.py     # Entity registry
+│   │   │   │   ├── nlp.py          # NLP utilities
+│   │   │   │   ├── formatter.py    # Format rendering
+│   │   │   │   ├── search_types.py # Search types
+│   │   │   │   └── types.py        # Core types
+│   │   │   ├── graph/              # Knowledge graph
+│   │   │   │   ├── schema.py       # NodeType, EdgeType
+│   │   │   │   ├── builder.py      # Graph construction
+│   │   │   │   ├── query.py        # Graph queries
+│   │   │   │   └── store.py        # Graph storage
+│   │   │   ├── indexing/           # Document indexing
+│   │   │   │   ├── normalizer.py   # Document normalization
+│   │   │   │   ├── chunker.py      # Text chunking
+│   │   │   │   ├── bm25.py         # BM25 index
+│   │   │   │   └── persistence.py  # BM25 persistence
+│   │   │   ├── llm/                # LLM adapters
+│   │   │   │   └── gigachat_adapter.py
+│   │   │   ├── routers/            # API routers
+│   │   │   │   ├── chat.py         # /api/v1/agent/chat/stream
+│   │   │   │   ├── ingest.py       # /api/v1/ingest
+│   │   │   │   ├── ingest_batch.py # /api/v1/ingest/batch
+│   │   │   │   └── admin.py        # /api/v1/admin/*
+│   │   │   ├── schemas/            # Pydantic schemas
+│   │   │   │   ├── chat.py, ingest.py, export.py, admin.py, ask.py
+│   │   │   └── utils/              # Utilities
+│   │   │       ├── logging_utils.py
+│   │   │       └── metadata.py
+│   │   ├── tests/                  # Tests
+│   │   ├── pyproject.toml
+│   │   └── Dockerfile
 │   │
-│   └── rag-api/                    # ✅ ACTIVE RAG & Agent API
+│   └── rag-api/                    # ⚠️ LEGACY RAG API (simpler architecture)
 │       └── app/
-│           ├── main.py             # FastAPI app entry with routers
-│           ├── settings.py         # Pydantic settings
-│           ├── deps.py             # Shared dependencies
-│           ├── api_ask.py          # /ask and /api/v1/agent/chat/stream
-│           ├── api_ingest.py       # /ingest endpoint
-│           ├── api_ingest_batch.py # /ingest/batch endpoint
-│           ├── api_admin.py        # /admin/* endpoints
-│           ├── rag/                # RAG pipeline modules
-│           │   ├── core.py         # Main RAG function
-│           │   ├── retrieval.py    # HybridRetriever
-│           │   ├── rank.py         # Reranking
-│           │   ├── evidence.py     # Evidence selection
-│           │   ├── prompting.py    # Prompt templates
-│           │   ├── types.py        # Type definitions
-│           │   ├── nlp.py          # NLP utilities
-│           │   └── index.py        # BM25 index persistence
-│           ├── agent/              # LangGraph agent
-│           │   ├── graph.py        # Agent graph definition
-│           │   └── tools.py        # Agent tools
-│           ├── llm/                # LLM adapters
-│           │   └── gigachat_adapter.py # GigaChat LangChain adapter
-│           ├── utils/              # Utilities
-│           │   ├── bm25_index.py   # BM25 implementation
-│           │   ├── normalize.py    # Basic normalization
-│           │   └── normalize_export_rich.py # Rich export normalization
-│           └── schemas/            # Pydantic schemas
-│               └── ingest_schema.py # Ingestion schemas
+│           ├── main.py
+│           ├── settings.py
+│           ├── deps.py
+│           ├── api_ask.py, api_ingest.py, api_ingest_batch.py, api_admin.py
+│           ├── rag/                # Legacy RAG pipeline
+│           ├── agent/              # Legacy agent (graph.py, tools.py)
+│           ├── llm/
+│           ├── utils/
+│           └── schemas/
 │
 ├── scripts/
 │   ├── ingest.py                   # RAG document ingestion (legacy)
@@ -733,10 +911,7 @@ AI-Portfolio/
 │
 ├── infra/
 │   ├── compose.apps.yaml           # ✅ Main docker compose (ACTIVE)
-│   ├── compose.apps.new.yaml       # Alternative compose
 │   ├── compose.db.yaml             # Database compose
-│   ├── compose.ml.yaml             # ML services compose
-│   ├── docker-compose.yaml         # ❌ Old compose (deprecated)
 │   ├── .env.dev                    # Environment variables template
 │   ├── litellm/
 │   │   └── config.yaml             # LiteLLM model aliases
@@ -744,12 +919,13 @@ AI-Portfolio/
 │       └── intfloat/multilingual-e5-base/  # TEI embedding model
 │
 ├── CONTRIBUTING.md                 # ⚠️ MANDATORY rules for AI tools
-└── CLAUDE.md                       # This file
+├── CLAUDE.md                       # This file (EN)
+└── CLAUDE_RU.md                    # This file (RU)
 ```
 
 **Key Points:**
-- ✅ **Active services**: `frontend-new`, `content-api-new`, `rag-api`
-- ❌ **Deprecated**: `frontend`, `content-api` (old versions, do not use)
+- ✅ **Active services**: `frontend-new`, `content-api-new`, `rag-api-new`
+- ⚠️ **Legacy**: `rag-api` (still available, simpler architecture)
 - 🐳 **Docker**: Use `infra/compose.apps.yaml` for orchestration
 - 📝 **Rules**: Always read `CONTRIBUTING.md` before making changes
 
@@ -758,17 +934,17 @@ AI-Portfolio/
 ## When Making Changes
 
 **Always:**
-1. **Verify service directories**: Use `content-api-new` and `frontend-new`, NOT old versions
+1. **Verify service directories**: Use `content-api-new`, `frontend-new`, `rag-api-new`
 2. Read `CONTRIBUTING.md` first (mandatory UTF-8 encoding rules)
 3. Check encoding is UTF-8 (especially for Cyrillic text in markdown fields)
 4. Create Alembic migration if modifying SQLAlchemy models in `content-api-new`
 5. Test locally before committing
 6. Follow existing code patterns and naming conventions
-7. Ensure API endpoints include `/api/v1/` prefix for content-api-new
+7. Ensure API endpoints include `/api/v1/` prefix
 8. Use markdown fields (`*_md`) for rich content that will be rendered with `react-markdown`
 
 **Never:**
-1. Use `content-api` or `frontend` directories (old versions)
+1. Use deleted directories (`content-api`, `frontend`)
 2. Change file encoding from UTF-8
 3. Modify old Alembic migrations
 4. Create circular imports
