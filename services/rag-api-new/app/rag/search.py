@@ -322,6 +322,16 @@ def portfolio_search(
     # === Apply Entity Filter ===
     candidates = _apply_entity_filter(candidates, plan.entities, plan.entity_policy)
 
+    # === Limit candidates before expensive rerank ===
+    max_rerank = cfg.max_rerank_candidates
+    if len(candidates) > max_rerank:
+        logger.info(
+            "Limiting rerank candidates: %d -> %d",
+            len(candidates),
+            max_rerank,
+        )
+        candidates = candidates[:max_rerank]
+
     # === Rerank ===
     scored: List[ScoredDoc] = rerank(rr, question, candidates)
 
