@@ -483,7 +483,7 @@ class CacheService:
 
     CONTENT_HASH_KEY = "rag:content:hash"
     PLAN_PREFIX = "rag:plan:"
-    EMB_PREFIX = "rag:emb:"
+    EMB_PREFIX = "rag:emb:"  # Используется в embedding_cache.py (P3)
 
     def __init__(self):
         self.settings = get_settings()
@@ -599,30 +599,9 @@ class CacheService:
             ttl=self.settings.plan_cache_ttl,
         )
 
-    # === Embedding Cache ===
-
-    def _emb_key(self, text: str) -> str:
-        """Генерация ключа для кэша embedding."""
-        hash_val = hashlib.sha256(text.encode()).hexdigest()[:16]
-        return f"{self.EMB_PREFIX}{hash_val}"
-
-    def get_cached_embedding(self, text: str) -> list[float] | None:
-        """Получить закэшированный embedding."""
-        data = self._safe_get(self._emb_key(text))
-        if data:
-            try:
-                return json.loads(data)
-            except json.JSONDecodeError:
-                return None
-        return None
-
-    def set_cached_embedding(self, text: str, embedding: list[float]) -> bool:
-        """Сохранить embedding в кэш."""
-        return self._safe_set(
-            self._emb_key(text),
-            json.dumps(embedding),
-            ttl=self.settings.embedding_cache_ttl,
-        )
+    # NOTE: Embedding Cache реализован в отдельном модуле embedding_cache.py (P3)
+    # Он использует _safe_get/_safe_set напрямую с собственной логикой ключей
+    # (включает model_name и нормализацию текста)
 
 
 @lru_cache
@@ -942,16 +921,18 @@ CRITIC_SKIP_INTENTS='["contacts", "current_job"]'
 
 ## Метрики успеха
 
-| Метрика | До | После |
-|---------|-----|-------|
-| Латентность (первый запрос) | ~2000ms | ~1500ms (Lazy Critic) |
-| Латентность (повторный запрос, cache hit) | ~2000ms | ~800ms |
-| Латентность (shortcut: контакты/работа) | ~2000ms | ~500ms |
-| Plan shortcut hit rate | 0% | ~5-10% (только однозначные) |
-| Plan cache hit rate | 0% | ~60-70% (после prefetch) |
-| Critic skip rate | ~0% | ~70% |
-| LLM вызовов (первый запрос) | 3 | 2 (без Critic) |
-| LLM вызовов (cache hit) | 3 | 1 (только Answer) |
+| Метрика | До | После P0-P2 | После P3 |
+|---------|-----|-------------|----------|
+| Латентность (первый запрос) | ~2000ms | ~1500ms | ~1300ms |
+| Латентность (повторный, cache hit) | ~2000ms | ~800ms | ~600ms |
+| Латентность (shortcut) | ~2000ms | ~500ms | ~300ms |
+| Plan shortcut hit rate | 0% | ~5-10% | ~5-10% |
+| Plan cache hit rate | 0% | ~60-70% | ~60-70% |
+| **Embedding cache hit rate** | 0% | 0% | **~80-90%** |
+| Critic skip rate | ~0% | ~70% | ~70% |
+| LLM вызовов (первый запрос) | 3 | 2 | 2 |
+| LLM вызовов (cache hit) | 3 | 1 | 1 |
+| **TEI вызовов (cache hit)** | 1 | 1 | **0** |
 
 ---
 
@@ -967,6 +948,7 @@ CRITIC_SKIP_INTENTS='["contacts", "current_job"]'
 | 6 | Умная инвалидация по hash | `routers/ingest_batch.py`, `schemas/ingest.py` | P1 |
 | 7 | Plan Cache (hybrid) | `cache/plan_cache.py`, `rag_tool.py` | P2 |
 | 8 | Prefetch | `prefetch.py`, `routers/ingest_batch.py` | P2 |
+| 9 | Embedding Cache | `cache/embedding_cache.py`, `rag/retrieval.py` | P3 |
 
 ---
 
@@ -982,10 +964,210 @@ CRITIC_SKIP_INTENTS='["contacts", "current_job"]'
 
 ---
 
+# P3: Embedding Cache
+
+## Обзор
+
+Кэширование embeddings запросов в Redis для ускорения повторных поисков.
+
+**Что кэшируется**: Vector embedding вопроса пользователя (768-dim для multilingual-e5-base).
+
+**Экономия**: ~50-200ms на запрос (время вызова TEI).
+
+## Архитектура
+
+```
+Вопрос → Normalize → Hash → Redis GET
+                              ↓
+                    Hit: вернуть embedding
+                    Miss: TEI → Redis SET → вернуть embedding
+```
+
+## Реализация
+
+### 3.1 Новый файл: `app/cache/embedding_cache.py`
+
+```python
+"""
+Embedding Cache - кэширование embeddings запросов в Redis.
+
+Ключи: rag:emb:{model}:{hash16}
+Значение: JSON-сериализованный list[float] (768 элементов)
+TTL: 24 часа (embedding_cache_ttl)
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+from typing import Callable
+
+from .cache_service import get_cache_service, CacheService
+
+logger = logging.getLogger(__name__)
+
+
+def get_embedding_with_cache(
+    text: str,
+    embed_fn: Callable[[str], list[float]],
+    model_name: str = "default",
+) -> tuple[list[float], str]:
+    """
+    Получить embedding с использованием кэша.
+
+    Args:
+        text: Текст для embedding
+        embed_fn: Функция получения embedding (TEI вызов)
+        model_name: Название модели (для разделения кэшей)
+
+    Returns:
+        tuple[embedding, source] где source = "cache" | "tei"
+    """
+    cache = get_cache_service()
+
+    # Нормализуем текст для cache key
+    normalized = CacheService._normalize_question(text)
+    hash_val = hashlib.sha256(normalized.encode()).hexdigest()[:16]
+    cache_key = f"rag:emb:{model_name}:{hash_val}"
+
+    # 1. Try cache
+    if cache.available:
+        cached = cache._safe_get(cache_key)
+        if cached:
+            try:
+                embedding = json.loads(cached)
+                logger.debug("Embedding from cache: text=%r", text[:50])
+                return embedding, "cache"
+            except json.JSONDecodeError:
+                pass
+
+    # 2. TEI fallback
+    embedding = embed_fn(text)
+
+    # 3. Cache result
+    if cache.available:
+        try:
+            cache._safe_set(
+                cache_key,
+                json.dumps(embedding),
+                ttl=cache.settings.embedding_cache_ttl,
+            )
+            logger.debug("Embedding cached: text=%r", text[:50])
+        except Exception as e:
+            logger.warning("Failed to cache embedding: %s", e)
+
+    return embedding, "tei"
+
+
+def invalidate_embedding_cache() -> int:
+    """
+    Инвалидировать все embedding кэши.
+
+    Вызывается при смене embedding модели.
+    """
+    cache = get_cache_service()
+    if not cache.available:
+        return 0
+
+    try:
+        deleted = 0
+        for key in cache.redis.scan_iter("rag:emb:*"):
+            cache.redis.delete(key)
+            deleted += 1
+        logger.info("Embedding cache invalidated: %d keys", deleted)
+        return deleted
+    except Exception as e:
+        logger.warning("Embedding cache invalidation failed: %s", e)
+        return 0
+```
+
+### 3.2 Интеграция в `app/rag/retrieval.py`
+
+В методе `HybridRetriever.retrieve()` или `_dense_search()`:
+
+```python
+from ..cache.embedding_cache import get_embedding_with_cache
+
+# Было:
+query_embedding = self.embeddings.embed_query(query)
+
+# Стало:
+query_embedding, emb_source = get_embedding_with_cache(
+    query,
+    embed_fn=self.embeddings.embed_query,
+    model_name="multilingual-e5-base",
+)
+logger.debug("Query embedding source: %s", emb_source)
+```
+
+### 3.3 Settings (уже добавлены в P1)
+
+```python
+# app/settings.py - уже есть:
+embedding_cache_ttl: int = 86400  # 24 часа
+```
+
+### 3.4 Инвалидация при смене модели
+
+Embedding кэш НЕ инвалидируется при изменении контента (в отличие от Plan Cache),
+т.к. embeddings зависят только от текста запроса, не от данных.
+
+Инвалидировать нужно только при:
+- Смене embedding модели
+- Ручном сбросе (`/api/v1/admin/cache/embeddings` endpoint)
+
+```python
+# app/routers/admin.py - добавить endpoint:
+@router.delete("/cache/embeddings")
+def clear_embedding_cache():
+    from ..cache.embedding_cache import invalidate_embedding_cache
+    deleted = invalidate_embedding_cache()
+    return {"deleted": deleted}
+```
+
+## Структура файлов (обновление)
+
+```
+services/rag-api-new/app/
+├── cache/
+│   ├── __init__.py
+│   ├── cache_service.py
+│   ├── plan_cache.py
+│   └── embedding_cache.py        # НОВЫЙ (P3)
+├── rag/
+│   └── retrieval.py              # ИЗМЕНИТЬ (P3)
+└── routers/
+    └── admin.py                  # ИЗМЕНИТЬ (P3)
+```
+
+## Метрики успеха P3
+
+| Метрика | До P3 | После P3 |
+|---------|-------|----------|
+| Embed query time | ~50-200ms | ~1-5ms (cache hit) |
+| TEI load | Каждый запрос | Только cache miss |
+| Cache hit rate (embeddings) | 0% | ~80-90% |
+
+## Особенности
+
+1. **Размер кэша**: ~3KB на embedding (768 floats * 4 bytes ≈ 3KB JSON)
+2. **Redis memory**: ~3MB на 1000 уникальных запросов
+3. **TTL длиннее Plan Cache**: 24ч vs 1ч, т.к. embeddings стабильнее
+4. **Не инвалидируется при ingest**: embedding зависит только от текста запроса
+
+## Риски P3
+
+| Риск | Митигация |
+|------|-----------|
+| Redis memory overflow | TTL 24ч + maxmemory-policy allkeys-lru |
+| Stale после смены модели | Ручная инвалидация через admin endpoint |
+| JSON overhead | Приемлемо для 768 floats |
+
+---
+
 ## Отложено на будущее
 
 - [ ] GraphStore persistence (pickle на диск) — убрать необходимость ingest при рестарте
-- [ ] Embedding cache — кэширование embeddings запросов
 - [ ] Progressive rendering (frontend) — статусы "Ищу информацию..."
 - [ ] Метрики/мониторинг — Prometheus metrics для cache hit rate
 - [ ] A/B тестирование — сравнение latency с/без оптимизаций
