@@ -10,7 +10,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
-from app.deps import agent_app, settings
+from app.deps import agent_app
 from app.schemas.chat import ChatRequest
 from app.utils.logging_utils import compact_json, truncate_text
 
@@ -131,6 +131,31 @@ async def chat_stream(req: ChatRequest):
         thread_id,
         truncate_text(question, limit=800),
     )
+
+    # === Fast path for identity questions (semantic matching) ===
+    from app.agent.identity import is_identity_question, generate_identity_response
+
+    is_identity, similarity = is_identity_question(req.question)
+    if is_identity:
+        logger.info("Identity question detected (similarity=%.3f): %r", similarity, req.question)
+
+        async def identity_generator():
+            yield json.dumps(
+                {"type": "start", "message_id": message_id, "created_at": created_at},
+                ensure_ascii=False,
+            ) + "\n"
+            # Генерируем ответ через LLM
+            response = await generate_identity_response(req.question)
+            yield json.dumps({"type": "delta", "content": response}, ensure_ascii=False) + "\n"
+            yield json.dumps(
+                {"type": "end", "message_id": message_id, "finish_reason": "stop"},
+                ensure_ascii=False,
+            ) + "\n"
+
+        return StreamingResponse(
+            identity_generator(),
+            media_type="application/x-ndjson",
+        )
 
     state = {
         "messages": [HumanMessage(content=question)],
