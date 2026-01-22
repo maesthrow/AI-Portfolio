@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 
 from fastapi import APIRouter
 
 from app.deps import settings
+from app.prefetch import prefetch_popular_plans
 
 logger = logging.getLogger(__name__)
 from app.indexing.normalizer import normalize_export
@@ -63,6 +65,16 @@ def ingest_batch(payload: ExportPayload):
 
     # 5. Сохраняем новый hash
     cache.set_content_hash(new_hash)
+
+    # 6. Prefetch в фоне (не блокирует response)
+    def _background_prefetch():
+        try:
+            prefetch_popular_plans()
+        except Exception as e:
+            logger.warning("Background prefetch failed: %s", e)
+
+    threading.Thread(target=_background_prefetch, daemon=True).start()
+    logger.info("Background prefetch started")
 
     return IngestBatchResult(
         added=res.upserted,

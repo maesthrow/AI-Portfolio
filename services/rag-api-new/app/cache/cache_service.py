@@ -110,11 +110,22 @@ class CacheService:
 
     @staticmethod
     def _normalize_question(question: str) -> str:
-        """Нормализация вопроса для cache key."""
+        """
+        Нормализация вопроса для cache key и shortcuts matching.
+
+        Приводит разные формулировки к единому виду:
+        - "ML-проекты?" → "ml проекты"
+        - "расскажи о проектах Дмитрия" → "расскажи о проектах"
+
+        NOTE: LangGraph Agent добавляет имя владельца к вопросам,
+        убираем для унификации cache keys и shortcuts.
+        """
         s = question.lower().strip()
-        s = re.sub(r"[?!.,;:«»\"']+", "", s)
-        s = re.sub(r"[-–—]+", " ", s)
-        s = re.sub(r"\s+", " ", s).strip()
+        s = re.sub(r"[?!.,;:«»\"']+", "", s)  # Убрать пунктуацию
+        s = re.sub(r"[-–—]+", " ", s)          # Дефисы → пробелы
+        # Убираем имя владельца (агент добавляет контекст)
+        s = re.sub(r"\s+(дмитрия?|dmitriy?)\s*$", "", s, flags=re.IGNORECASE)
+        s = re.sub(r"\s+", " ", s).strip()     # Схлопнуть пробелы
         return s
 
     # === Plan Cache ===

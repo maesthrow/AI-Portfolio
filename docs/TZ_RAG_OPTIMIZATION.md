@@ -51,6 +51,11 @@
 
 **Новый файл**: `app/agent/planner/shortcuts.py`
 
+> **ВАЖНО**: LangGraph Agent модифицирует вопросы перед вызовом RAG tool,
+> добавляя имя владельца (например, "контакты" → "контакты Дмитрия").
+> Поэтому shortcuts использует `CacheService._normalize_question()` для
+> унификации с кэшированием.
+
 ```python
 """
 Plan Shortcuts - минимальный набор быстрых планов.
@@ -59,7 +64,8 @@ Plan Shortcuts - минимальный набор быстрых планов.
 Вопросы типа "кто ты", "что умеешь" НЕ должны быть здесь,
 т.к. агент отвечает о себе, а не о разработчике.
 
-Основная оптимизация достигается через Redis cache + Prefetch.
+NOTE: Нормализация вопросов выполняется через CacheService._normalize_question(),
+что убирает суффикс имени ("Дмитрия") добавляемый агентом.
 """
 from __future__ import annotations
 
@@ -69,10 +75,10 @@ import re
 from .schemas_v3 import (
     QueryPlanV3,
     IntentV3,
-    ToolCall,
+    ToolCallV3,
     RenderStyleV3,
     AnswerStyleV3,
-    Limits,
+    LimitsConfigV3,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,28 +86,29 @@ logger = logging.getLogger(__name__)
 
 # === ТОЛЬКО абсолютно однозначные случаи ===
 # Паттерны используют fullmatch (точное совпадение) для безопасности
+# NOTE: Имя владельца убирается через CacheService._normalize_question()
 
 SAFE_SHORTCUTS: dict[str, QueryPlanV3] = {
     # Контакты разработчика (не агента!) — однозначно
     r"контакты?|связаться|как связаться|email|телефон|telegram": QueryPlanV3(
         intents=[IntentV3.CONTACTS],
         entities=[],
-        tool_calls=[ToolCall(tool="graph_query_tool", args={"intent": "contacts"})],
+        tool_calls=[ToolCallV3(tool="graph_query_tool", args={"intent": "contacts"})],
         render_style=RenderStyleV3.BULLETS,
         answer_style=AnswerStyleV3.NATURAL_RU,
         confidence=0.95,
-        limits=Limits(),
+        limits=LimitsConfigV3(),
     ),
 
     # Текущая работа разработчика — однозначно
     r"где (сейчас )?работает|текущая работа|текущее место работы|current job": QueryPlanV3(
         intents=[IntentV3.CURRENT_JOB],
         entities=[],
-        tool_calls=[ToolCall(tool="graph_query_tool", args={"intent": "current_job"})],
+        tool_calls=[ToolCallV3(tool="graph_query_tool", args={"intent": "current_job"})],
         render_style=RenderStyleV3.SHORT,
         answer_style=AnswerStyleV3.CONCISE,
         confidence=0.95,
-        limits=Limits(),
+        limits=LimitsConfigV3(),
     ),
 }
 
@@ -110,25 +117,20 @@ def try_shortcut(question: str) -> QueryPlanV3 | None:
     """
     Попытка найти готовый план для однозначного вопроса.
 
-    КОНСЕРВАТИВНЫЙ подход:
-    - Только 2-3 абсолютно безопасных случая
-    - Используем regex match (не search) для точности
-    - Всё остальное → LLM (с последующим кэшированием)
-
-    Returns:
-        QueryPlanV3 если shortcut применим, иначе None (fallback to LLM + cache)
+    NOTE: Использует ту же нормализацию, что и CacheService для унификации
+    cache keys и shortcuts matching.
     """
-    normalized = question.lower().strip()
-
-    # Убираем знаки препинания для более надёжного матчинга
-    normalized = re.sub(r"[?!.,;:]+$", "", normalized).strip()
+    # Используем единую нормализацию из CacheService
+    from ...cache.cache_service import CacheService
+    normalized = CacheService._normalize_question(question)
 
     for pattern, plan in SAFE_SHORTCUTS.items():
         if re.fullmatch(pattern, normalized, re.IGNORECASE):
             logger.info(
-                "Shortcut matched: pattern=%r, question=%r",
+                "Shortcut matched: pattern=%r, question=%r, normalized=%r",
                 pattern[:30],
                 question[:50],
+                normalized[:50],
             )
             return plan.model_copy(deep=True)
 
@@ -554,18 +556,21 @@ class CacheService:
     @staticmethod
     def _normalize_question(question: str) -> str:
         """
-        Нормализация вопроса для cache key.
+        Нормализация вопроса для cache key и shortcuts matching.
 
         Приводит разные формулировки к единому виду:
         - "ML-проекты?" → "ml проекты"
-        - "Какие  проекты" → "какие проекты"
+        - "расскажи о проектах Дмитрия" → "расскажи о проектах"
 
-        Это увеличивает cache hit rate.
+        NOTE: LangGraph Agent добавляет имя владельца к вопросам,
+        убираем для унификации cache keys и shortcuts.
         """
         s = question.lower().strip()
         s = re.sub(r"[?!.,;:«»\"']+", "", s)  # Убрать пунктуацию
         s = re.sub(r"[-–—]+", " ", s)          # Дефисы → пробелы
-        s = re.sub(r"\s+", " ", s).strip()     # Схлопнуть множественные пробелы
+        # Убираем имя владельца (агент добавляет контекст)
+        s = re.sub(r"\s+(дмитрия?|dmitriy?)\s*$", "", s, flags=re.IGNORECASE)
+        s = re.sub(r"\s+", " ", s).strip()     # Схлопнуть пробелы
         return s
 
     # === Plan Cache ===

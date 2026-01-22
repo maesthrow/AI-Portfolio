@@ -6,9 +6,12 @@ Based on TZ v3: Universal intents + technology taxonomy + strict role control.
 from __future__ import annotations
 
 from enum import Enum
+import logging
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class TechCategory(str, Enum):
@@ -301,6 +304,40 @@ class QueryPlanV3(BaseModel):
         default=InfoNeed.SUMMARY,
         description="Type of information needed (V3 feature)"
     )
+
+    @field_validator("render_style", mode="before")
+    @classmethod
+    def fix_render_style(cls, v: Any) -> Any:
+        """
+        Fallback для невалидных значений render_style от LLM.
+
+        GigaChat иногда возвращает "natural_ru" вместо допустимых enum значений.
+        Маппим на sensible defaults чтобы избежать retry.
+        """
+        if not isinstance(v, str):
+            return v
+
+        # Маппинг невалидных значений на валидные
+        fallback_map = {
+            "natural_ru": "bullets",
+            "natural": "bullets",
+            "natural_en": "bullets",
+            "list": "bullets",
+            "bullet_list": "bullets",
+            "bulleted_list": "bullets",
+            "detailed": "paragraph",
+            "grouped": "grouped_bullets",
+            "grouped_list": "grouped_bullets",
+            "brief": "short",
+            "compact": "short",
+        }
+
+        v_lower = v.lower()
+        if v_lower in fallback_map:
+            logger.warning("render_style fallback: %r -> %r", v, fallback_map[v_lower])
+            return fallback_map[v_lower]
+
+        return v
 
     class Config:
         json_schema_extra = {

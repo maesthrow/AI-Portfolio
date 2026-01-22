@@ -8,6 +8,9 @@ Plan Shortcuts - минимальный набор быстрых планов.
 НЕ shortcuts: "кто ты", "что умеешь" (агент о себе, не о разработчике)
 
 Основная оптимизация достигается через Redis cache + Prefetch (см. Фазу 2).
+
+NOTE: Нормализация вопросов выполняется через CacheService._normalize_question(),
+что убирает суффикс имени ("Дмитрия") добавляемый агентом.
 """
 from __future__ import annotations
 
@@ -28,14 +31,11 @@ logger = logging.getLogger(__name__)
 
 # === ТОЛЬКО абсолютно однозначные случаи ===
 # Паттерны используют fullmatch (точное совпадение) для безопасности
-# NOTE: Agent добавляет "Дмитрия"/"Дмитрий" к вопросам, поэтому паттерны включают опциональный суффикс
-
-# Опциональный суффикс для имени (агент добавляет контекст)
-_NAME_SUFFIX = r"( дмитрия?| dmitriy)?"
+# NOTE: Имя владельца убирается через CacheService._normalize_question()
 
 SAFE_SHORTCUTS: dict[str, QueryPlanV3] = {
     # Контакты разработчика (не агента!) - однозначно
-    rf"(контакты?|связаться|как связаться|email|телефон|telegram){_NAME_SUFFIX}": QueryPlanV3(
+    r"контакты?|связаться|как связаться|email|телефон|telegram": QueryPlanV3(
         intents=[IntentV3.CONTACTS],
         entities=[],
         tool_calls=[ToolCallV3(tool="graph_query_tool", args={"intent": "contacts"})],
@@ -45,7 +45,7 @@ SAFE_SHORTCUTS: dict[str, QueryPlanV3] = {
         limits=LimitsConfigV3(),
     ),
     # Текущая работа разработчика - однозначно
-    rf"(где (сейчас )?работает|текущая работа|текущее место работы|current job){_NAME_SUFFIX}": QueryPlanV3(
+    r"где (сейчас )?работает|текущая работа|текущее место работы|current job": QueryPlanV3(
         intents=[IntentV3.CURRENT_JOB],
         entities=[],
         tool_calls=[ToolCallV3(tool="graph_query_tool", args={"intent": "current_job"})],
@@ -66,25 +66,28 @@ def try_shortcut(question: str) -> QueryPlanV3 | None:
     - Используем regex fullmatch для точности
     - Всё остальное -> LLM (с последующим кэшированием в Redis)
 
+    NOTE: Использует ту же нормализацию, что и CacheService для унификации
+    cache keys и shortcuts matching.
+
     Args:
         question: Вопрос пользователя
 
     Returns:
         QueryPlanV3 если shortcut применим, иначе None (fallback to LLM + cache)
     """
-    normalized = question.lower().strip()
-
-    # Убираем знаки препинания для более надёжного матчинга
-    normalized = re.sub(r"[?!.,;:]+$", "", normalized).strip()
+    # Используем единую нормализацию из CacheService
+    from ...cache.cache_service import CacheService
+    normalized = CacheService._normalize_question(question)
 
     for pattern, plan in SAFE_SHORTCUTS.items():
         if re.fullmatch(pattern, normalized, re.IGNORECASE):
             logger.info(
-                "Shortcut matched: pattern=%r, question=%r",
+                "Shortcut matched: pattern=%r, question=%r, normalized=%r",
                 pattern[:30],
                 question[:50],
+                normalized[:50],
             )
             return plan.model_copy(deep=True)
 
-    # Не нашли shortcut -> LLM (результат будет закэширован в Фазе 2)
+    # Не нашли shortcut -> LLM (результат будет закэширован)
     return None
