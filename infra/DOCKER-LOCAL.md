@@ -175,6 +175,12 @@ curl.exe -X DELETE "http://localhost:8004/api/v1/admin/collection"
 RAG использует Redis для кэширования планов и embeddings.
 
 ```bash
+# Статистика кэшей (количество ключей plan/embedding cache)
+curl.exe "http://localhost:8004/api/v1/admin/cache/stats"
+
+# Красивый вывод
+curl.exe -s "http://localhost:8004/api/v1/admin/cache/stats" | python -m json.tool
+
 # Очистить plan cache (после изменения промптов или логики планирования)
 curl.exe -X DELETE "http://localhost:8004/api/v1/admin/cache/plans"
 

@@ -42,3 +42,11 @@ class AllCacheClearResult(BaseModel):
     plans_deleted: int
     embeddings_deleted: int
     message: str
+
+
+class CacheStatsResult(BaseModel):
+    """Статистика кэшей."""
+    available: bool
+    plan_cache_keys: int
+    embedding_cache_keys: int
+    redis_url: str | None = None

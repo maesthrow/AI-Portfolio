@@ -188,19 +188,17 @@ docker logs -f ai-folio-rag-ingest-1
 
 ## RAG API Stats
 
+**Примечание:** В контейнере rag-api нет curl, используем Python urllib.
+
 ```bash
-# Статистика коллекции ChromaDB (из контейнера, т.к. порт не проброшен наружу)
-docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/api/v1/admin/stats"
+# Статистика коллекции ChromaDB
+docker exec ai-folio-rag-api-1 python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/admin/stats').read().decode())"
 
 # Красивый вывод JSON
-docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/api/v1/admin/stats" | python3 -m json.tool
-
-# Альтернатива - через docker network
-docker run --rm --network ai-folio_default curlimages/curl:latest \
-  curl -s "http://rag-api:8000/api/v1/admin/stats"
+docker exec ai-folio-rag-api-1 python -c "import urllib.request, json; print(json.dumps(json.loads(urllib.request.urlopen('http://localhost:8000/api/v1/admin/stats').read()), indent=2, ensure_ascii=False))"
 
 # Очистить коллекцию (ОСТОРОЖНО!)
-docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/collection"
+docker exec ai-folio-rag-api-1 python -c "import urllib.request; r=urllib.request.Request('http://localhost:8000/api/v1/admin/collection', method='DELETE'); print(urllib.request.urlopen(r).read().decode())"
 ```
 
 ---
@@ -208,17 +206,23 @@ docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admi
 ## RAG API Cache
 
 RAG использует Redis для кэширования планов и embeddings.
-На проде порты не проброшены, поэтому используем `docker exec`.
+На проде порты не проброшены, поэтому используем `docker exec` с Python.
 
 ```bash
+# Статистика кэшей (количество ключей plan/embedding cache)
+docker exec ai-folio-rag-api-1 python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/admin/cache/stats').read().decode())"
+
+# Красивый вывод
+docker exec ai-folio-rag-api-1 python -c "import urllib.request, json; print(json.dumps(json.loads(urllib.request.urlopen('http://localhost:8000/api/v1/admin/cache/stats').read()), indent=2))"
+
 # Очистить plan cache (после изменения промптов или логики планирования)
-docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/cache/plans"
+docker exec ai-folio-rag-api-1 python -c "import urllib.request; r=urllib.request.Request('http://localhost:8000/api/v1/admin/cache/plans', method='DELETE'); print(urllib.request.urlopen(r).read().decode())"
 
 # Очистить embedding cache (после смены embedding модели)
-docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/cache/embeddings"
+docker exec ai-folio-rag-api-1 python -c "import urllib.request; r=urllib.request.Request('http://localhost:8000/api/v1/admin/cache/embeddings', method='DELETE'); print(urllib.request.urlopen(r).read().decode())"
 
 # Очистить ВСЕ кэши (plans + embeddings)
-docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/cache"
+docker exec ai-folio-rag-api-1 python -c "import urllib.request; r=urllib.request.Request('http://localhost:8000/api/v1/admin/cache', method='DELETE'); print(urllib.request.urlopen(r).read().decode())"
 ```
 
 **Когда очищать кэши:**

@@ -13,6 +13,7 @@ from app.schemas.admin import (
     EmbeddingCacheClearResult,
     PlanCacheClearResult,
     AllCacheClearResult,
+    CacheStatsResult,
 )
 from app.cache.embedding_cache import invalidate_embedding_cache
 from app.cache.cache_service import get_cache_service
@@ -73,6 +74,43 @@ def collection_stats():
         total=total,
         by_type=by_type,
         graph_stats=graph_stats,
+    )
+
+
+@router.get("/admin/cache/stats", response_model=CacheStatsResult)
+def cache_stats():
+    """
+    Статистика кэшей Redis.
+
+    Показывает:
+    - Доступность Redis
+    - Количество ключей plan cache
+    - Количество ключей embedding cache
+    """
+    cache = get_cache_service()
+    if not cache.available:
+        return CacheStatsResult(
+            available=False,
+            plan_cache_keys=0,
+            embedding_cache_keys=0,
+            redis_url=None,
+        )
+
+    plan_keys = 0
+    emb_keys = 0
+    try:
+        for _ in cache.redis.scan_iter(f"{cache.PLAN_PREFIX}*"):
+            plan_keys += 1
+        for _ in cache.redis.scan_iter(f"{cache.EMB_PREFIX}*"):
+            emb_keys += 1
+    except Exception as e:
+        logger.warning("Failed to count cache keys: %s", e)
+
+    return CacheStatsResult(
+        available=True,
+        plan_cache_keys=plan_keys,
+        embedding_cache_keys=emb_keys,
+        redis_url=cache.settings.redis_url,
     )
 
 
