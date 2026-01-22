@@ -6,7 +6,8 @@ from fastapi import APIRouter
 
 from app.deps import chroma_client, settings, vectorstore
 from app.indexing import bm25
-from app.schemas.admin import ClearResult, StatsResult, GraphStats
+from app.schemas.admin import ClearResult, StatsResult, GraphStats, EmbeddingCacheClearResult
+from app.cache.embedding_cache import invalidate_embedding_cache
 
 router = APIRouter(prefix="/api/v1", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -65,3 +66,16 @@ def collection_stats():
         by_type=by_type,
         graph_stats=graph_stats,
     )
+
+
+@router.delete("/admin/cache/embeddings", response_model=EmbeddingCacheClearResult)
+def clear_embedding_cache():
+    """
+    Инвалидировать все embedding кэши.
+
+    Использовать при:
+    - Смене embedding модели
+    - Проблемах с кэшем
+    """
+    deleted = invalidate_embedding_cache()
+    return EmbeddingCacheClearResult(deleted=deleted, message="Embedding cache cleared")

@@ -23,3 +23,9 @@ class StatsResult(BaseModel):
     total: int
     by_type: dict[str, Any] | None = None
     graph_stats: GraphStats | None = None
+
+
+class EmbeddingCacheClearResult(BaseModel):
+    """Результат очистки embedding cache."""
+    deleted: int
+    message: str

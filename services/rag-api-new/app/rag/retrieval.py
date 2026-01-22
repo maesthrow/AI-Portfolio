@@ -1,8 +1,13 @@
 from __future__ import annotations
+import logging
 from typing import Any, List, Tuple
 from .types import Doc, Retriever
 from .utils import doc_id_of
 from ..indexing import bm25
+from ..cache.embedding_cache import get_embedding_with_cache
+from ..deps import embeddings, settings
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_by_ids(vs, ids: list[str], question: str) -> list[Doc]:
@@ -40,8 +45,16 @@ class DenseRetriever(Retriever):
         self.where = where
 
     def retrieve(self, question: str, k: int) -> list[Doc]:
-        docs = self.vs.similarity_search(question, k=k, filter=self.where) if self.where else \
-               self.vs.similarity_search(question, k=k)
+        # Получаем embedding с кэшированием
+        query_embedding, emb_source = get_embedding_with_cache(
+            question,
+            embed_fn=embeddings().embed_query,
+            model_name=settings().embedding_model or "default",
+        )
+        logger.info("DenseRetriever embedding source: %s", emb_source)
+
+        docs = self.vs.similarity_search_by_vector(query_embedding, k=k, filter=self.where) if self.where else \
+               self.vs.similarity_search_by_vector(query_embedding, k=k)
         return [Doc(d.page_content, d.metadata or {}) for d in docs]
 
 
@@ -73,7 +86,7 @@ def mmr_order(docs: list[Doc], question: str, k: int, diversity: float = 0.3) ->
     return out
 
 
-def expand_by_project(vs, question: str, base_docs: list[Doc], k_related: int = 48) -> list[Doc]:
+def expand_by_project(vs, question: str, base_docs: list[Doc], k_related: int = 48, query_embedding: list[float] | None = None) -> list[Doc]:
     proj_ids: list[int] = []
     seen = set()
     for d in base_docs:
@@ -84,8 +97,15 @@ def expand_by_project(vs, question: str, base_docs: list[Doc], k_related: int = 
     if not proj_ids:
         return list(base_docs)
     try:
-        related = vs.similarity_search(
-            question,
+        # Используем переданный embedding или получаем из кэша
+        if query_embedding is None:
+            query_embedding, _ = get_embedding_with_cache(
+                question,
+                embed_fn=embeddings().embed_query,
+                model_name=settings().embedding_model or "default",
+            )
+        related = vs.similarity_search_by_vector(
+            query_embedding,
             k=k_related,
             filter={"type": {"$in": ["project", "experience_project"]}, "project_id": {"$in": proj_ids}},
         )
@@ -126,9 +146,17 @@ class HybridRetriever:
         k_final: int,
         allowed_types: set[str] | None = None,
     ) -> list[Doc]:
+        # Получаем embedding с кэшированием
+        query_embedding, emb_source = get_embedding_with_cache(
+            question,
+            embed_fn=embeddings().embed_query,
+            model_name=settings().embedding_model or "default",
+        )
+        logger.info("HybridRetriever embedding source: %s", emb_source)
+
         where = {"type": {"$in": list(allowed_types)}} if allowed_types else None
-        dense_docs = self.vs.similarity_search(question, k=k_dense, filter=where) if where else \
-                     self.vs.similarity_search(question, k=k_dense)
+        dense_docs = self.vs.similarity_search_by_vector(query_embedding, k=k_dense, filter=where) if where else \
+                     self.vs.similarity_search_by_vector(query_embedding, k=k_dense)
         dense_pairs = []
         for i, d in enumerate(dense_docs):
             did = doc_id_of(d) or f"doc:{i}"
@@ -149,5 +177,6 @@ class HybridRetriever:
         docs = [Doc(d.page_content, d.metadata or {}) for d in candidates]
         docs = self._filter_types(docs, allowed_types)
         docs = mmr_order(docs, question, k=max(k_final * 2, k_final))
-        docs = expand_by_project(self.vs, question, docs, k_related=max(48, k_final * 6))
+        # Передаём embedding чтобы не вычислять повторно
+        docs = expand_by_project(self.vs, question, docs, k_related=max(48, k_final * 6), query_embedding=query_embedding)
         return docs

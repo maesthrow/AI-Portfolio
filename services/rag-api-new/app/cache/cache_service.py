@@ -92,15 +92,22 @@ class CacheService:
     # === Cache Invalidation ===
 
     def invalidate_all(self) -> int:
+        """
+        Удаляет plan cache при изменении контента.
+
+        NOTE: Embedding cache НЕ инвалидируется при ingest,
+        т.к. зависит только от текста запроса, не от данных.
+        Для очистки embedding cache используйте embedding_cache.invalidate_embedding_cache().
+        """
         if not self.available:
             return 0
         try:
             deleted = 0
-            for prefix in [self.PLAN_PREFIX, self.EMB_PREFIX]:
-                for key in self.redis.scan_iter(f"{prefix}*"):
-                    self.redis.delete(key)
-                    deleted += 1
-            logger.info("Cache invalidated: %d keys deleted", deleted)
+            # Только plan cache, НЕ embedding cache
+            for key in self.redis.scan_iter(f"{self.PLAN_PREFIX}*"):
+                self.redis.delete(key)
+                deleted += 1
+            logger.info("Plan cache invalidated: %d keys deleted", deleted)
             return deleted
         except Exception as e:
             logger.warning("Cache invalidation failed: %s", e)
