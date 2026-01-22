@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # 0.92 - консервативный порог, чтобы не ловить:
 # - "расскажи об ML-проектах" (similarity ~0.87 с "расскажи о себе")
 # - "кто такой Дмитрий" (similarity ~0.86 с "кто ты такой")
-SIMILARITY_THRESHOLD = 0.94
+SIMILARITY_THRESHOLD = 0.92
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
