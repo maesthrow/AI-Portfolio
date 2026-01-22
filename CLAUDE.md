@@ -127,6 +127,7 @@ User Response (streaming or direct)
 - `admin.py` - Admin endpoints:
   - DELETE `/api/v1/admin/collection` - Clear ChromaDB collection
   - GET `/api/v1/admin/stats` - Collection and graph statistics
+  - GET `/api/v1/admin/cache/stats` - Cache statistics (Redis availability, key counts)
   - DELETE `/api/v1/admin/cache/plans` - Clear plan cache
   - DELETE `/api/v1/admin/cache/embeddings` - Clear embedding cache
   - DELETE `/api/v1/admin/cache` - Clear all caches
@@ -134,6 +135,12 @@ User Response (streaming or direct)
 **Agent System** (`app/agent/`):
 - `graph.py` - LangGraph agent with ReAct pattern and memory
 - `rag_tool.py` - RAG tool for agent
+
+**Identity Handler** (`app/agent/identity/`):
+- `classifier.py` - Semantic matching for identity questions ("кто ты", "что умеешь")
+- `prompts.py` - Identity response prompt with CAPABILITIES list (easily extensible)
+- Uses embedding similarity (threshold 0.94) to detect identity questions
+- Bypasses full RAG pipeline for fast, consistent responses about the agent itself
 
 **Planner** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-based query plan generator with structured output
@@ -765,6 +772,9 @@ Key variables (see `infra/.env.dev`):
 - `PLAN_CACHE_TTL` - Plan cache TTL in seconds (default: 3600)
 - `EMBEDDING_CACHE_TTL` - Embedding cache TTL in seconds (default: 86400)
 
+**Rerank Settings:**
+- `max_rerank_candidates` - Max documents for reranker (default: 80, limits CPU time)
+
 **Vector Database:**
 - `CHROMA_HOST` - ChromaDB host
 - `CHROMA_PORT` - ChromaDB port (default: 8001 external, 8000 internal)
@@ -889,7 +899,8 @@ AI-Portfolio/
 │   │   │   ├── agent/              # Agent system
 │   │   │   │   ├── graph.py        # LangGraph agent
 │   │   │   │   ├── rag_tool.py     # RAG tool
-│   │   │   │   ├── planner/        # LLM planner (planner_llm.py, schemas_v3.py, prompts.py)
+│   │   │   │   ├── identity/       # Identity question handler (classifier.py, prompts.py)
+│   │   │   │   ├── planner/        # LLM planner (planner_llm.py, schemas_v3.py, prompts.py, shortcuts.py)
 │   │   │   │   ├── scope_guard/    # Off-topic detection (scope_guard.py, schemas.py)
 │   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
 │   │   │   │   ├── normalizer/     # Fact normalizer (normalizer.py, fact_bundle.py)

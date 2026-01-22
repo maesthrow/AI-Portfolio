@@ -127,6 +127,7 @@
 - `admin.py` - Админские эндпоинты:
   - DELETE `/api/v1/admin/collection` - Очистка коллекции ChromaDB
   - GET `/api/v1/admin/stats` - Статистика коллекции и графа
+  - GET `/api/v1/admin/cache/stats` - Статистика кэшей (доступность Redis, количество ключей)
   - DELETE `/api/v1/admin/cache/plans` - Очистка plan cache
   - DELETE `/api/v1/admin/cache/embeddings` - Очистка embedding cache
   - DELETE `/api/v1/admin/cache` - Очистка всех кэшей
@@ -134,6 +135,12 @@
 **Агентная система** (`app/agent/`):
 - `graph.py` - LangGraph агент с ReAct паттерном и памятью
 - `rag_tool.py` - RAG тулза для агента
+
+**Identity Handler** (`app/agent/identity/`):
+- `classifier.py` - Semantic matching для identity-вопросов ("кто ты", "что умеешь")
+- `prompts.py` - Промпт ответа с CAPABILITIES списком (легко расширяемый)
+- Использует embedding similarity (порог 0.94) для детекции identity-вопросов
+- Обходит полный RAG pipeline для быстрых, стабильных ответов об агенте
 
 **Планировщик** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-планировщик запросов со structured output
@@ -756,6 +763,9 @@ BM25 индекс хранится на диске:
 - `PLAN_CACHE_TTL` - TTL plan cache в секундах (по умолчанию 3600)
 - `EMBEDDING_CACHE_TTL` - TTL embedding cache в секундах (по умолчанию 86400)
 
+**Rerank настройки:**
+- `max_rerank_candidates` - Максимум документов для реранкера (по умолчанию 80, ограничивает CPU-время)
+
 **Векторная БД:**
 - `CHROMA_HOST` - хост ChromaDB
 - `CHROMA_PORT` - порт ChromaDB (по умолчанию 8001 внешний / 8000 внутренний)
@@ -879,7 +889,8 @@ AI-Portfolio/
 │   │   │   ├── agent/              # Агентная система
 │   │   │   │   ├── graph.py        # LangGraph агент
 │   │   │   │   ├── rag_tool.py     # RAG тулза
-│   │   │   │   ├── planner/        # LLM планировщик (planner_llm.py, schemas_v3.py, prompts.py)
+│   │   │   │   ├── identity/       # Identity handler (classifier.py, prompts.py)
+│   │   │   │   ├── planner/        # LLM планировщик (planner_llm.py, schemas_v3.py, prompts.py, shortcuts.py)
 │   │   │   │   ├── scope_guard/    # Off-topic детекция (scope_guard.py, schemas.py)
 │   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
 │   │   │   │   ├── normalizer/     # Fact normalizer (normalizer.py, fact_bundle.py)
