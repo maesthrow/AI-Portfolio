@@ -5,7 +5,20 @@ import CustomCursor from "@/components/ui/CustomCursor";
 
 export const metadata: Metadata = {
   title: "AI-Portfolio — Дмитрий Каргин",
-  description: "Киберпанк-портфолио с данными из content-api и AI-агентом."
+  description: "Киберпанк-портфолио с AI-агентом.",
+  openGraph: {
+    title: "AI-Portfolio — Дмитрий Каргин",
+    description: "Киберпанк-портфолио с AI-агентом.",
+    images: [
+      {
+        url: "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
+        width: 400,
+        height: 400,
+        alt: "Дмитрий Каргин",
+      },
+    ],
+    url: "https://ai-folio.ru",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
