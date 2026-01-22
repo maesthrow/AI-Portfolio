@@ -119,6 +119,9 @@
 - `app/main.py` - FastAPI приложение с роутерами, health endpoints (`/healthz`, `/meta`)
 - `app/settings.py` - Pydantic настройки с температурами LLM
 - `app/deps.py` - Общие зависимости (инстансы LLM, vectorstore, reranker)
+- `app/prefetch.py` - Прогрев кэша для популярных вопросов
+  - `POPULAR_QUESTIONS` - Список частых вопросов в user-style и agent-style формулировках
+  - `prefetch_popular_plans()` - Прогревает Redis кэш после ingest (~60-70% cache hit rate)
 
 **API роутеры** (`app/routers/`):
 - `chat.py` - POST `/api/v1/agent/chat/stream` - Стриминговый чат с NDJSON
@@ -135,10 +138,24 @@
 - `graph.py` - LangGraph агент с ReAct паттерном и памятью
 - `rag_tool.py` - RAG тулза для агента
 
+**Identity** (`app/agent/identity/`):
+- `classifier.py` - Semantic matching для identity-вопросов ("кто ты", "что умеешь")
+  - Использует embedding similarity вместо regex для устойчивости к опечаткам и перефразировкам
+  - `SIMILARITY_THRESHOLD = 0.94` для консервативного matching
+  - `is_identity_question(question)` возвращает `(is_identity, max_similarity)`
+  - `generate_identity_response(question)` генерирует LLM-ответ о возможностях агента
+- `prompts.py` - Промпты и список возможностей
+  - `CAPABILITIES` - Список возможностей агента (легко расширяемый)
+  - `IDENTITY_REFERENCE_QUESTIONS` - Референсные вопросы для semantic matching
+  - `get_identity_system_prompt()` - Генерирует системный промпт с актуальными возможностями
+
 **Планировщик** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-планировщик запросов со structured output
 - `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCall, RenderStyleV3, AnswerStyleV3
 - `prompts.py` - Системные промпты для планировщика (intents, tools, entity extraction)
+- `shortcuts.py` - Шорткаты планов для однозначных вопросов (контакты, текущая работа, кто разработчик)
+  - `SAFE_SHORTCUTS` - Dict regex-паттернов к готовым QueryPlanV3
+  - `try_shortcut(question)` - Возвращает план если shortcut подходит, иначе None (fallback на LLM)
 
 **TechCategory** (для фильтрации технологий):
 - `language` - Языки программирования (Python, C#, JavaScript, SQL)
@@ -876,10 +893,12 @@ AI-Portfolio/
 │   │   │   ├── main.py             # FastAPI с роутерами
 │   │   │   ├── settings.py         # Pydantic-настройки (температуры и др.)
 │   │   │   ├── deps.py             # Общие зависимости (LLMs, vectorstore)
+│   │   │   ├── prefetch.py         # Прогрев кэша для популярных вопросов
 │   │   │   ├── agent/              # Агентная система
 │   │   │   │   ├── graph.py        # LangGraph агент
 │   │   │   │   ├── rag_tool.py     # RAG тулза
-│   │   │   │   ├── planner/        # LLM планировщик (planner_llm.py, schemas_v3.py, prompts.py)
+│   │   │   │   ├── identity/       # Identity-вопросы (classifier.py, prompts.py)
+│   │   │   │   ├── planner/        # LLM планировщик (planner_llm.py, schemas_v3.py, prompts.py, shortcuts.py)
 │   │   │   │   ├── scope_guard/    # Off-topic детекция (scope_guard.py, schemas.py)
 │   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
 │   │   │   │   ├── normalizer/     # Fact normalizer (normalizer.py, fact_bundle.py)

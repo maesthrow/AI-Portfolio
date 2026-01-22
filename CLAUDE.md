@@ -119,6 +119,9 @@ User Response (streaming or direct)
 - `app/main.py` - FastAPI app with routers, health endpoints (`/healthz`, `/meta`)
 - `app/settings.py` - Pydantic settings with LLM temperatures
 - `app/deps.py` - Shared dependencies (LLM instances, vectorstore, reranker)
+- `app/prefetch.py` - Cache warmup for popular questions
+  - `POPULAR_QUESTIONS` - List of common questions in both user-style and agent-style
+  - `prefetch_popular_plans()` - Warms up Redis cache after ingest (~60-70% cache hit rate)
 
 **API Routers** (`app/routers/`):
 - `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON
@@ -135,10 +138,24 @@ User Response (streaming or direct)
 - `graph.py` - LangGraph agent with ReAct pattern and memory
 - `rag_tool.py` - RAG tool for agent
 
+**Identity** (`app/agent/identity/`):
+- `classifier.py` - Semantic matching for identity questions ("who are you", "what can you do")
+  - Uses embedding similarity instead of regex for robustness to typos and paraphrases
+  - `SIMILARITY_THRESHOLD = 0.94` for conservative matching
+  - `is_identity_question(question)` returns `(is_identity, max_similarity)`
+  - `generate_identity_response(question)` generates LLM response about agent capabilities
+- `prompts.py` - Identity prompts and capabilities list
+  - `CAPABILITIES` - List of agent capabilities (easily extensible)
+  - `IDENTITY_REFERENCE_QUESTIONS` - Reference questions for semantic matching
+  - `get_identity_system_prompt()` - Generates system prompt with current capabilities
+
 **Planner** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-based query plan generator with structured output
 - `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCall, RenderStyleV3, AnswerStyleV3
 - `prompts.py` - System prompts for planner (intents, tools, entity extraction)
+- `shortcuts.py` - Plan shortcuts for unambiguous questions (contacts, current job, who is developer)
+  - `SAFE_SHORTCUTS` - Dict of regex patterns to pre-built QueryPlanV3
+  - `try_shortcut(question)` - Returns plan if shortcut matches, else None (falls back to LLM)
 
 **TechCategory** (for technology filtering):
 - `language` - Programming languages (Python, C#, JavaScript, SQL)
@@ -886,10 +903,12 @@ AI-Portfolio/
 │   │   │   ├── main.py             # FastAPI app with routers
 │   │   │   ├── settings.py         # Pydantic settings (temperatures, etc.)
 │   │   │   ├── deps.py             # Shared dependencies (LLMs, vectorstore)
+│   │   │   ├── prefetch.py         # Cache warmup for popular questions
 │   │   │   ├── agent/              # Agent system
 │   │   │   │   ├── graph.py        # LangGraph agent
 │   │   │   │   ├── rag_tool.py     # RAG tool
-│   │   │   │   ├── planner/        # LLM planner (planner_llm.py, schemas_v3.py, prompts.py)
+│   │   │   │   ├── identity/       # Identity questions (classifier.py, prompts.py)
+│   │   │   │   ├── planner/        # LLM planner (planner_llm.py, schemas_v3.py, prompts.py, shortcuts.py)
 │   │   │   │   ├── scope_guard/    # Off-topic detection (scope_guard.py, schemas.py)
 │   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
 │   │   │   │   ├── normalizer/     # Fact normalizer (normalizer.py, fact_bundle.py)
