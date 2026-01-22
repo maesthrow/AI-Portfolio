@@ -124,7 +124,12 @@ User Response (streaming or direct)
 - `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON
 - `ingest.py` - POST `/api/v1/ingest` - Single document ingestion
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Batch import from ExportPayload
-- `admin.py` - DELETE `/api/v1/admin/collection`, GET `/api/v1/admin/stats`
+- `admin.py` - Admin endpoints:
+  - DELETE `/api/v1/admin/collection` - Clear ChromaDB collection
+  - GET `/api/v1/admin/stats` - Collection and graph statistics
+  - DELETE `/api/v1/admin/cache/plans` - Clear plan cache
+  - DELETE `/api/v1/admin/cache/embeddings` - Clear embedding cache
+  - DELETE `/api/v1/admin/cache` - Clear all caches
 
 **Agent System** (`app/agent/`):
 - `graph.py` - LangGraph agent with ReAct pattern and memory
@@ -132,8 +137,22 @@ User Response (streaming or direct)
 
 **Planner** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-based query plan generator with structured output
-- `schemas_v3.py` - QueryPlanV3, IntentV3, EntityV2, ToolCall, RenderStyleV3, AnswerStyleV3
+- `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCall, RenderStyleV3, AnswerStyleV3
 - `prompts.py` - System prompts for planner (intents, tools, entity extraction)
+
+**TechCategory** (for technology filtering):
+- `language` - Programming languages (Python, C#, JavaScript, SQL)
+- `database` - Databases (PostgreSQL, MongoDB, Redis)
+- `vector_store` - Vector databases (ChromaDB, Qdrant, pgvector)
+- `framework` - Frameworks (FastAPI, React, Django)
+- `ml_framework` - ML frameworks (LangChain, LangGraph, vLLM)
+- `mlops` - MLOps tools (MLFlow, LiteLLM)
+- `concept` - Concepts (RAG, LLM, ReAct)
+- `tool` - Tools (Docker, Git)
+- `message_broker` - Message brokers (RabbitMQ, Kafka)
+- `library` - Libraries (SQLAlchemy, Alembic, pytest)
+- `cloud` - Cloud services
+- `other` - Other technologies
 
 **Intents (IntentV3):**
 - `CURRENT_JOB` - Current position
@@ -197,6 +216,16 @@ User Response (streaming or direct)
 - `chunker.py` - Text chunking (~900 chars, Russian-aware)
 - `bm25.py` - BM25Index implementation
 - `persistence.py` - BM25 persistence (`~/.bm25.{collection}.pkl`)
+
+**Cache** (`app/cache/`):
+- `cache_service.py` - CacheService with Redis graceful degradation
+- `plan_cache.py` - Plan caching with shortcuts and LLM fallback
+- `embedding_cache.py` - Embedding caching for query vectors
+- Features:
+  - Redis-based caching with configurable TTL
+  - Automatic plan cache invalidation on content hash change
+  - Question normalization for cache key consistency
+  - Graceful degradation when Redis is unavailable
 
 **LLM Adapters** (`app/llm/`):
 - `gigachat_adapter.py` - GigaChat adapter for LangChain
@@ -730,6 +759,12 @@ Key variables (see `infra/.env.dev`):
 - `planner_temperature` - LLM temperature for planner (default: 0.0 for deterministic)
 - `answer_temperature` - LLM temperature for answer generation (default: 0.2)
 
+**Redis Cache:**
+- `REDIS_URL` - Redis connection URL (e.g., `redis://localhost:6379/0`)
+- `CACHE_ENABLED` - Enable/disable caching (default: true)
+- `PLAN_CACHE_TTL` - Plan cache TTL in seconds (default: 3600)
+- `EMBEDDING_CACHE_TTL` - Embedding cache TTL in seconds (default: 86400)
+
 **Vector Database:**
 - `CHROMA_HOST` - ChromaDB host
 - `CHROMA_PORT` - ChromaDB port (default: 8001 external, 8000 internal)
@@ -792,6 +827,12 @@ Key variables (see `infra/.env.dev`):
     - `rag-api` uses `chroma_collection=portfolio`
     - `rag-api-new` uses `chroma_collection=portfolio_new`
     - Data must be ingested separately to each
+
+13. **Cache Invalidation**:
+    - Plan cache auto-invalidates when content hash changes (after ingest)
+    - Embedding cache does NOT auto-invalidate (depends only on query text)
+    - After changing `prompts.py` or planner logic: clear plan cache via `/api/v1/admin/cache/plans`
+    - After changing embedding model: clear embedding cache via `/api/v1/admin/cache/embeddings`
 
 ---
 
@@ -877,6 +918,10 @@ AI-Portfolio/
 │   │   │   │   ├── chunker.py      # Text chunking
 │   │   │   │   ├── bm25.py         # BM25 index
 │   │   │   │   └── persistence.py  # BM25 persistence
+│   │   │   ├── cache/              # Redis caching
+│   │   │   │   ├── cache_service.py # CacheService with graceful degradation
+│   │   │   │   ├── plan_cache.py   # Plan caching (shortcut → cache → LLM)
+│   │   │   │   └── embedding_cache.py # Query embedding cache
 │   │   │   ├── llm/                # LLM adapters
 │   │   │   │   └── gigachat_adapter.py
 │   │   │   ├── routers/            # API routers
