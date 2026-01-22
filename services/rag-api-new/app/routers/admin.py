@@ -6,8 +6,16 @@ from fastapi import APIRouter
 
 from app.deps import chroma_client, settings, vectorstore
 from app.indexing import bm25
-from app.schemas.admin import ClearResult, StatsResult, GraphStats, EmbeddingCacheClearResult
+from app.schemas.admin import (
+    ClearResult,
+    StatsResult,
+    GraphStats,
+    EmbeddingCacheClearResult,
+    PlanCacheClearResult,
+    AllCacheClearResult,
+)
 from app.cache.embedding_cache import invalidate_embedding_cache
+from app.cache.cache_service import get_cache_service
 
 router = APIRouter(prefix="/api/v1", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -79,3 +87,37 @@ def clear_embedding_cache():
     """
     deleted = invalidate_embedding_cache()
     return EmbeddingCacheClearResult(deleted=deleted, message="Embedding cache cleared")
+
+
+@router.delete("/admin/cache/plans", response_model=PlanCacheClearResult)
+def clear_plan_cache():
+    """
+    Инвалидировать все plan кэши.
+
+    Использовать при:
+    - Изменении PLANNER_SYSTEM_PROMPT
+    - Изменении логики планирования
+    - Проблемах с кэшем
+    """
+    cache = get_cache_service()
+    deleted = cache.invalidate_all()
+    return PlanCacheClearResult(deleted=deleted, message="Plan cache cleared")
+
+
+@router.delete("/admin/cache", response_model=AllCacheClearResult)
+def clear_all_cache():
+    """
+    Инвалидировать ВСЕ кэши (plans + embeddings).
+
+    Использовать при:
+    - Полном сбросе системы
+    - Серьёзных проблемах с кэшем
+    """
+    cache = get_cache_service()
+    plans_deleted = cache.invalidate_all()
+    embeddings_deleted = invalidate_embedding_cache()
+    return AllCacheClearResult(
+        plans_deleted=plans_deleted,
+        embeddings_deleted=embeddings_deleted,
+        message="All caches cleared",
+    )

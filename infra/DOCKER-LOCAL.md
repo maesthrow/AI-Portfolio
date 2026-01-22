@@ -85,6 +85,61 @@ docker compose -p ai-portfolio-local -f docker-compose.local.yaml --env-file .en
 
 ---
 
+## Content API - Управление данными
+
+На локалке seeder запускается автоматически при старте content-api.
+Для ручного управления данными:
+
+```bash
+# Запустить seeder вручную (обновит/добавит данные)
+docker exec -it ai-portfolio-local-content-api-1 python -m app.seed.seed_ai_portfolio_new
+
+# Зайти в PostgreSQL
+docker exec -it ai-portfolio-local-postgres-1 psql -U ai_portfolio_user -d ai_portfolio_new
+
+# Очистить ВСЕ данные из таблиц (ОСТОРОЖНО!)
+docker exec -it ai-portfolio-local-postgres-1 psql -U ai_portfolio_user -d ai_portfolio_new -c "
+TRUNCATE TABLE
+  experience_project,
+  experience,
+  project_technology,
+  project,
+  technology,
+  publication,
+  contact,
+  stats,
+  tech_focus,
+  tech_focus_tag,
+  hero_tag,
+  focus_area_bullet,
+  focus_area,
+  work_approach_bullet,
+  work_approach,
+  section_meta,
+  profile
+CASCADE;"
+
+# После очистки - запустить seeder заново
+docker exec -it ai-portfolio-local-content-api-1 python -m app.seed.seed_ai_portfolio_new
+
+# После обновления данных в content-api - перезапустить ingest в RAG
+docker compose -p ai-portfolio-local -f docker-compose.local.yaml --env-file .env.local restart rag-ingest
+```
+
+**Полный сброс данных (удаление volume):**
+```bash
+# Остановить сервисы
+docker compose -p ai-portfolio-local -f docker-compose.local.yaml --env-file .env.local down
+
+# Удалить volume PostgreSQL (УДАЛИТ ВСЕ ДАННЫЕ!)
+docker volume rm ai-portfolio-local_pg_data
+
+# Запустить заново (миграции + seeder выполнятся автоматически)
+docker compose -p ai-portfolio-local -f docker-compose.local.yaml --env-file .env.local up -d
+```
+
+---
+
 ## RAG Ingest
 
 На локалке `rag-ingest` запускается автоматически при `up`.
@@ -104,14 +159,40 @@ docker compose -p ai-portfolio-local -f docker-compose.local.yaml --env-file .en
 
 ```bash
 # Статистика коллекции ChromaDB (количество документов по типам)
-curl "http://localhost:8004/admin/stats"
+curl.exe "http://localhost:8004/api/v1/admin/stats"
 
 # Красивый вывод JSON
-curl -s "http://localhost:8004/admin/stats" | python -m json.tool
+curl.exe -s "http://localhost:8004/api/v1/admin/stats" | python -m json.tool
 
 # Очистить коллекцию (ОСТОРОЖНО!)
-curl -X DELETE "http://localhost:8004/admin/collection"
+curl.exe -X DELETE "http://localhost:8004/api/v1/admin/collection"
 ```
+
+---
+
+## RAG API Cache
+
+RAG использует Redis для кэширования планов и embeddings.
+
+```bash
+# Очистить plan cache (после изменения промптов или логики планирования)
+curl.exe -X DELETE "http://localhost:8004/api/v1/admin/cache/plans"
+
+# Очистить embedding cache (после смены embedding модели)
+curl.exe -X DELETE "http://localhost:8004/api/v1/admin/cache/embeddings"
+
+# Очистить ВСЕ кэши (plans + embeddings)
+curl.exe -X DELETE "http://localhost:8004/api/v1/admin/cache"
+```
+
+**Когда очищать кэши:**
+- `plans` - изменили PLANNER_SYSTEM_PROMPT или логику планирования
+- `embeddings` - сменили embedding модель
+- `all` - полный сброс или серьёзные проблемы
+
+**Автоматическая инвалидация:**
+- Plan cache автоматически очищается при изменении данных (ingest с новым content hash)
+- Embedding cache НЕ инвалидируется при ingest (зависит только от текста запроса)
 
 ---
 

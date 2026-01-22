@@ -29,3 +29,16 @@ class EmbeddingCacheClearResult(BaseModel):
     """Результат очистки embedding cache."""
     deleted: int
     message: str
+
+
+class PlanCacheClearResult(BaseModel):
+    """Результат очистки plan cache."""
+    deleted: int
+    message: str
+
+
+class AllCacheClearResult(BaseModel):
+    """Результат очистки всех кэшей."""
+    plans_deleted: int
+    embeddings_deleted: int
+    message: str

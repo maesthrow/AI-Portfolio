@@ -24,6 +24,9 @@ class TechCategory(str, Enum):
     CLOUD = "cloud"
     LIBRARY = "library"
     CONCEPT = "concept"  # For RAG/ReAct/LLM as concepts
+    VECTOR_STORE = "vector_store"  # ChromaDB, Qdrant, pgvector
+    MLOPS = "mlops"  # MLFlow, LiteLLM, etc.
+    MESSAGE_BROKER = "message_broker"  # RabbitMQ, Kafka
     OTHER = "other"
 
 
@@ -520,6 +523,12 @@ def normalize_plan_values(plan: QueryPlanV3) -> QueryPlanV3:
         "lib": "library",
         "ml": "ml_framework",
         "ai": "concept",
+        "vector_db": "vector_store",
+        "vectorstore": "vector_store",
+        "vector": "vector_store",
+        "broker": "message_broker",
+        "queue": "message_broker",
+        "ml_ops": "mlops",
     }
 
     if "tech_filter" in data and "category" in data["tech_filter"]:

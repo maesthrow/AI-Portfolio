@@ -400,12 +400,13 @@ PROJECTS_DATA = [
             "Next.js",
             "FastAPI",
             "vLLM",
-            "Text Embeddings Inference",
+            "Embeddings",
             "ChromaDB",
             "RAG",
             "AI-агент",
             "Docker",
             "PostgreSQL",
+            "Redis",
         ],
     },
     {
@@ -694,11 +695,13 @@ TECHNOLOGIES_WITH_CATEGORIES = {
     "LangGraph": "ml_framework",
     "GigaChain": "ml_framework",
     "vLLM": "ml_framework",
-    "LiteLLM": "ml_framework",
-    "MLflow": "ml_framework",
     "Ultralytics": "ml_framework",
     "YOLO": "ml_framework",
     "Detectron2": "ml_framework",
+
+    # MLOps
+    "LiteLLM": "mlops",
+    "MLflow": "mlops",
 
     # Concept
     "RAG": "concept",

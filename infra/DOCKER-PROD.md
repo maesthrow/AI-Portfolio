@@ -107,6 +107,66 @@ docker compose -p ai-folio -f docker-compose-prod.yaml --env-file .env.prod rest
 
 ---
 
+## Content API - Управление данными
+
+На проде seeder НЕ запускается автоматически (только миграции).
+Данные сохраняются в `pg_data` volume между рестартами.
+
+```bash
+# Запустить seeder вручную (обновит/добавит данные)
+docker exec -it ai-folio-content-api-1 python -m app.seed.seed_ai_portfolio_new
+
+# Зайти в PostgreSQL
+docker exec -it ai-folio-postgres-1 psql -U $POSTGRES_USER -d $POSTGRES_DB
+
+# Очистить ВСЕ данные из таблиц (ОСТОРОЖНО!)
+docker exec -it ai-folio-postgres-1 psql -U $POSTGRES_USER -d $POSTGRES_DB -c "
+TRUNCATE TABLE
+  experience_project,
+  experience,
+  project_technology,
+  project,
+  technology,
+  publication,
+  contact,
+  stats,
+  tech_focus,
+  tech_focus_tag,
+  hero_tag,
+  focus_area_bullet,
+  focus_area,
+  work_approach_bullet,
+  work_approach,
+  section_meta,
+  profile
+CASCADE;"
+
+# После очистки - запустить seeder
+docker exec -it ai-folio-content-api-1 python -m app.seed.seed_ai_portfolio_new
+
+# После обновления данных - ОБЯЗАТЕЛЬНО перезапустить ingest
+docker compose -p ai-folio -f docker-compose-prod.yaml --env-file .env.prod --profile init up rag-ingest
+```
+
+**Полный сброс данных (удаление volume):**
+```bash
+# Остановить сервисы
+docker compose -p ai-folio -f docker-compose-prod.yaml --env-file .env.prod down
+
+# Удалить volume PostgreSQL (УДАЛИТ ВСЕ ДАННЫЕ!)
+docker volume rm ai-folio_pg_data
+
+# Запустить заново (миграции выполнятся автоматически)
+docker compose -p ai-folio -f docker-compose-prod.yaml --env-file .env.prod up -d
+
+# Подождать пока content-api поднимется, затем seeder + ingest
+sleep 15
+docker exec -it ai-folio-content-api-1 python -m app.seed.seed_ai_portfolio_new
+docker compose -p ai-folio -f docker-compose-prod.yaml --env-file .env.prod --profile init up rag-ingest
+```
+
+---
+
 ## RAG Ingest
 
 На проде `rag-ingest` НЕ запускается автоматически (использует `profiles: ["init"]`).
@@ -130,18 +190,45 @@ docker logs -f ai-folio-rag-ingest-1
 
 ```bash
 # Статистика коллекции ChromaDB (из контейнера, т.к. порт не проброшен наружу)
-docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/admin/stats"
+docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/api/v1/admin/stats"
 
 # Красивый вывод JSON
-docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/admin/stats" | python3 -m json.tool
+docker exec ai-folio-rag-api-1 curl -s "http://localhost:8000/api/v1/admin/stats" | python3 -m json.tool
 
 # Альтернатива - через docker network
 docker run --rm --network ai-folio_default curlimages/curl:latest \
-  curl -s "http://rag-api:8000/admin/stats"
+  curl -s "http://rag-api:8000/api/v1/admin/stats"
 
 # Очистить коллекцию (ОСТОРОЖНО!)
-docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/admin/collection"
+docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/collection"
 ```
+
+---
+
+## RAG API Cache
+
+RAG использует Redis для кэширования планов и embeddings.
+На проде порты не проброшены, поэтому используем `docker exec`.
+
+```bash
+# Очистить plan cache (после изменения промптов или логики планирования)
+docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/cache/plans"
+
+# Очистить embedding cache (после смены embedding модели)
+docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/cache/embeddings"
+
+# Очистить ВСЕ кэши (plans + embeddings)
+docker exec ai-folio-rag-api-1 curl -X DELETE "http://localhost:8000/api/v1/admin/cache"
+```
+
+**Когда очищать кэши:**
+- `plans` - изменили PLANNER_SYSTEM_PROMPT или логику планирования
+- `embeddings` - сменили embedding модель
+- `all` - полный сброс или серьёзные проблемы
+
+**Автоматическая инвалидация:**
+- Plan cache автоматически очищается при изменении данных (ingest с новым content hash)
+- Embedding cache НЕ инвалидируется при ingest (зависит только от текста запроса)
 
 ---
 

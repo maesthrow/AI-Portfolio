@@ -15,6 +15,22 @@ from .store import get_graph_store
 
 logger = logging.getLogger(__name__)
 
+# Human-readable category names for Answer LLM context
+CATEGORY_DISPLAY_NAMES = {
+    "language": "языки программирования",
+    "database": "базы данных",
+    "vector_store": "векторные БД",
+    "framework": "фреймворки",
+    "ml_framework": "ML-фреймворки",
+    "mlops": "MLOps-инструменты",
+    "concept": "концепции",
+    "tool": "инструменты",
+    "message_broker": "брокеры сообщений",
+    "library": "библиотеки",
+    "cloud": "облачные сервисы",
+    "other": "технологии",
+}
+
 
 def _node_to_source(node: GraphNode) -> Dict[str, Any]:
     """Преобразовать узел в формат source."""
@@ -693,7 +709,7 @@ def _projects_by_tech_category_query(
             "technologies": techs_used,
             "tech_count": len(techs_used),
             "category": category,
-            "text": f"{project.name} ({company_str}) — использует {tech_list}",
+            "text": f"{project.name} ({company_str}) — использует {CATEGORY_DISPLAY_NAMES.get(category, 'технологии')}: {tech_list}",
         })
         sources.append(_node_to_source(project))
 
