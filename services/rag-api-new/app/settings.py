@@ -90,6 +90,14 @@ class Settings(BaseSettings):
     embedding_cache_ttl: int = 86400
     """TTL для кэша embeddings в секундах (24 часа)"""
 
+    # === Rerank settings ===
+    max_rerank_candidates: int = 80
+    """Максимум документов для reranker (ограничение CPU-времени).
+
+    При 240 docs × ~17ms/doc = 4s. При 80 docs = ~1.3s.
+    Документы после лимита отбрасываются (уже отсортированы по RRF score).
+    """
+
     @property
     def chroma_client_kwargs(self) -> dict:
         return {"host": self.chroma_host, "port": self.chroma_port}
