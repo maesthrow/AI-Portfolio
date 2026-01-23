@@ -1,6 +1,7 @@
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyUrl
@@ -89,6 +90,25 @@ class Settings(BaseSettings):
 
     embedding_cache_ttl: int = 86400
     """TTL для кэша embeddings в секундах (24 часа)"""
+
+    # === Rate Limiting ===
+    rate_limit_enabled: bool = True
+    """Включение/выключение rate limiting"""
+
+    rate_limit_session_tokens: int = 20_000
+    """Лимит токенов на сессию за окно (по умолчанию 20K/час)"""
+
+    rate_limit_ip_tokens: int = 50_000
+    """Лимит токенов на IP за окно (по умолчанию 50K/час)"""
+
+    rate_limit_window_seconds: int = 3600
+    """Окно rate limit в секундах (по умолчанию 1 час)"""
+
+    rate_limit_warning_threshold: float = 0.8
+    """Порог для показа warning (0.8 = 80% использовано)"""
+
+    rate_limit_log_ip_mode: Literal["masked", "full"] = "masked"
+    """Режим логирования IP: masked (85.140.10.*) или full"""
 
     # === Rerank settings ===
     max_rerank_candidates: int = 80

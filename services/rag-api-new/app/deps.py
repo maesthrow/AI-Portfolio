@@ -155,3 +155,14 @@ def graph_store():
     """
     from .graph.store import get_graph_store
     return get_graph_store()
+
+
+@lru_cache()
+def rate_limiter():
+    """
+    Rate limiter singleton.
+
+    Ограничивает использование LLM токенов по сессии и IP.
+    """
+    from .rate_limit import RateLimiter
+    return RateLimiter(settings())

@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 from uuid import uuid4
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
-from app.deps import agent_app
+from app.deps import agent_app, rate_limiter
 from app.schemas.chat import ChatRequest
 from app.utils.logging_utils import compact_json, truncate_text
 
@@ -30,6 +30,31 @@ def _get_format_renderer():
 
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
+
+
+def _get_client_ip(request: Request) -> str:
+    """Получить реальный IP клиента (учитывая прокси)."""
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        return x_forwarded_for.split(",")[0].strip()
+    x_real_ip = request.headers.get("X-Real-IP")
+    if x_real_ip:
+        return x_real_ip
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+def _format_duration(seconds: int) -> str:
+    """Форматировать секунды в человекочитаемый формат."""
+    if seconds < 60:
+        return f"{seconds} сек"
+    minutes = (seconds + 59) // 60  # Округление вверх
+    if minutes == 1:
+        return "1 минуту"
+    if minutes < 5:
+        return f"{minutes} минуты"
+    return f"{minutes} минут"
 
 
 def _format_usage(raw: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -112,13 +137,48 @@ async def _iterate_agent_events(agent, state: dict[str, Any], config: dict[str, 
 
 
 @router.post("/agent/chat/stream")
-async def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, request: Request):
+    # === Rate Limiting ===
+    limiter = rate_limiter()
+
+    # Проверка доступности Redis (если rate_limit включен)
+    if not limiter.available:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "SERVICE_UNAVAILABLE",
+                "message": "AI-агент временно недоступен. Попробуйте позже"
+            }
+        )
+
+    # Получить идентификаторы
+    client_ip = _get_client_ip(request)
+    session_id = req.session_id or "anon"
+
+    # Проверка лимита ДО обработки
+    if limiter.settings.rate_limit_enabled:
+        allowed, rate_limit_info = limiter.check_limit(session_id, client_ip)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "RATE_LIMIT_EXCEEDED",
+                    "message": f"Достигнут лимит использования AI-агента. "
+                               f"Попробуйте снова через {_format_duration(rate_limit_info.reset_in_seconds)}",
+                    "details": {
+                        "exceeded_by": rate_limit_info.exceeded_by,
+                        "reset_in_seconds": rate_limit_info.reset_in_seconds,
+                        "reset_in_human": _format_duration(rate_limit_info.reset_in_seconds)
+                    }
+                }
+            )
+
     agent = agent_app()
 
     message_id = str(uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 
-    thread_id = req.session_id or "anon"
+    thread_id = session_id
     config = {"configurable": {"thread_id": thread_id}}
 
     question = req.question
@@ -228,8 +288,24 @@ async def chat_stream(req: ChatRequest):
         if not sent_delta and final_text:
             yield json.dumps({"type": "delta", "content": final_text}, ensure_ascii=False) + "\n"
 
+        # === Rate Limiting: записать usage ===
+        final_rate_limit = None
+        if limiter.settings.rate_limit_enabled and usage:
+            formatted_usage = _format_usage(usage)
+            total_tokens = (
+                formatted_usage.get("total_tokens") or 0
+                if formatted_usage else 0
+            )
+            if total_tokens > 0:
+                final_rate_limit = limiter.record_usage(session_id, client_ip, total_tokens)
+
         yield json.dumps(
-            {"type": "end", "message_id": message_id, "usage": _format_usage(usage)},
+            {
+                "type": "end",
+                "message_id": message_id,
+                "usage": _format_usage(usage),
+                "rate_limit": final_rate_limit.model_dump() if final_rate_limit else None,
+            },
             ensure_ascii=False,
         ) + "\n"
 
