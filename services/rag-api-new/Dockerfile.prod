@@ -6,9 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
   && rm -rf /var/lib/apt/lists/*
 
-# сначала только манифесты
+# сначала только манифест (uv.lock не нужен для pip)
 COPY pyproject.toml ./
-COPY uv.lock ./
 
 # 1. Устанавливаем CPU-only PyTorch ПЕРЕД остальными зависимостями
 #    Это экономит ~3.5GB (нет CUDA библиотек)
