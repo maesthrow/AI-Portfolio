@@ -621,6 +621,19 @@ pytest tests/
 
 **Формат LLM ID:** `provider:model` (например, `gigachat:GigaChat-2`, `deepseek:deepseek-reasoner`)
 
+**⚠️ Ограничение DeepSeek Reasoner:**
+Модель `deepseek-reasoner` (R1) **НЕ поддерживает** tool calling в LangChain/LangGraph из-за отсутствия поля `reasoning_content` в ответе.
+
+| Роль | DeepSeek Reasoner | DeepSeek Chat | Причина |
+|------|-------------------|---------------|---------|
+| `IDENTITY_LLM` | ⚠️ Избыточно | ✅ | Простые ответы |
+| `PLANNER_LLM` | ✅ | ✅ | Только structured output |
+| `ANSWER_LLM` | ⚠️ Избыточно | ✅ | Генерация текста |
+| `CRITIC_LLM` | ✅ | ✅ | Без tool calls |
+| `AGENT_LLM` | ❌ **НЕЛЬЗЯ** | ✅ | Требует tool calling |
+
+**Рекомендация:** Для `AGENT_LLM` используйте `gigachat:GigaChat-2` или `deepseek:deepseek-chat`, НЕ `deepseek:deepseek-reasoner`.
+
 **Архитектура:**
 ```
 ┌─────────────────────────────────────────────────────────────────┐

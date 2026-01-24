@@ -614,12 +614,23 @@ The system supports multiple LLM providers with role-based model selection:
 | Role | Purpose | Default Model | Temperature |
 |------|---------|---------------|-------------|
 | `identity` | "Who are you?" responses | `deepseek:deepseek-chat` | 0.3 |
-| `planner` | QueryPlanV3 generation | `deepseek:deepseek-reasoner` | 0.0 |
+| `planner` | QueryPlanV3 generation | `gigachat:GigaChat-2` | 0.0 |
 | `answer` | User-facing responses | `gigachat:GigaChat-2` | 0.2 |
 | `critic` | Fact sufficiency evaluation | `deepseek:deepseek-reasoner` | 0.2 |
 | `agent` | ReAct orchestration | `gigachat:GigaChat-2` | 0.2 |
 
 **LLM ID Format:** `provider:model` (e.g., `gigachat:GigaChat-2`, `deepseek:deepseek-reasoner`)
+
+**⚠️ DeepSeek Reasoner Limitation:**
+`deepseek-reasoner` (R1 model) does NOT support tool calling in LangChain/LangGraph due to missing `reasoning_content` field.
+
+| Role | DeepSeek Reasoner | DeepSeek Chat | Reason |
+|------|-------------------|---------------|--------|
+| `IDENTITY_LLM` | ⚠️ Overkill | ✅ | Simple responses |
+| `PLANNER_LLM` | ✅ | ✅ | Structured output only |
+| `ANSWER_LLM` | ⚠️ Overkill | ✅ | Text generation |
+| `CRITIC_LLM` | ✅ | ✅ | No tool calls |
+| `AGENT_LLM` | ❌ **CANNOT USE** | ✅ | Requires tool calling |
 
 **Architecture:**
 ```
