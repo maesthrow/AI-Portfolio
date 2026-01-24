@@ -301,8 +301,28 @@ async def chat_stream(req: ChatRequest, request: Request):
                     )
 
                     # Extract usage from rag_tool output
-                    if isinstance(tool_output, dict) and "usage" in tool_output:
-                        tool_usage = tool_output.get("usage") or {}
+                    # tool_output can be: dict, str (JSON), or LangChain message with .content
+                    parsed_output = None
+                    if isinstance(tool_output, dict):
+                        parsed_output = tool_output
+                    elif isinstance(tool_output, str):
+                        try:
+                            parsed_output = json.loads(tool_output)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    elif hasattr(tool_output, "content"):
+                        # LangChain ToolMessage or similar
+                        content = tool_output.content
+                        if isinstance(content, dict):
+                            parsed_output = content
+                        elif isinstance(content, str):
+                            try:
+                                parsed_output = json.loads(content)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
+                    if parsed_output and isinstance(parsed_output, dict) and "usage" in parsed_output:
+                        tool_usage = parsed_output.get("usage") or {}
                         by_role = tool_usage.get("by_role") or {}
                         for role, role_data in by_role.items():
                             if isinstance(role_data, dict):

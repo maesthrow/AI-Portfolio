@@ -102,15 +102,27 @@ class PlannerLLM:
         for attempt in range(self.max_retries + 1):
             try:
                 # Create structured LLM with Pydantic model
+                # include_raw=True to get both parsed result and raw AIMessage with usage_metadata
                 structured_llm = self.llm.with_structured_output(
                     QueryPlanV3,
                     method="json_schema",  # Use JSON schema for better compatibility
+                    include_raw=True,
                 )
 
-                result = structured_llm.invoke(messages)
+                raw_result = structured_llm.invoke(messages)
 
-                # Extract usage from the response
-                usage = self._extract_usage(result)
+                # Extract parsed result and raw message
+                # When include_raw=True, result is {"raw": AIMessage, "parsed": QueryPlanV3, "parsing_error": ...}
+                if isinstance(raw_result, dict) and "parsed" in raw_result:
+                    result = raw_result.get("parsed")
+                    raw_message = raw_result.get("raw")
+                    # Extract usage from raw AIMessage
+                    usage = self._extract_usage(raw_message)
+                else:
+                    # Fallback if include_raw not supported
+                    result = raw_result
+                    usage = self._extract_usage(result)
+
                 if usage:
                     accumulated_usage = self._merge_usage(accumulated_usage, usage)
 
