@@ -34,6 +34,10 @@ docs/
 .env
 .env.*
 
+# Lock files (pip uses pyproject.toml, not uv.lock)
+uv.lock
+poetry.lock
+
 # Misc
 *.log
 .DS_Store
