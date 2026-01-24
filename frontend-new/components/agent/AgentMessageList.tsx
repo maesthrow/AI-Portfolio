@@ -7,6 +7,8 @@ import { AgentMessage } from "@/lib/types";
 type AgentMessageListProps = {
   messages: AgentMessage[];
   typing?: boolean;
+  canRetry?: boolean;
+  onRetry?: (question: string) => void;
 };
 
 const TypingDots = () => (
@@ -40,7 +42,12 @@ const TypingDots = () => (
   </div>
 );
 
-export default function AgentMessageList({ messages, typing = false }: AgentMessageListProps) {
+export default function AgentMessageList({
+  messages,
+  typing = false,
+  canRetry = false,
+  onRetry
+}: AgentMessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,6 +55,28 @@ export default function AgentMessageList({ messages, typing = false }: AgentMess
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, typing]);
+
+  // Найти последнее сообщение пользователя без ответа
+  const findUnansweredUserMessage = (): string | null => {
+    if (messages.length === 0) return null;
+    const lastMsg = messages[messages.length - 1];
+    // Если последнее сообщение - от пользователя, значит нет ответа
+    if (lastMsg.role === "user") {
+      return lastMsg.id;
+    }
+    // Если последнее сообщение агента пустое или с ошибкой
+    if (lastMsg.role === "agent" && (!lastMsg.content || lastMsg.status === "error")) {
+      // Ищем предыдущее сообщение пользователя
+      for (let i = messages.length - 2; i >= 0; i--) {
+        if (messages[i].role === "user") {
+          return messages[i].id;
+        }
+      }
+    }
+    return null;
+  };
+
+  const unansweredId = findUnansweredUserMessage();
 
   return (
     <div
@@ -62,6 +91,7 @@ export default function AgentMessageList({ messages, typing = false }: AgentMess
         messages.map((m, idx) => {
           const isLast = idx === messages.length - 1;
           const showTyping = typing && m.role === "agent" && m.status === "streaming" && isLast;
+          const showRetry = canRetry && onRetry && m.id === unansweredId && m.role === "user";
 
           return (
             <div
@@ -73,9 +103,27 @@ export default function AgentMessageList({ messages, typing = false }: AgentMess
                   : "border-slate-700/70 bg-slate-900/60 text-slate-100"
               )}
             >
-              <p className="font-mono text-[10px] uppercase tracking-wider text-accent-soft/80">
-                {m.role === "user" ? "вы" : "агент"}
-              </p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-mono text-[10px] uppercase tracking-wider text-accent-soft/80">
+                  {m.role === "user" ? "вы" : "агент"}
+                </p>
+                {showRetry && (
+                  <button
+                    onClick={() => onRetry(m.content)}
+                    className="flex-shrink-0 p-1 rounded hover:bg-accent/20 transition-colors text-accent-soft hover:text-accent"
+                    title="Повторить запрос"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </div>
               <div className="mt-1 text-sm leading-relaxed">
                 {showTyping ? (
                   <TypingDots />

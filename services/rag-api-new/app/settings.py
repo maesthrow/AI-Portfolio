@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     rate_limit_ip_tokens: int = 4_500 # 50_000
     """Лимит токенов на IP за окно"""
 
-    rate_limit_window_seconds: int = 180  # 3600
+    rate_limit_window_seconds: int = 60  # 3600
     """Окно rate limit в секундах (по умолчанию 1 час)"""
 
     rate_limit_warning_threshold: float = 0.8

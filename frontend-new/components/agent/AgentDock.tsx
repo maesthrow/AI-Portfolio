@@ -427,6 +427,119 @@ export default function AgentDock() {
     }
   }, []);
 
+  // Retry сообщения пользователя (без добавления нового user message)
+  const handleMessageRetry = useCallback(async (question: string) => {
+    if (loading || rateLimitError) return;
+
+    const sessionId = sessionIdRef.current;
+    const tempId = `${Date.now()}-agent`;
+
+    const agentPlaceholder: AgentMessage = {
+      id: tempId,
+      tempId,
+      role: "agent",
+      content: "",
+      createdAt: Date.now(),
+      status: "streaming"
+    };
+
+    setMessages((prev) => [...prev, agentPlaceholder]);
+    setLoading(true);
+    setStreamingStarted(false);
+    releasePendingRef.current = false;
+
+    const controller = new AbortController();
+    streamControllerRef.current = controller;
+
+    activeAgentIdRef.current = tempId;
+    currentOutputIdRef.current = tempId;
+    charQueueRef.current = [];
+    stopCharPump();
+
+    try {
+      const stream = await callAgentStream(
+        { question, session_id: sessionId },
+        { signal: controller.signal }
+      );
+
+      for await (const event of stream as AsyncIterable<ChatStreamEvent>) {
+        if (event.type === "start" && event.message_id) {
+          currentOutputIdRef.current = event.message_id;
+          updateAgentMessage(tempId, (m) => ({ ...m, id: event.message_id }));
+        } else if (event.type === "delta") {
+          if (!streamingStarted) {
+            setStreamingStarted(true);
+          }
+          enqueueChars(tempId, event.content);
+          updateAgentMessage(tempId, (m) => ({
+            ...m,
+            status: "streaming"
+          }));
+        } else if (event.type === "end") {
+          if (event.rate_limit) {
+            if (event.rate_limit.show_warning) {
+              setRateLimitInfo(event.rate_limit);
+            } else {
+              setRateLimitInfo(null);
+            }
+            if (event.rate_limit.exceeded) {
+              setRateLimitError({
+                code: 'RATE_LIMIT_EXCEEDED',
+                message: 'Достигнут лимит использования AI-агента',
+                details: {
+                  exceeded: true,
+                  reset_in_seconds: event.rate_limit.reset_in_seconds,
+                  reset_in_human: '',
+                },
+              });
+            }
+          }
+        } else if (event.type === "error") {
+          updateAgentMessage(tempId, (m) => ({
+            ...m,
+            content: `Ошибка запроса: ${event.message}`,
+            status: "error"
+          }));
+        }
+      }
+
+      updateAgentMessage(tempId, (m) => ({
+        ...m,
+        status: m.status === "error" ? m.status : "done"
+      }));
+      releasePendingRef.current = true;
+      tryReleaseLoading();
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        stopCharPump();
+        charQueueRef.current = [];
+        updateAgentMessage(tempId, (m) => ({
+          ...m,
+          content: m.content || "Ответ остановлен.",
+          status: "stopped"
+        }));
+      } else if (isRateLimitError(err)) {
+        setRateLimitError(err);
+        setMessages(prev => prev.filter(m => m.id !== tempId && m.tempId !== tempId));
+      } else {
+        updateAgentMessage(tempId, (m) => ({
+          ...m,
+          content: "Не получилось связаться с агентом. Попробуй позже.",
+          status: "error"
+        }));
+      }
+      releasePendingRef.current = true;
+      tryReleaseLoading();
+    } finally {
+      streamControllerRef.current = null;
+      activeAgentIdRef.current = null;
+      if (!charQueueRef.current.length) {
+        stopCharPump();
+        tryReleaseLoading();
+      }
+    }
+  }, [loading, rateLimitError, enqueueChars, streamingStarted]);
+
   const buttonLabel = "AI-агент";
 
   return (
@@ -464,6 +577,7 @@ export default function AgentDock() {
             rateLimitInfo={rateLimitInfo}
             rateLimitError={rateLimitError}
             onRateLimitRetry={handleRateLimitRetry}
+            onMessageRetry={handleMessageRetry}
           />
         </div>
       ) : null}

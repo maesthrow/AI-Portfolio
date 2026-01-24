@@ -18,6 +18,7 @@ type AgentChatWindowProps = {
   rateLimitInfo?: RateLimitInfo | null;
   rateLimitError?: RateLimitError | null;
   onRateLimitRetry?: () => void;
+  onMessageRetry?: (question: string) => void;
 };
 
 export default function AgentChatWindow({
@@ -33,13 +34,17 @@ export default function AgentChatWindow({
   onStop,
   rateLimitInfo,
   rateLimitError,
-  onRateLimitRetry
+  onRateLimitRetry,
+  onMessageRetry
 }: AgentChatWindowProps) {
   const typing = loading && !streamingStarted;
 
   // Определить статус для отображения
   const isBlocked = !!rateLimitError;
   const showWarning = rateLimitInfo?.show_warning && !rateLimitError;
+
+  // Показывать кнопку retry когда нет блокировки и нет загрузки
+  const canRetry = !isBlocked && !loading && !!onMessageRetry;
 
   return (
     <div className="flex h-full flex-col gap-3 rounded-2xl border border-accent/40 bg-slate-950/90 p-4 shadow-neon-strong backdrop-blur">
@@ -56,7 +61,12 @@ export default function AgentChatWindow({
           {isBlocked ? '● offline' : '● online'}
         </div>
       </div>
-      <AgentMessageList messages={messages} typing={typing} />
+      <AgentMessageList
+        messages={messages}
+        typing={typing}
+        canRetry={canRetry}
+        onRetry={onMessageRetry}
+      />
 
       {/* Rate limit warning */}
       {showWarning && rateLimitInfo && (
