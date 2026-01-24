@@ -38,11 +38,36 @@ class Settings(BaseSettings):
     # === TEI (embeddings) - direct access bypassing LiteLLM ===
     tei_base_url: str | AnyUrl = "http://tei:80/v1"
 
-    # GigaChat
+    # === Provider: GigaChat ===
     giga_auth_data: str | None = None
+    """Base64-encoded credentials для GigaChat API."""
 
-    # Модели (алиасы, как в конфиге прокси)
-    chat_model: str
+    # === Provider: DeepSeek ===
+    deepseek_api_key: str | None = None
+    """API ключ для DeepSeek."""
+
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    """Base URL для DeepSeek API."""
+
+    # === LLM Roles (формат: "provider:model") ===
+    identity_llm: str = "gigachat:GigaChat-2"
+    """LLM для identity-вопросов ("кто ты?", "что умеешь?")."""
+
+    planner_llm: str = "gigachat:GigaChat-2"
+    """LLM для планирования запросов (structured output)."""
+
+    answer_llm: str = "gigachat:GigaChat-2"
+    """LLM для генерации ответов пользователю."""
+
+    critic_llm: str = "gigachat:GigaChat-2"
+    """LLM для оценки достаточности фактов."""
+
+    agent_llm: str = "gigachat:GigaChat-2"
+    """LLM для ReAct-агента (orchestration)."""
+
+    # === Legacy (удалить после миграции deps.py в Этапе 2) ===
+    chat_model: str = "GigaChat-2"
+    """DEPRECATED: Используется только в старом deps.py до миграции."""
     embedding_model: str = "text-embedding-3-large"
     embedding_batch_size: int = 4  # Small batch to avoid TEI 413 Payload Too Large
 
@@ -61,9 +86,21 @@ class Settings(BaseSettings):
     # logging
     log_level: str = "INFO"
 
-     # === LLM temperatures ===
-    planner_temperature: float = 0.0      # Planner LLM (детерминированный)
-    answer_temperature: float = 0.2       # Answer LLM (баланс креативности)
+    # === LLM Temperatures ===
+    identity_temperature: float = 0.3
+    """Температура для Identity (чуть выше для естественности)."""
+
+    planner_temperature: float = 0.0
+    """Температура для Planner (0.0 = детерминированный)."""
+
+    answer_temperature: float = 0.2
+    """Температура для Answer (баланс точности и естественности)."""
+
+    critic_temperature: float = 0.2
+    """Температура для Critic."""
+
+    agent_temperature: float = 0.2
+    """Температура для Agent."""
 
     # === Critic settings ===
     critic_enabled: bool = True

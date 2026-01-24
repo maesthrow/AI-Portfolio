@@ -17,7 +17,8 @@
       "Bash(findstr:*)",
       "Bash(xargs:*)",
       "Bash(ls:*)",
-      "Bash(docker restart:*)"
+      "Bash(docker restart:*)",
+      "Bash(.venv/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []
