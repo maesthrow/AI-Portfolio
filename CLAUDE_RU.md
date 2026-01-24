@@ -127,6 +127,7 @@
 - `chat.py` - POST `/api/v1/agent/chat/stream` - Стриминговый чат с NDJSON
 - `ingest.py` - POST `/api/v1/ingest` - Загрузка одного документа
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Пакетный импорт ExportPayload
+- `rate_limit.py` - GET `/api/v1/rate-limit/status` - Статус rate limit для текущего IP
 - `admin.py` - Админские эндпоинты:
   - DELETE `/api/v1/admin/collection` - Очистка коллекции ChromaDB
   - GET `/api/v1/admin/stats` - Статистика коллекции и графа
@@ -244,6 +245,17 @@
   - Нормализация вопросов для консистентности ключей кэша
   - Graceful degradation при недоступности Redis
 
+**Rate Limiting** (`app/rate_limit/`):
+- `limiter.py` - Класс RateLimiter для токен-лимитов по IP с Redis
+- `schemas.py` - Схемы RateLimitBucket, RateLimitInfo, RateLimitStatus
+- Возможности:
+  - Токен-лимиты по IP-адресу (не по сессии)
+  - Настраиваемый лимит токенов и временное окно
+  - Порог предупреждения при приближении к лимиту (по умолчанию 80%)
+  - Redis-хранилище с graceful degradation
+  - Информация о лимите возвращается в событии `end` стриминга
+  - Фронтенд показывает предупреждение при приближении к лимиту, блокирует при превышении
+
 **LLM адаптеры** (`app/llm/`):
 - `gigachat_adapter.py` - GigaChat адаптер для LangChain
 
@@ -294,6 +306,8 @@
   - `AgentChatWindow.tsx` - UI окна чата
   - `AgentInput.tsx` - инпут сообщений
   - `AgentMessageList.tsx` - вывод сообщений со стримингом
+  - `RateLimitWarning.tsx` - предупреждение при приближении к лимиту (анимация Framer Motion)
+  - `RateLimitBlocked.tsx` - блокировка UI при превышении лимита или недоступности сервиса
 - `components/hero/` - Hero-секция:
   - `HeroIntro.tsx` - контент hero с анимациями Framer Motion
   - `HeroScrollHint.tsx` - кнопка скролла вниз с анимацией
@@ -345,13 +359,16 @@
   - `getSectionMeta(key)` - метаданные секции
   - `getAllSectionMeta()` - метаданные всех секций
   - `askAgent(question, sessionId)` - вопрос агенту
-  - `callAgentStream(body, opts)` - стриминг чата
+  - `callAgentStream(body, opts)` - стриминг чата (обрабатывает 429/503 как RateLimitError)
+  - `getRateLimitStatus()` - текущий статус rate limit для IP
+  - `isRateLimitError(error)` - type guard для RateLimitError
 - `lib/types.ts` - типы TypeScript:
   - `Profile`, `ExperienceItem`, `ExperienceProject`, `ExperienceDetail`
   - `StatItem`, `TechFocusItem`, `Project`, `ProjectDetail`
   - `Publication`, `Contact`, `AgentMessage`
   - `HeroTag`, `FocusArea`, `FocusAreaBullet`
   - `WorkApproach`, `WorkApproachBullet`, `SectionMeta`
+  - `RateLimitBucket`, `RateLimitInfo`, `RateLimitStatus`, `RateLimitError`
 
 ### 5. **Инфраструктура** (`infra/`)
 - Docker Compose оркестрация (compose.apps.yaml — основной файл)
@@ -767,6 +784,12 @@ BM25 индекс хранится на диске:
 - `planner_temperature` - температура LLM для планировщика (по умолчанию 0.0 для детерминизма)
 - `answer_temperature` - температура LLM для генерации ответов (по умолчанию 0.2)
 
+**Rate Limiting:**
+- `rate_limit_enabled` - включить/выключить rate limiting (по умолчанию true)
+- `rate_limit_ip_tokens` - лимит токенов на IP за окно (по умолчанию 50000, для тестов можно ниже, например 4500)
+- `rate_limit_window_seconds` - окно rate limit в секундах (по умолчанию 3600 = 1 час)
+- `rate_limit_warning_threshold` - порог предупреждения в долях (по умолчанию 0.8 = 80%)
+
 **Redis Cache:**
 - `REDIS_URL` - URL подключения Redis (например, `redis://localhost:6379/0`)
 - `CACHE_ENABLED` - включить/выключить кэширование (по умолчанию true)
@@ -840,6 +863,13 @@ BM25 индекс хранится на диске:
     - Embedding cache НЕ автоинвалидируется (зависит только от текста запроса)
     - После изменения `prompts.py` или логики планировщика: очистить plan cache через `/api/v1/admin/cache/plans`
     - После смены embedding модели: очистить embedding cache через `/api/v1/admin/cache/embeddings`
+
+14. **Потребление токенов Rate Limit**:
+    - Каждый запрос агенту потребляет ~6000-9000 токенов из-за многослойного пайплайна
+    - Стадии пайплайна: системный промпт агента (~2000), Planner LLM (~1500), RAG Tool (~1500), Answer LLM (~2000), ответ (~1500)
+    - При лимите 50000 токенов/час пользователь может сделать ~5-8 запросов в час
+    - Для тестирования используйте меньший лимит (например, 4500), но учтите, что даже один запрос может его превысить
+    - Rate limit по IP, не по сессии — все пользователи с одного IP делят лимит
 
 ---
 
@@ -931,12 +961,16 @@ AI-Portfolio/
 │   │   │   │   ├── cache_service.py # CacheService с graceful degradation
 │   │   │   │   ├── plan_cache.py   # Кэш планов (shortcut → cache → LLM)
 │   │   │   │   └── embedding_cache.py # Кэш embeddings запросов
+│   │   │   ├── rate_limit/         # Rate limiting
+│   │   │   │   ├── limiter.py      # Класс RateLimiter
+│   │   │   │   └── schemas.py      # Схемы rate limit
 │   │   │   ├── llm/                # LLM адаптеры
 │   │   │   │   └── gigachat_adapter.py
 │   │   │   ├── routers/            # API роутеры
 │   │   │   │   ├── chat.py         # /api/v1/agent/chat/stream
 │   │   │   │   ├── ingest.py       # /api/v1/ingest
 │   │   │   │   ├── ingest_batch.py # /api/v1/ingest/batch
+│   │   │   │   ├── rate_limit.py   # /api/v1/rate-limit/status
 │   │   │   │   └── admin.py        # /api/v1/admin/*
 │   │   │   ├── schemas/            # Pydantic схемы
 │   │   │   │   ├── chat.py, ingest.py, export.py, admin.py, ask.py

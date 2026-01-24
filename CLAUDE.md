@@ -127,6 +127,7 @@ User Response (streaming or direct)
 - `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON
 - `ingest.py` - POST `/api/v1/ingest` - Single document ingestion
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Batch import from ExportPayload
+- `rate_limit.py` - GET `/api/v1/rate-limit/status` - Rate limit status for current IP
 - `admin.py` - Admin endpoints:
   - DELETE `/api/v1/admin/collection` - Clear ChromaDB collection
   - GET `/api/v1/admin/stats` - Collection and graph statistics
@@ -244,6 +245,17 @@ User Response (streaming or direct)
   - Question normalization for cache key consistency
   - Graceful degradation when Redis is unavailable
 
+**Rate Limiting** (`app/rate_limit/`):
+- `limiter.py` - RateLimiter class for token-based IP rate limiting with Redis
+- `schemas.py` - RateLimitBucket, RateLimitInfo, RateLimitStatus schemas
+- Features:
+  - Token-based rate limiting per IP address (not per session)
+  - Configurable token limit and time window
+  - Warning threshold for approaching limit (default 80%)
+  - Redis-based storage with graceful degradation
+  - Rate limit info returned in streaming response `end` event
+  - Frontend displays warning when approaching limit, blocks when exceeded
+
 **LLM Adapters** (`app/llm/`):
 - `gigachat_adapter.py` - GigaChat adapter for LangChain
 
@@ -294,6 +306,8 @@ See legacy documentation in previous CLAUDE.md versions.
   - `AgentChatWindow.tsx` - Chat window UI
   - `AgentInput.tsx` - Message input
   - `AgentMessageList.tsx` - Message display with streaming
+  - `RateLimitWarning.tsx` - Warning banner when approaching rate limit (Framer Motion animated)
+  - `RateLimitBlocked.tsx` - Block UI when rate limit exceeded or service unavailable
 - `components/hero/` - Hero section:
   - `HeroIntro.tsx` - Hero content with Framer Motion animations
   - `HeroScrollHint.tsx` - Scroll down button with animation
@@ -345,13 +359,16 @@ See legacy documentation in previous CLAUDE.md versions.
   - `getSectionMeta(key)` - Fetch section metadata
   - `getAllSectionMeta()` - Fetch all section metadata
   - `askAgent(question, sessionId)` - Ask agent question
-  - `callAgentStream(body, opts)` - Streaming chat with agent
+  - `callAgentStream(body, opts)` - Streaming chat with agent (handles 429/503 as RateLimitError)
+  - `getRateLimitStatus()` - Get current rate limit status for IP
+  - `isRateLimitError(error)` - Type guard for RateLimitError
 - `lib/types.ts` - TypeScript type definitions:
   - `Profile`, `ExperienceItem`, `ExperienceProject`, `ExperienceDetail`
   - `StatItem`, `TechFocusItem`, `Project`, `ProjectDetail`
   - `Publication`, `Contact`, `AgentMessage`
   - `HeroTag`, `FocusArea`, `FocusAreaBullet`
   - `WorkApproach`, `WorkApproachBullet`, `SectionMeta`
+  - `RateLimitBucket`, `RateLimitInfo`, `RateLimitStatus`, `RateLimitError`
 
 ### 5. **Infrastructure** (`infra/`)
 - Docker Compose orchestration (compose.apps.yaml - primary compose file)
@@ -776,6 +793,12 @@ Key variables (see `infra/.env.dev`):
 - `planner_temperature` - LLM temperature for planner (default: 0.0 for deterministic)
 - `answer_temperature` - LLM temperature for answer generation (default: 0.2)
 
+**Rate Limiting:**
+- `rate_limit_enabled` - Enable/disable rate limiting (default: true)
+- `rate_limit_ip_tokens` - Token limit per IP per window (default: 50000, use lower for testing e.g. 4500)
+- `rate_limit_window_seconds` - Rate limit window in seconds (default: 3600 = 1 hour)
+- `rate_limit_warning_threshold` - Warning threshold as decimal (default: 0.8 = 80%)
+
 **Redis Cache:**
 - `REDIS_URL` - Redis connection URL (e.g., `redis://localhost:6379/0`)
 - `CACHE_ENABLED` - Enable/disable caching (default: true)
@@ -850,6 +873,13 @@ Key variables (see `infra/.env.dev`):
     - Embedding cache does NOT auto-invalidate (depends only on query text)
     - After changing `prompts.py` or planner logic: clear plan cache via `/api/v1/admin/cache/plans`
     - After changing embedding model: clear embedding cache via `/api/v1/admin/cache/embeddings`
+
+14. **Rate Limit Token Consumption**:
+    - Each agent request consumes ~6000-9000 tokens due to multi-stage pipeline
+    - Pipeline stages: Agent system prompt (~2000), Planner LLM (~1500), RAG Tool (~1500), Answer LLM (~2000), Response (~1500)
+    - With default limit of 50000 tokens/hour, users can make ~5-8 requests per hour
+    - For testing, use lower limit (e.g., 4500) but be aware even one request may exceed it
+    - Rate limit is per IP, not per session - all users from same IP share the limit
 
 ---
 
@@ -941,12 +971,16 @@ AI-Portfolio/
 │   │   │   │   ├── cache_service.py # CacheService with graceful degradation
 │   │   │   │   ├── plan_cache.py   # Plan caching (shortcut → cache → LLM)
 │   │   │   │   └── embedding_cache.py # Query embedding cache
+│   │   │   ├── rate_limit/         # Rate limiting
+│   │   │   │   ├── limiter.py      # RateLimiter class
+│   │   │   │   └── schemas.py      # Rate limit schemas
 │   │   │   ├── llm/                # LLM adapters
 │   │   │   │   └── gigachat_adapter.py
 │   │   │   ├── routers/            # API routers
 │   │   │   │   ├── chat.py         # /api/v1/agent/chat/stream
 │   │   │   │   ├── ingest.py       # /api/v1/ingest
 │   │   │   │   ├── ingest_batch.py # /api/v1/ingest/batch
+│   │   │   │   ├── rate_limit.py   # /api/v1/rate-limit/status
 │   │   │   │   └── admin.py        # /api/v1/admin/*
 │   │   │   ├── schemas/            # Pydantic schemas
 │   │   │   │   ├── chat.py, ingest.py, export.py, admin.py, ask.py
