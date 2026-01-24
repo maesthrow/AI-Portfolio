@@ -256,8 +256,12 @@
   - Информация о лимите возвращается в событии `end` стриминга
   - Фронтенд показывает предупреждение при приближении к лимиту, блокирует при превышении
 
-**LLM адаптеры** (`app/llm/`):
-- `gigachat_adapter.py` - GigaChat адаптер для LangChain
+**LLM Factory** (`app/llm/`):
+- `factory.py` - класс `LLMFactory`, `parse_llm_id()`, `get_llm_factory()`, `get_provider_info()`
+- `providers.py` - `LLMProvider` enum (GIGACHAT, DEEPSEEK, QWEN), `ProviderConfig`
+- `exceptions.py` - `LLMConfigError`, `LLMProviderError`
+- `validation.py` - `validate_llm_config()` для валидации при старте
+- `gigachat_adapter.py` - GigaChat адаптер для LangChain (legacy)
 
 **Schemas** (`app/schemas/`):
 - `chat.py` - ChatRequest, ChatMessage (стриминговые типы)
@@ -596,6 +600,93 @@ pytest tests/
    - BULLETS, GROUPED_BULLETS, SHORT, TABLE, PARAGRAPH
    - См. `app/agent/render/renderer.py:RenderEngine.render()`
 
+### Мультипровайдерная архитектура LLM (rag-api-new)
+
+Система поддерживает несколько LLM-провайдеров с независимым выбором модели для каждой роли:
+
+**Поддерживаемые провайдеры:**
+- `gigachat` - GigaChat API (Сбер) через `langchain_gigachat` — силён в русском языке
+- `deepseek` - DeepSeek API через `ChatOpenAI` — силён в reasoning (модель R1)
+- `qwen` - Qwen через LiteLLM → vLLM (локальный) — экономичный для простых задач
+
+**Роли LLM (5 независимых конфигураций):**
+
+| Роль | Назначение | Модель по умолчанию | Температура |
+|------|------------|---------------------|-------------|
+| `identity` | Ответы на "кто ты?" | `deepseek:deepseek-chat` | 0.3 |
+| `planner` | Генерация QueryPlanV3 | `deepseek:deepseek-reasoner` | 0.0 |
+| `answer` | Генерация ответов пользователю | `gigachat:GigaChat-2` | 0.2 |
+| `critic` | Оценка достаточности фактов | `deepseek:deepseek-reasoner` | 0.2 |
+| `agent` | ReAct-оркестрация | `gigachat:GigaChat-2` | 0.2 |
+
+**Формат LLM ID:** `provider:model` (например, `gigachat:GigaChat-2`, `deepseek:deepseek-reasoner`)
+
+**Архитектура:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  gigachat:model ──► GigaChat() ─────────────► GigaChat API     │
+│                     (langchain_gigachat)       (напрямую)       │
+│                                                                 │
+│  deepseek:model ──► ChatOpenAI() ───────────► DeepSeek API     │
+│                     (base_url=api.deepseek)    (напрямую)       │
+│                                                                 │
+│  qwen:model ──────► ChatOpenAI() ──► LiteLLM ──► vLLM          │
+│                     (base_url=litellm)         (локальный)      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Ключевые файлы:**
+- `app/llm/factory.py` - `LLMFactory` с кэшированием по (provider, model, temperature)
+- `app/llm/providers.py` - `LLMProvider` enum, `ProviderConfig`
+- `app/llm/exceptions.py` - `LLMConfigError`, `LLMProviderError`
+- `app/llm/validation.py` - `validate_llm_config()` для валидации при старте
+- `app/deps.py` - Функции для ролей: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`
+
+**Конфигурация (переменные окружения):**
+```bash
+# Креды провайдеров
+GIGA_AUTH_DATA=base64_credentials      # GigaChat
+DEEPSEEK_API_KEY=sk-xxx                # DeepSeek
+LITELLM_BASE_URL=http://localhost:8005/v1  # Qwen через LiteLLM
+
+# Роли LLM (формат: "provider:model")
+IDENTITY_LLM=deepseek:deepseek-chat
+PLANNER_LLM=deepseek:deepseek-reasoner
+ANSWER_LLM=gigachat:GigaChat-2
+CRITIC_LLM=deepseek:deepseek-reasoner
+AGENT_LLM=gigachat:GigaChat-2
+
+# Температуры
+IDENTITY_TEMPERATURE=0.3
+PLANNER_TEMPERATURE=0.0
+ANSWER_TEMPERATURE=0.2
+CRITIC_TEMPERATURE=0.2
+AGENT_TEMPERATURE=0.2
+```
+
+**TokenUsageCollector (интеграция с Rate Limiting):**
+
+Система агрегирует usage токенов от ВСЕХ LLM-ролей для точного rate limiting:
+
+```
+Поток запроса:
+Identity LLM ─────┐
+Planner LLM ──────┤
+Critic LLM ───────┼──► TokenUsageCollector ──► rate_limiter.record_usage()
+Answer LLM ───────┤
+Agent LLM ────────┘
+```
+
+- `app/rate_limit/usage_collector.py` - `TokenUsageCollector`, `RoleUsage`
+- Каждый LLM-класс возвращает `(result, usage)` tuple
+- `chat.py` агрегирует usage от agent + rag_tool
+- Суммарные токены записываются в Redis для rate limiting
+
+**Логирование usage:**
+```
+INFO: TokenUsage summary: message_id=abc123 total=3847 breakdown=[planner=1200, critic=650, answer=1500, agent=497]
+```
+
 ### Knowledge Graph (rag-api-new)
 
 Система строит граф знаний из данных портфолио:
@@ -773,10 +864,27 @@ BM25 индекс хранится на диске:
 **LLM-инфраструктура:**
 - `LITELLM_BASE_URL` - URL LiteLLM (например, `http://litellm:4000/v1`)
 - `LITELLM_MASTER_KEY` - ключ LiteLLM
-- `CHAT_MODEL` - alias чат-модели (например, `Qwen2.5` или `GigaChat`, алиасы в `infra/litellm/config.yaml`)
+- `LITELLM_API_KEY` - API ключ для аутентификации в LiteLLM
+- `CHAT_MODEL` - alias чат-модели (legacy, например, `Qwen2.5` или `GigaChat`)
 - `EMBEDDING_MODEL` - alias embedding-модели (например, `embedding-default`)
 - `GIGA_AUTH_DATA` - Base64 креды GigaChat (если используется)
+- `DEEPSEEK_API_KEY` - API ключ DeepSeek (если используется)
+- `DEEPSEEK_BASE_URL` - URL DeepSeek API (по умолчанию: `https://api.deepseek.com/v1`)
 - `HF_TOKEN` - токен HuggingFace для загрузки моделей
+
+**Роли LLM (мультипровайдерная архитектура):**
+- `IDENTITY_LLM` - LLM для identity-вопросов (формат: `provider:model`, по умолчанию: `deepseek:deepseek-chat`)
+- `PLANNER_LLM` - LLM для планирования запросов (по умолчанию: `deepseek:deepseek-reasoner`)
+- `ANSWER_LLM` - LLM для генерации ответов (по умолчанию: `gigachat:GigaChat-2`)
+- `CRITIC_LLM` - LLM для оценки фактов (по умолчанию: `deepseek:deepseek-reasoner`)
+- `AGENT_LLM` - LLM для ReAct-агента (по умолчанию: `gigachat:GigaChat-2`)
+
+**Температуры LLM:**
+- `IDENTITY_TEMPERATURE` - температура Identity LLM (по умолчанию: 0.3)
+- `PLANNER_TEMPERATURE` - температура Planner LLM (по умолчанию: 0.0)
+- `ANSWER_TEMPERATURE` - температура Answer LLM (по умолчанию: 0.2)
+- `CRITIC_TEMPERATURE` - температура Critic LLM (по умолчанию: 0.2)
+- `AGENT_TEMPERATURE` - температура Agent LLM (по умолчанию: 0.2)
 
 **RAG API:**
 - `reranker_model` - модель реранкера (по умолчанию `BAAI/bge-reranker-base`)
@@ -963,9 +1071,14 @@ AI-Portfolio/
 │   │   │   │   └── embedding_cache.py # Кэш embeddings запросов
 │   │   │   ├── rate_limit/         # Rate limiting
 │   │   │   │   ├── limiter.py      # Класс RateLimiter
-│   │   │   │   └── schemas.py      # Схемы rate limit
-│   │   │   ├── llm/                # LLM адаптеры
-│   │   │   │   └── gigachat_adapter.py
+│   │   │   │   ├── schemas.py      # Схемы rate limit
+│   │   │   │   └── usage_collector.py # TokenUsageCollector для агрегации usage от всех ролей
+│   │   │   ├── llm/                # Мультипровайдерная LLM фабрика
+│   │   │   │   ├── factory.py      # LLMFactory, parse_llm_id(), get_provider_info()
+│   │   │   │   ├── providers.py    # LLMProvider enum, ProviderConfig
+│   │   │   │   ├── exceptions.py   # LLMConfigError, LLMProviderError
+│   │   │   │   ├── validation.py   # validate_llm_config() для валидации при старте
+│   │   │   │   └── gigachat_adapter.py # Legacy адаптер
 │   │   │   ├── routers/            # API роутеры
 │   │   │   │   ├── chat.py         # /api/v1/agent/chat/stream
 │   │   │   │   ├── ingest.py       # /api/v1/ingest
