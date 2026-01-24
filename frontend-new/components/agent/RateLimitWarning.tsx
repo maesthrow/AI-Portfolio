@@ -1,5 +1,6 @@
 'use client';
 
+import { motion } from 'framer-motion';
 import { RateLimitInfo } from '@/lib/types';
 
 interface RateLimitWarningProps {
@@ -19,7 +20,12 @@ export function RateLimitWarning({ info }: RateLimitWarningProps) {
     : 0;
 
   return (
-    <div className="mx-3 mb-2 px-3 py-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10">
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="mx-3 mb-2 px-3 py-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10"
+    >
       <div className="flex items-center gap-2 text-yellow-300 text-sm">
         <svg
           className="w-4 h-4 flex-shrink-0"
@@ -38,6 +44,6 @@ export function RateLimitWarning({ info }: RateLimitWarningProps) {
           Использовано {percent}% лимита. После достижения агент будет недоступен {formatWindowDuration(info.window_seconds)}
         </span>
       </div>
-    </div>
+    </motion.div>
   );
 }

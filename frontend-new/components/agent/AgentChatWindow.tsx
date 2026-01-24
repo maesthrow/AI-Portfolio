@@ -73,7 +73,7 @@ export default function AgentChatWindow({
         <RateLimitWarning info={rateLimitInfo} />
       )}
 
-      {/* Rate limit blocked or normal input */}
+      {/* Rate limit blocked или normal input */}
       {rateLimitError ? (
         <RateLimitBlocked
           message={rateLimitError.message}
