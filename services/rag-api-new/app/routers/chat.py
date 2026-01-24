@@ -208,10 +208,12 @@ async def chat_stream(req: ChatRequest, request: Request):
             if limiter.settings.rate_limit_enabled and collector.total_tokens > 0:
                 final_rate_limit = limiter.record_usage(client_ip, collector.total_tokens)
                 logger.info(
-                    "identity_generator rate_limit_recorded message_id=%s tokens=%d ip_used=%d",
+                    "identity_generator rate_limit_recorded message_id=%s tokens=%d ip_used=%d/%d remaining=%d",
                     message_id,
                     collector.total_tokens,
                     final_rate_limit.ip.used,
+                    final_rate_limit.ip.limit,
+                    final_rate_limit.ip.remaining,
                 )
 
             yield json.dumps(
@@ -369,10 +371,12 @@ async def chat_stream(req: ChatRequest, request: Request):
         if limiter.settings.rate_limit_enabled and total_tokens > 0:
             final_rate_limit = limiter.record_usage(client_ip, total_tokens)
             logger.info(
-                "chat_stream rate_limit_recorded message_id=%s tokens=%d ip_used=%d",
+                "chat_stream rate_limit_recorded message_id=%s tokens=%d ip_used=%d/%d remaining=%d",
                 message_id,
                 total_tokens,
                 final_rate_limit.ip.used,
+                final_rate_limit.ip.limit,
+                final_rate_limit.ip.remaining,
             )
 
         yield json.dumps(
