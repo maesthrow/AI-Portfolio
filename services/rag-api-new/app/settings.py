@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     """Включение/выключение rate limiting"""
 
-    rate_limit_ip_tokens: int = 4_500 # 50_000
+    rate_limit_ip_tokens: int = 15_000 # 50_000
     """Лимит токенов на IP за окно"""
 
     rate_limit_window_seconds: int = 60  # 3600
