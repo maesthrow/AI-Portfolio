@@ -38,12 +38,3 @@ dependencies = [
   # --- Redis кэширование ---
   "redis>=5.0.0,<6.0.0",
 ]
-
-[tool.pytest.ini_options]
-markers = [
-    "integration: marks tests as integration tests (require external services/credentials)",
-]
-testpaths = ["tests"]
-filterwarnings = [
-    "ignore::DeprecationWarning",
-]
