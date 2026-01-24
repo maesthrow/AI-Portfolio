@@ -8,7 +8,7 @@ from __future__ import annotations
 import copy
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -54,7 +54,7 @@ class PlannerLLM:
         # Check if LLM supports structured output
         self._supports_structured = hasattr(llm, "with_structured_output")
 
-    def plan(self, question: str) -> QueryPlanV3:
+    def plan(self, question: str) -> tuple[QueryPlanV3, Any]:
         """
         Generate QueryPlanV3 from user question.
 
@@ -64,11 +64,11 @@ class PlannerLLM:
             question: User's question
 
         Returns:
-            QueryPlanV3 with intents, entities, tool_calls, tech_filter, etc.
+            tuple[QueryPlanV3, usage]: Plan and usage metadata (None if not available)
         """
         if not question or not question.strip():
             logger.warning("Empty question, returning default fallback plan")
-            return make_default_fallback_plan("")
+            return make_default_fallback_plan(""), None
 
         logger.info("Planner input question=%r", truncate_text(question, limit=500))
 
@@ -77,22 +77,27 @@ class PlannerLLM:
                 return self._plan_structured(question)
             else:
                 logger.warning("LLM doesn't support structured output, using fallback")
-                return make_default_fallback_plan(question)
+                return make_default_fallback_plan(question), None
 
         except Exception as e:
             logger.error("Planner failed: %s", e)
-            return make_default_fallback_plan(question)
+            return make_default_fallback_plan(question), None
 
-    def _plan_structured(self, question: str) -> QueryPlanV3:
+    def _plan_structured(self, question: str) -> tuple[QueryPlanV3, Any]:
         """
         Use LLM's structured output capability.
 
         Attempts with_structured_output() with retry on failure.
+
+        Returns:
+            tuple[QueryPlanV3, usage]: Plan and accumulated usage metadata
         """
         messages = [
             SystemMessage(content=PLANNER_SYSTEM_PROMPT),
             HumanMessage(content=question),
         ]
+
+        accumulated_usage = None  # Track usage across retries
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -103,6 +108,11 @@ class PlannerLLM:
                 )
 
                 result = structured_llm.invoke(messages)
+
+                # Extract usage from the response
+                usage = self._extract_usage(result)
+                if usage:
+                    accumulated_usage = self._merge_usage(accumulated_usage, usage)
 
                 if isinstance(result, QueryPlanV3):
                     # Validate the plan
@@ -120,7 +130,7 @@ class PlannerLLM:
                             "Plan JSON=%s",
                             compact_json(sanitized.model_dump(mode="json")),
                         )
-                        return sanitized
+                        return sanitized, accumulated_usage
                     else:
                         raise ValueError("Plan validation failed")
 
@@ -129,7 +139,7 @@ class PlannerLLM:
                     parsed = QueryPlanV3.model_validate(result)
                     sanitized = self._sanitize_plan(question, parsed)
                     logger.info("Plan JSON=%s", compact_json(sanitized.model_dump(mode="json")))
-                    return sanitized
+                    return sanitized, accumulated_usage
 
                 raise ValueError(f"Unexpected result type: {type(result)}")
 
@@ -159,7 +169,33 @@ class PlannerLLM:
             "Planner failed after %d attempts, using fallback",
             self.max_retries + 1,
         )
-        return make_default_fallback_plan(question)
+        return make_default_fallback_plan(question), accumulated_usage
+
+    def _extract_usage(self, response: Any) -> Any:
+        """Extract usage_metadata from LLM response."""
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            return response.usage_metadata
+        if hasattr(response, "response_metadata"):
+            rm = response.response_metadata or {}
+            return rm.get("token_usage") or rm.get("usage")
+        return None
+
+    def _merge_usage(self, acc: Any, new: Any) -> dict:
+        """Merge usage dicts (for retries)."""
+        if acc is None:
+            return new
+        if new is None:
+            return acc
+
+        def _get(u: Any, k: str) -> int:
+            if isinstance(u, dict) and k in u:
+                return int(u[k] or 0)
+            return int(getattr(u, k, 0) or 0)
+
+        return {
+            "prompt_tokens": _get(acc, "prompt_tokens") + _get(new, "prompt_tokens"),
+            "completion_tokens": _get(acc, "completion_tokens") + _get(new, "completion_tokens"),
+        }
 
     def _validate_plan(self, plan: QueryPlanV3) -> bool:
         """

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -115,11 +115,14 @@ def is_identity_question(question: str, threshold: float = SIMILARITY_THRESHOLD)
     return is_identity, max_similarity
 
 
-async def generate_identity_response(question: str) -> str:
+async def generate_identity_response(question: str) -> tuple[str, dict | None]:
     """
     Генерирует ответ на identity-вопрос через LLM.
 
     Использует identity_llm с настройками из settings.
+
+    Returns:
+        tuple[str, dict | None]: Ответ и usage dict (или None при ошибке/fallback)
     """
     from langchain_core.messages import HumanMessage, SystemMessage
     from app.deps import identity_llm
@@ -135,8 +138,31 @@ async def generate_identity_response(question: str) -> str:
 
     try:
         response = await llm.ainvoke(messages)
-        return response.content
+        usage = _extract_usage(response)
+        return response.content, usage
     except Exception as e:
         logger.error("Failed to generate identity response: %s", e)
         # Fallback на статичный ответ
-        return "Я AI-ассистент портфолио Дмитрия. Спрашивай о его проектах, опыте и навыках."
+        return "Я AI-ассистент портфолио Дмитрия. Спрашивай о его проектах, опыте и навыках.", None
+
+
+def _extract_usage(response: Any) -> dict | None:
+    """Extract usage_metadata from LLM response and convert to dict."""
+    usage = None
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+    elif hasattr(response, "response_metadata"):
+        rm = response.response_metadata or {}
+        usage = rm.get("token_usage") or rm.get("usage")
+
+    if usage is None:
+        return None
+
+    # Convert to dict if it's a Pydantic model or similar
+    if hasattr(usage, "model_dump"):
+        return usage.model_dump()
+    if hasattr(usage, "dict"):
+        return usage.dict()
+    if isinstance(usage, dict):
+        return usage
+    return None

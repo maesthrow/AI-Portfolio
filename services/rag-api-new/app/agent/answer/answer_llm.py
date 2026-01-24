@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -54,7 +54,7 @@ class AnswerLLM:
         self.temperature = temperature
         self.renderer = RenderEngine()
 
-    def generate(self, payload: FactsPayload) -> str:
+    def generate(self, payload: FactsPayload) -> tuple[str, Any]:
         """
         Generate answer from FactsPayload.
 
@@ -65,7 +65,7 @@ class AnswerLLM:
             payload: FactsPayload from Executor
 
         Returns:
-            User-facing answer string
+            tuple[str, usage]: User-facing answer string and usage metadata (None if deterministic)
         """
         logger.info(
             "Answer input: found=%s items=%d sources=%d intents=%s render_style=%s answer_style=%s coverage=%.2f evidence=%r",
@@ -86,14 +86,14 @@ class AnswerLLM:
         # Handle not found case (no facts and no evidence context)
         if not payload.items and not evidence_text and not payload.found:
             logger.info("Answer not-found: query=%r", truncate_text(payload.query, limit=400))
-            return self._get_not_found_response(payload)
+            return self._get_not_found_response(payload), None
 
         # For some intents we can answer deterministically from evidence/facts.
         # This avoids LLM "false not-found" responses when evidence is present.
         deterministic = self._try_deterministic_answer(payload, evidence_text=evidence_text)
         if deterministic:
             logger.info("Answer deterministic_used=True preview=%r", truncate_text(deterministic, limit=800))
-            return deterministic
+            return deterministic, None
 
         # Pre-render facts for context
         if payload.items:
@@ -108,7 +108,7 @@ class AnswerLLM:
 
         if not rendered_facts:
             logger.info("Answer not-found (empty context): query=%r", truncate_text(payload.query, limit=400))
-            return self._get_not_found_response(payload)
+            return self._get_not_found_response(payload), None
 
         # Get style instruction
         style_instruction = self._get_style_instruction(payload)
@@ -140,6 +140,7 @@ class AnswerLLM:
 
         try:
             response = self.llm.invoke(messages)
+            usage = self._extract_usage(response)
             answer = response.content.strip()
             logger.info("Answer raw_preview=%r", truncate_text(answer, limit=800))
 
@@ -168,15 +169,15 @@ class AnswerLLM:
                         truncate_text(cleaned_answer, limit=200),
                         truncate_text(recovered, limit=800),
                     )
-                    return recovered
+                    return recovered, usage
 
             logger.info("Answer final_preview=%r", truncate_text(cleaned_answer, limit=800))
-            return cleaned_answer
+            return cleaned_answer, usage
 
         except Exception as e:
             logger.error("Answer generation failed: %s", e)
             # Return rendered facts as fallback
-            return rendered_facts
+            return rendered_facts, None
 
     def _get_not_found_response(self, payload: FactsPayload) -> str:
         """Get appropriate not-found response based on intent."""
@@ -200,6 +201,15 @@ class AnswerLLM:
             instructions.append(STYLE_INSTRUCTIONS[answer_key])
 
         return "; ".join(instructions) if instructions else "Естественный русский язык"
+
+    def _extract_usage(self, response: Any) -> Any:
+        """Extract usage_metadata from LLM response."""
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            return response.usage_metadata
+        if hasattr(response, "response_metadata"):
+            rm = response.response_metadata or {}
+            return rm.get("token_usage") or rm.get("usage")
+        return None
 
     def _try_deterministic_answer(self, payload: FactsPayload, evidence_text: str) -> str | None:
         """

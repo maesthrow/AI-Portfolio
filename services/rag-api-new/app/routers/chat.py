@@ -10,7 +10,9 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
-from app.deps import agent_app, rate_limiter
+from app.deps import agent_app, identity_llm, rate_limiter
+from app.llm import get_provider_info
+from app.rate_limit import TokenUsageCollector
 from app.schemas.chat import ChatRequest
 from app.utils.logging_utils import compact_json, truncate_text
 
@@ -55,43 +57,6 @@ def _format_duration(seconds: int) -> str:
     if minutes < 5:
         return f"{minutes} минуты"
     return f"{minutes} минут"
-
-
-def _format_usage(raw: Any | None) -> dict[str, Any] | None:
-    if not raw:
-        return None
-
-    # Поддержка dict и объектов с атрибутами (LangChain UsageMetadata)
-    def _get(key: str, *alt_keys: str) -> int | None:
-        # Сначала пробуем как dict
-        if isinstance(raw, dict):
-            for k in (key, *alt_keys):
-                if k in raw and raw[k] is not None:
-                    return int(raw[k])
-        # Затем как объект с атрибутами
-        else:
-            for k in (key, *alt_keys):
-                val = getattr(raw, k, None)
-                if val is not None:
-                    return int(val)
-        return None
-
-    prompt_tokens = _get("prompt_tokens", "input_tokens")
-    completion_tokens = _get("completion_tokens", "output_tokens")
-    total_tokens = _get("total_tokens")
-
-    if total_tokens is None and (prompt_tokens is not None or completion_tokens is not None):
-        total_tokens = (prompt_tokens or 0) + (completion_tokens or 0)
-
-    # Если ничего не нашли
-    if prompt_tokens is None and completion_tokens is None and total_tokens is None:
-        return None
-
-    return {
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": total_tokens,
-    }
 
 
 def _extract_text(obj: Any) -> str:
@@ -225,11 +190,37 @@ async def chat_stream(req: ChatRequest, request: Request):
                 {"type": "start", "message_id": message_id, "created_at": created_at},
                 ensure_ascii=False,
             ) + "\n"
+
             # Генерируем ответ через LLM
-            response = await generate_identity_response(req.question)
+            response, identity_usage = await generate_identity_response(req.question)
             yield json.dumps({"type": "delta", "content": response}, ensure_ascii=False) + "\n"
+
+            # Create collector and add identity usage
+            collector = TokenUsageCollector()
+            if identity_usage:
+                provider, model = get_provider_info(identity_llm())
+                collector.add("identity", provider, model, identity_usage)
+                collector.log_summary(message_id)
+
+            # Record in rate limiter
+            final_rate_limit = None
+            if limiter.settings.rate_limit_enabled and collector.total_tokens > 0:
+                final_rate_limit = limiter.record_usage(client_ip, collector.total_tokens)
+                logger.info(
+                    "identity_generator rate_limit_recorded message_id=%s tokens=%d ip_used=%d",
+                    message_id,
+                    collector.total_tokens,
+                    final_rate_limit.ip.used,
+                )
+
             yield json.dumps(
-                {"type": "end", "message_id": message_id, "finish_reason": "stop"},
+                {
+                    "type": "end",
+                    "message_id": message_id,
+                    "finish_reason": "stop",
+                    "usage": collector.to_dict(),
+                    "rate_limit": final_rate_limit.model_dump() if final_rate_limit else None,
+                },
                 ensure_ascii=False,
             ) + "\n"
 
@@ -244,7 +235,9 @@ async def chat_stream(req: ChatRequest, request: Request):
     }
 
     async def event_generator():
-        usage = None
+        # TokenUsageCollector for aggregating all LLM usage
+        collector = TokenUsageCollector()
+        agent_usage = None
         sent_delta = False
         final_text = ""
         yield json.dumps(
@@ -259,7 +252,7 @@ async def chat_stream(req: ChatRequest, request: Request):
                     chunk = (event.get("data") or {}).get("chunk")
                     content = _extract_text(chunk)
                     if hasattr(chunk, "usage_metadata") and getattr(chunk, "usage_metadata", None):
-                        usage = getattr(chunk, "usage_metadata", None)
+                        agent_usage = getattr(chunk, "usage_metadata", None)
                     if content:
                         sent_delta = True
                         final_text += content
@@ -275,13 +268,13 @@ async def chat_stream(req: ChatRequest, request: Request):
                     if kind == "on_chat_model_end" and output:
                         # LangChain AIMessage может содержать usage_metadata или response_metadata
                         if hasattr(output, "usage_metadata") and output.usage_metadata:
-                            usage = output.usage_metadata
+                            agent_usage = output.usage_metadata
                         elif hasattr(output, "response_metadata"):
                             rm = output.response_metadata or {}
                             if "token_usage" in rm:
-                                usage = rm["token_usage"]
+                                agent_usage = rm["token_usage"]
                             elif "usage" in rm:
-                                usage = rm["usage"]
+                                agent_usage = rm["usage"]
 
                 elif kind == "on_tool_start":
                     tool_name = event.get("name") or (event.get("data") or {}).get("name") or "tool"
@@ -305,6 +298,20 @@ async def chat_stream(req: ChatRequest, request: Request):
                         thread_id,
                         truncate_text(tool_output, limit=800),
                     )
+
+                    # Extract usage from rag_tool output
+                    if isinstance(tool_output, dict) and "usage" in tool_output:
+                        tool_usage = tool_output.get("usage") or {}
+                        by_role = tool_usage.get("by_role") or {}
+                        for role, role_data in by_role.items():
+                            if isinstance(role_data, dict):
+                                collector.add(
+                                    role,
+                                    role_data.get("provider", "unknown"),
+                                    role_data.get("model", "unknown"),
+                                    role_data,
+                                )
+
                     yield json.dumps({"type": "tool_end"}, ensure_ascii=False) + "\n"
 
         except Exception as exc:
@@ -320,31 +327,38 @@ async def chat_stream(req: ChatRequest, request: Request):
         if not sent_delta and final_text:
             yield json.dumps({"type": "delta", "content": final_text}, ensure_ascii=False) + "\n"
 
+        # === Add agent usage to collector ===
+        if agent_usage:
+            from app.deps import agent_llm
+            provider, model = get_provider_info(agent_llm())
+            collector.add("agent", provider, model, agent_usage)
+
+        # Log usage summary
+        collector.log_summary(message_id)
+
         # === Rate Limiting: записать usage ===
         final_rate_limit = None
-        formatted_usage = _format_usage(usage)
+        total_tokens = collector.total_tokens
         logger.info(
-            "chat_stream usage message_id=%s raw_usage=%r formatted=%r",
+            "chat_stream usage message_id=%s total_tokens=%d breakdown=%s",
             message_id,
-            usage,
-            formatted_usage,
+            total_tokens,
+            collector.to_dict(),
         )
-        if limiter.settings.rate_limit_enabled and formatted_usage:
-            total_tokens = formatted_usage.get("total_tokens") or 0
-            if total_tokens > 0:
-                final_rate_limit = limiter.record_usage(client_ip, total_tokens)
-                logger.info(
-                    "chat_stream rate_limit_recorded message_id=%s tokens=%d ip_used=%d",
-                    message_id,
-                    total_tokens,
-                    final_rate_limit.ip.used,
-                )
+        if limiter.settings.rate_limit_enabled and total_tokens > 0:
+            final_rate_limit = limiter.record_usage(client_ip, total_tokens)
+            logger.info(
+                "chat_stream rate_limit_recorded message_id=%s tokens=%d ip_used=%d",
+                message_id,
+                total_tokens,
+                final_rate_limit.ip.used,
+            )
 
         yield json.dumps(
             {
                 "type": "end",
                 "message_id": message_id,
-                "usage": _format_usage(usage),
+                "usage": collector.to_dict(),
                 "rate_limit": final_rate_limit.model_dump() if final_rate_limit else None,
             },
             ensure_ascii=False,
