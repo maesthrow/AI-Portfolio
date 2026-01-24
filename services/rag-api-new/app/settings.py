@@ -85,23 +85,20 @@ class Settings(BaseSettings):
     cache_enabled: bool = True
     """Глобальное включение/выключение кэширования"""
 
-    plan_cache_ttl: int = 3600
-    """TTL для кэша планов в секундах (1 час)"""
+    plan_cache_ttl: int = 3600 * 24 * 7
+    """TTL для кэша планов в секундах (7 дней)"""
 
-    embedding_cache_ttl: int = 86400
-    """TTL для кэша embeddings в секундах (24 часа)"""
+    embedding_cache_ttl: int = 3600 * 24 * 7
+    """TTL для кэша embeddings в секундах (7 дней)"""
 
     # === Rate Limiting ===
     rate_limit_enabled: bool = True
     """Включение/выключение rate limiting"""
 
-    rate_limit_session_tokens: int = 20_000
-    """Лимит токенов на сессию за окно (по умолчанию 20K/час)"""
+    rate_limit_ip_tokens: int = 4_500 # 50_000
+    """Лимит токенов на IP за окно"""
 
-    rate_limit_ip_tokens: int = 50_000
-    """Лимит токенов на IP за окно (по умолчанию 50K/час)"""
-
-    rate_limit_window_seconds: int = 3600
+    rate_limit_window_seconds: int = 180  # 3600
     """Окно rate limit в секундах (по умолчанию 1 час)"""
 
     rate_limit_warning_threshold: float = 0.8

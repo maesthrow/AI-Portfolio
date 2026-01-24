@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 
 import AgentChatWindow from "@/components/agent/AgentChatWindow";
-import { askAgent, callAgentStream, ChatStreamEvent } from "@/lib/api";
-import { AgentMessage } from "@/lib/types";
+import { askAgent, callAgentStream, ChatStreamEvent, getRateLimitStatus, isRateLimitError } from "@/lib/api";
+import { AgentMessage, RateLimitInfo, RateLimitError } from "@/lib/types";
 
 const HINT_KEY = "hasSeenAgentHint_v2";
 const HINT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 дней
@@ -41,6 +41,10 @@ export default function AgentDock() {
   const [streamingStarted, setStreamingStarted] = useState(false);
   const hintTimerRef = useRef<number | null>(null);
   const hintHideTimerRef = useRef<number | null>(null);
+
+  // Rate limiting state
+  const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo | null>(null);
+  const [rateLimitError, setRateLimitError] = useState<RateLimitError | null>(null);
 
   // Скорость вывода символов для стрима - memoized
   const charSpeed = useMemo(() => ({
@@ -113,6 +117,42 @@ export default function AgentDock() {
       if (hintHideTimerRef.current) clearTimeout(hintHideTimerRef.current);
     };
   }, [hintShown]);
+
+  // Проверить rate limit статус при открытии dock
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const checkStatus = async () => {
+      try {
+        const status = await getRateLimitStatus();
+        if (!status.available) {
+          setRateLimitError({
+            code: 'SERVICE_UNAVAILABLE',
+            message: 'AI-агент временно недоступен. Попробуйте позже',
+          });
+        } else if (status.rate_limit?.exceeded) {
+          setRateLimitError({
+            code: 'RATE_LIMIT_EXCEEDED',
+            message: 'Достигнут лимит использования AI-агента',
+            details: {
+              exceeded: true,
+              reset_in_seconds: status.rate_limit.reset_in_seconds,
+              reset_in_human: '',
+            },
+          });
+        } else if (status.rate_limit?.show_warning) {
+          setRateLimitInfo(status.rate_limit);
+        } else {
+          // Сбросить предыдущее состояние если всё ок
+          setRateLimitInfo(null);
+        }
+      } catch (e) {
+        console.error('Failed to check rate limit status:', e);
+      }
+    };
+
+    checkStatus();
+  }, [isOpen]);
 
   const updateAgentMessage = (tempId: string, updater: (m: AgentMessage) => AgentMessage) => {
     setMessages((prev) =>
@@ -234,6 +274,27 @@ export default function AgentDock() {
             ...m,
             status: "streaming"
           }));
+        } else if (event.type === "end") {
+          // Обновить rate limit info если есть
+          if (event.rate_limit) {
+            if (event.rate_limit.show_warning) {
+              setRateLimitInfo(event.rate_limit);
+            } else {
+              setRateLimitInfo(null);
+            }
+            // Проверить не превышен ли лимит после этого запроса
+            if (event.rate_limit.exceeded) {
+              setRateLimitError({
+                code: 'RATE_LIMIT_EXCEEDED',
+                message: 'Достигнут лимит использования AI-агента',
+                details: {
+                  exceeded: true,
+                  reset_in_seconds: event.rate_limit.reset_in_seconds,
+                  reset_in_human: '',
+                },
+              });
+            }
+          }
         } else if (event.type === "error") {
           applyError(`Ошибка запроса: ${event.message}`);
         }
@@ -256,6 +317,15 @@ export default function AgentDock() {
         }));
         releasePendingRef.current = true;
         tryReleaseLoading();
+      } else if (isRateLimitError(err)) {
+        // Rate limit ошибка - не делаем fallback, показываем блокировку
+        setRateLimitError(err);
+        setMessages(prev => prev.filter(m => m.id !== tempId && m.tempId !== tempId));
+        stopCharPump();
+        charQueueRef.current = [];
+        setLoading(false);
+        setStreamingStarted(false);
+        releasePendingRef.current = false;
       } else {
         console.error("Streaming agent failed, falling back to sync", err);
         try {
@@ -311,9 +381,51 @@ export default function AgentDock() {
   };
 
   const handleToggle = useCallback(() => {
-    setIsOpen((v) => !v);
+    setIsOpen((v) => {
+      if (!v) {
+        // При открытии сбрасываем ошибку, статус проверится заново в useEffect
+        setRateLimitError(null);
+      }
+      return !v;
+    });
     dismissHint();
   }, [dismissHint]);
+
+  // Проверить статус rate limit (для кнопки "Проверить доступность" и авто-проверки)
+  const handleRateLimitRetry = useCallback(async () => {
+    try {
+      const status = await getRateLimitStatus();
+
+      if (!status.available) {
+        // Всё ещё недоступен
+        setRateLimitError({
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'AI-агент временно недоступен. Попробуйте позже',
+        });
+      } else if (status.rate_limit?.exceeded) {
+        // Лимит всё ещё превышен - обновить время
+        setRateLimitError({
+          code: 'RATE_LIMIT_EXCEEDED',
+          message: 'Достигнут лимит использования AI-агента',
+          details: {
+            exceeded: true,
+            reset_in_seconds: status.rate_limit.reset_in_seconds,
+            reset_in_human: '',
+          },
+        });
+      } else {
+        // Разблокировано!
+        setRateLimitError(null);
+        if (status.rate_limit?.show_warning) {
+          setRateLimitInfo(status.rate_limit);
+        } else {
+          setRateLimitInfo(null);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to check rate limit status:', e);
+    }
+  }, []);
 
   const buttonLabel = "AI-агент";
 
@@ -349,6 +461,9 @@ export default function AgentDock() {
             sendDisabled={loading}
             streaming={loading}
             onStop={handleStop}
+            rateLimitInfo={rateLimitInfo}
+            rateLimitError={rateLimitError}
+            onRateLimitRetry={handleRateLimitRetry}
           />
         </div>
       ) : null}

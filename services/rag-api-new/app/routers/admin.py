@@ -138,17 +138,16 @@ def _get_client_ip(request: Request) -> str:
 
 
 @router.get("/rate-limit/status", response_model=RateLimitStatus)
-def get_rate_limit_status(session_id: str, request: Request):
+def get_rate_limit_status(request: Request):
     """
     Проверить текущий статус rate limit.
 
     Вызывается фронтом при монтировании AgentDock для определения
     доступности агента и текущего состояния лимитов.
 
-    Args:
-        session_id: ID сессии клиента (из localStorage)
+    Лимитирование только по IP-адресу клиента.
     """
     limiter = rate_limiter()
     client_ip = _get_client_ip(request)
 
-    return limiter.get_status(session_id, client_ip)
+    return limiter.get_status(client_ip)

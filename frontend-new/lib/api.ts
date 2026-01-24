@@ -11,13 +11,23 @@ import {
   SectionMeta,
   StatItem,
   TechFocusItem,
-  WorkApproach
+  WorkApproach,
+  RateLimitInfo,
+  RateLimitStatus,
+  RateLimitError,
 } from "./types";
 
 export type ChatStreamEvent =
   | { type: "start"; message_id: string; created_at: string }
   | { type: "delta"; content: string }
-  | { type: "end"; message_id: string; usage?: any }
+  | { type: "tool_start"; tool: string }
+  | { type: "tool_end" }
+  | {
+      type: "end";
+      message_id: string;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+      rate_limit?: RateLimitInfo;
+    }
   | { type: "error"; message: string };
 
 const CONTENT_API_BASE = process.env.CONTENT_API_BASE || process.env.NEXT_PUBLIC_CONTENT_API_BASE;
@@ -29,6 +39,13 @@ if (!CONTENT_API_BASE) {
 
 if (!AGENT_API_BASE) {
   console.warn("AGENT_API_BASE is not set; agent requests will fail at runtime.");
+}
+
+function getAgentApiBase(): string {
+  if (!AGENT_API_BASE) {
+    throw new Error("AGENT_API_BASE is missing");
+  }
+  return AGENT_API_BASE;
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -125,10 +142,7 @@ export async function callAgentStream(
   body: Record<string, unknown>,
   opts?: { signal?: AbortSignal }
 ) {
-  const base = AGENT_API_BASE;
-  if (!base) {
-    throw new Error("AGENT_API_BASE is missing");
-  }
+  const base = getAgentApiBase();
 
   const res = await fetch(`${base}/api/v1/agent/chat/stream`, {
     method: "POST",
@@ -138,6 +152,20 @@ export async function callAgentStream(
   });
 
   if (!res.ok || !res.body) {
+    // Попытаться получить структурированную ошибку rate limit
+    if (res.status === 429 || res.status === 503) {
+      try {
+        const errorData = await res.json();
+        const rateLimitError: RateLimitError = {
+          code: errorData.detail?.code || (res.status === 429 ? 'RATE_LIMIT_EXCEEDED' : 'SERVICE_UNAVAILABLE'),
+          message: errorData.detail?.message || 'Сервис временно недоступен',
+          details: errorData.detail?.details,
+        };
+        throw rateLimitError;
+      } catch (e) {
+        if ((e as RateLimitError).code) throw e; // Уже RateLimitError
+      }
+    }
     throw new Error(`Stream request failed with status ${res.status}`);
   }
 
@@ -172,4 +200,37 @@ export async function callAgentStream(
       }
     }
   };
+}
+
+/**
+ * Получить текущий статус rate limit.
+ * Вызывается при монтировании AgentDock.
+ * Лимитирование только по IP-адресу.
+ */
+export async function getRateLimitStatus(): Promise<RateLimitStatus> {
+  const base = getAgentApiBase();
+  const res = await fetch(
+    `${base}/api/v1/rate-limit/status`,
+    { cache: 'no-store' }
+  );
+
+  if (!res.ok) {
+    // При ошибке считаем сервис недоступным
+    return { available: false, rate_limit: null };
+  }
+
+  return res.json();
+}
+
+/**
+ * Type guard для проверки RateLimitError.
+ */
+export function isRateLimitError(error: unknown): error is RateLimitError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    ((error as RateLimitError).code === 'RATE_LIMIT_EXCEEDED' ||
+     (error as RateLimitError).code === 'SERVICE_UNAVAILABLE')
+  );
 }

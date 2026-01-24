@@ -3,6 +3,7 @@ Rate Limiter - ограничение использования LLM по ток
 
 Использует Redis для хранения счётчиков с TTL.
 В отличие от CacheService, блокирует запросы при недоступности Redis (fail-closed).
+Ограничение только по IP-адресу.
 """
 from __future__ import annotations
 
@@ -21,9 +22,7 @@ _redis_client = None
 class _RateLimitUsage:
     """Внутренняя структура для usage данных."""
 
-    session_used: int
     ip_used: int
-    session_ttl: int
     ip_ttl: int
 
 
@@ -31,14 +30,10 @@ class RateLimiter:
     """
     Rate limiter на основе Redis.
 
-    Ограничивает использование LLM токенов по:
-    - Сессии (session_id из клиента)
-    - IP-адресу (защита от злоупотреблений)
-
+    Ограничивает использование LLM токенов по IP-адресу.
     При недоступности Redis блокирует ВСЕ запросы (fail-closed).
     """
 
-    SESSION_PREFIX = "rl:session:"
     IP_PREFIX = "rl:ip:"
 
     def __init__(self, settings: Settings):
@@ -97,81 +92,62 @@ class RateLimiter:
                 return ":".join(parts[:4]) + ":*:*:*:*"
         return ip
 
-    def _get_usage(self, session_id: str, ip: str) -> _RateLimitUsage:
+    def _get_usage(self, ip: str) -> _RateLimitUsage:
         """Получить текущее использование из Redis."""
         redis_client = self._get_redis()
         if not redis_client:
             # Если нет Redis - возвращаем максимальные значения (блокировка)
             return _RateLimitUsage(
-                session_used=self.settings.rate_limit_session_tokens,
                 ip_used=self.settings.rate_limit_ip_tokens,
-                session_ttl=self.settings.rate_limit_window_seconds,
                 ip_ttl=self.settings.rate_limit_window_seconds,
             )
 
-        session_key = f"{self.SESSION_PREFIX}{session_id}"
         ip_key = f"{self.IP_PREFIX}{ip}"
 
         pipe = redis_client.pipeline()
-        pipe.get(session_key)
         pipe.get(ip_key)
-        pipe.ttl(session_key)
         pipe.ttl(ip_key)
         results = pipe.execute()
 
-        session_used = int(results[0] or 0)
-        ip_used = int(results[1] or 0)
-        session_ttl = results[2] if results[2] > 0 else self.settings.rate_limit_window_seconds
-        ip_ttl = results[3] if results[3] > 0 else self.settings.rate_limit_window_seconds
+        ip_used = int(results[0] or 0)
+        ip_ttl = results[1] if results[1] > 0 else self.settings.rate_limit_window_seconds
 
         return _RateLimitUsage(
-            session_used=session_used,
             ip_used=ip_used,
-            session_ttl=session_ttl,
             ip_ttl=ip_ttl,
         )
 
-    def _build_info(
-        self, usage: _RateLimitUsage, exceeded_by: str | None = None
-    ):
+    def _build_info(self, usage: _RateLimitUsage, exceeded: bool = False):
         """Построить RateLimitInfo из usage данных."""
         from .schemas import RateLimitBucket, RateLimitInfo
 
-        session_limit = self.settings.rate_limit_session_tokens
         ip_limit = self.settings.rate_limit_ip_tokens
         threshold = self.settings.rate_limit_warning_threshold
+        window = self.settings.rate_limit_window_seconds
 
-        session_remaining = max(0, session_limit - usage.session_used)
         ip_remaining = max(0, ip_limit - usage.ip_used)
-
-        session_ratio = usage.session_used / session_limit if session_limit > 0 else 0
         ip_ratio = usage.ip_used / ip_limit if ip_limit > 0 else 0
 
-        show_warning = session_ratio >= threshold or ip_ratio >= threshold
-        reset_in = max(usage.session_ttl, usage.ip_ttl)
+        # Don't show warning if already exceeded
+        show_warning = not exceeded and ip_ratio >= threshold
 
         return RateLimitInfo(
-            session=RateLimitBucket(
-                used=usage.session_used,
-                limit=session_limit,
-                remaining=session_remaining,
-            ),
             ip=RateLimitBucket(
                 used=usage.ip_used,
                 limit=ip_limit,
                 remaining=ip_remaining,
             ),
-            reset_in_seconds=reset_in,
+            reset_in_seconds=usage.ip_ttl,
+            window_seconds=window,
             show_warning=show_warning,
-            exceeded_by=exceeded_by,
+            exceeded=exceeded,
         )
 
-    def check_limit(self, session_id: str, ip: str):
+    def check_limit(self, ip: str):
         """
         Проверить, не превышен ли лимит.
 
         Args:
-            session_id: ID сессии клиента
             ip: IP-адрес клиента
 
         Returns:
@@ -179,42 +155,24 @@ class RateLimiter:
             - allowed=True если запрос можно обработать
             - allowed=False если лимит превышен
         """
-        from .schemas import RateLimitInfo
-
         if not self.settings.rate_limit_enabled:
-            # Rate limiting отключён - пропускаем с пустым info
-            return True, self._build_info(_RateLimitUsage(0, 0, 0, 0))
+            # Rate limiting отключён - пропускаем с дефолтным info
+            return True, self._build_info(_RateLimitUsage(0, self.settings.rate_limit_window_seconds))
 
-        usage = self._get_usage(session_id, ip)
+        usage = self._get_usage(ip)
+        exceeded = usage.ip_used >= self.settings.rate_limit_ip_tokens
 
-        session_exceeded = usage.session_used >= self.settings.rate_limit_session_tokens
-        ip_exceeded = usage.ip_used >= self.settings.rate_limit_ip_tokens
-
-        exceeded_by = None
-        if session_exceeded:
-            exceeded_by = "session"
-        elif ip_exceeded:
-            exceeded_by = "ip"
-
-        allowed = not (session_exceeded or ip_exceeded)
-
-        if not allowed:
+        if exceeded:
             logger.warning(
-                "Rate limit exceeded: ip=%s session_id=%s exceeded_by=%s used=%d limit=%d",
+                "Rate limit exceeded: ip=%s used=%d limit=%d",
                 self._mask_ip(ip),
-                session_id,
-                exceeded_by,
-                usage.session_used if exceeded_by == "session" else usage.ip_used,
-                (
-                    self.settings.rate_limit_session_tokens
-                    if exceeded_by == "session"
-                    else self.settings.rate_limit_ip_tokens
-                ),
+                usage.ip_used,
+                self.settings.rate_limit_ip_tokens,
             )
 
-        return allowed, self._build_info(usage, exceeded_by)
+        return not exceeded, self._build_info(usage, exceeded)
 
-    def record_usage(self, session_id: str, ip: str, tokens: int):
+    def record_usage(self, ip: str, tokens: int):
         """
         Записать использование токенов.
 
@@ -222,7 +180,6 @@ class RateLimiter:
         Использует атомарный INCRBY + EXPIRE NX.
 
         Args:
-            session_id: ID сессии клиента
             ip: IP-адрес клиента
             tokens: Количество использованных токенов
 
@@ -230,61 +187,54 @@ class RateLimiter:
             RateLimitInfo с обновлёнными значениями
         """
         if not self.settings.rate_limit_enabled or tokens <= 0:
-            return self._build_info(_RateLimitUsage(0, 0, 0, 0))
+            return self._build_info(_RateLimitUsage(0, self.settings.rate_limit_window_seconds))
 
         redis_client = self._get_redis()
         if not redis_client:
             logger.warning("RateLimiter: Cannot record usage - Redis unavailable")
             return self._build_info(
                 _RateLimitUsage(
-                    tokens, tokens,
-                    self.settings.rate_limit_window_seconds,
-                    self.settings.rate_limit_window_seconds,
+                    ip_used=tokens,
+                    ip_ttl=self.settings.rate_limit_window_seconds,
                 )
             )
 
-        session_key = f"{self.SESSION_PREFIX}{session_id}"
         ip_key = f"{self.IP_PREFIX}{ip}"
         window = self.settings.rate_limit_window_seconds
 
         # Атомарный инкремент с установкой TTL (NX = только если нет TTL)
         pipe = redis_client.pipeline()
-        pipe.incrby(session_key, tokens)
-        pipe.expire(session_key, window, nx=True)
         pipe.incrby(ip_key, tokens)
         pipe.expire(ip_key, window, nx=True)
-        pipe.ttl(session_key)
         pipe.ttl(ip_key)
         results = pipe.execute()
 
-        new_session_used = results[0]
-        new_ip_used = results[2]
-        session_ttl = results[4] if results[4] > 0 else window
-        ip_ttl = results[5] if results[5] > 0 else window
+        new_ip_used = results[0]
+        ip_ttl = results[2] if results[2] > 0 else window
 
         logger.debug(
-            "Rate limit recorded: session_id=%s tokens=%d new_session_total=%d new_ip_total=%d",
-            session_id,
+            "Rate limit recorded: ip=%s tokens=%d new_total=%d",
+            self._mask_ip(ip),
             tokens,
-            new_session_used,
             new_ip_used,
         )
 
+        # Calculate exceeded after recording usage
+        exceeded = new_ip_used >= self.settings.rate_limit_ip_tokens
+
         return self._build_info(
             _RateLimitUsage(
-                session_used=new_session_used,
                 ip_used=new_ip_used,
-                session_ttl=session_ttl,
                 ip_ttl=ip_ttl,
-            )
+            ),
+            exceeded=exceeded,
         )
 
-    def get_status(self, session_id: str, ip: str):
+    def get_status(self, ip: str):
         """
         Получить статус rate limit для GET endpoint.
 
         Args:
-            session_id: ID сессии клиента
             ip: IP-адрес клиента
 
         Returns:
@@ -298,9 +248,11 @@ class RateLimiter:
         if not self.available:
             return RateLimitStatus(available=False, rate_limit=None)
 
-        allowed, info = self.check_limit(session_id, ip)
+        _, info = self.check_limit(ip)
 
+        # available=True means Redis is working (service is available)
+        # Rate limit exceeded state is indicated by info.exceeded
         return RateLimitStatus(
-            available=allowed,
+            available=True,
             rate_limit=info,
         )

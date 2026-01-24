@@ -57,14 +57,36 @@ def _format_duration(seconds: int) -> str:
     return f"{minutes} минут"
 
 
-def _format_usage(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+def _format_usage(raw: Any | None) -> dict[str, Any] | None:
     if not raw:
         return None
-    prompt_tokens = raw.get("prompt_tokens") or raw.get("input_tokens")
-    completion_tokens = raw.get("completion_tokens") or raw.get("output_tokens")
-    total_tokens = raw.get("total_tokens")
+
+    # Поддержка dict и объектов с атрибутами (LangChain UsageMetadata)
+    def _get(key: str, *alt_keys: str) -> int | None:
+        # Сначала пробуем как dict
+        if isinstance(raw, dict):
+            for k in (key, *alt_keys):
+                if k in raw and raw[k] is not None:
+                    return int(raw[k])
+        # Затем как объект с атрибутами
+        else:
+            for k in (key, *alt_keys):
+                val = getattr(raw, k, None)
+                if val is not None:
+                    return int(val)
+        return None
+
+    prompt_tokens = _get("prompt_tokens", "input_tokens")
+    completion_tokens = _get("completion_tokens", "output_tokens")
+    total_tokens = _get("total_tokens")
+
     if total_tokens is None and (prompt_tokens is not None or completion_tokens is not None):
         total_tokens = (prompt_tokens or 0) + (completion_tokens or 0)
+
+    # Если ничего не нашли
+    if prompt_tokens is None and completion_tokens is None and total_tokens is None:
+        return None
+
     return {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
@@ -157,16 +179,15 @@ async def chat_stream(req: ChatRequest, request: Request):
 
     # Проверка лимита ДО обработки
     if limiter.settings.rate_limit_enabled:
-        allowed, rate_limit_info = limiter.check_limit(session_id, client_ip)
+        allowed, rate_limit_info = limiter.check_limit(client_ip)
         if not allowed:
             raise HTTPException(
                 status_code=429,
                 detail={
                     "code": "RATE_LIMIT_EXCEEDED",
-                    "message": f"Достигнут лимит использования AI-агента. "
-                               f"Попробуйте снова через {_format_duration(rate_limit_info.reset_in_seconds)}",
+                    "message": "Достигнут лимит использования AI-агента",
                     "details": {
-                        "exceeded_by": rate_limit_info.exceeded_by,
+                        "exceeded": rate_limit_info.exceeded,
                         "reset_in_seconds": rate_limit_info.reset_in_seconds,
                         "reset_in_human": _format_duration(rate_limit_info.reset_in_seconds)
                     }
@@ -250,6 +271,17 @@ async def chat_stream(req: ChatRequest, request: Request):
                     text = _extract_text(output or data)
                     if text and not sent_delta:
                         final_text = text
+                    # Извлечь usage из on_chat_model_end (GigaChat передаёт его здесь)
+                    if kind == "on_chat_model_end" and output:
+                        # LangChain AIMessage может содержать usage_metadata или response_metadata
+                        if hasattr(output, "usage_metadata") and output.usage_metadata:
+                            usage = output.usage_metadata
+                        elif hasattr(output, "response_metadata"):
+                            rm = output.response_metadata or {}
+                            if "token_usage" in rm:
+                                usage = rm["token_usage"]
+                            elif "usage" in rm:
+                                usage = rm["usage"]
 
                 elif kind == "on_tool_start":
                     tool_name = event.get("name") or (event.get("data") or {}).get("name") or "tool"
@@ -290,14 +322,23 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         # === Rate Limiting: записать usage ===
         final_rate_limit = None
-        if limiter.settings.rate_limit_enabled and usage:
-            formatted_usage = _format_usage(usage)
-            total_tokens = (
-                formatted_usage.get("total_tokens") or 0
-                if formatted_usage else 0
-            )
+        formatted_usage = _format_usage(usage)
+        logger.info(
+            "chat_stream usage message_id=%s raw_usage=%r formatted=%r",
+            message_id,
+            usage,
+            formatted_usage,
+        )
+        if limiter.settings.rate_limit_enabled and formatted_usage:
+            total_tokens = formatted_usage.get("total_tokens") or 0
             if total_tokens > 0:
-                final_rate_limit = limiter.record_usage(session_id, client_ip, total_tokens)
+                final_rate_limit = limiter.record_usage(client_ip, total_tokens)
+                logger.info(
+                    "chat_stream rate_limit_recorded message_id=%s tokens=%d ip_used=%d",
+                    message_id,
+                    total_tokens,
+                    final_rate_limit.ip.used,
+                )
 
         yield json.dumps(
             {
