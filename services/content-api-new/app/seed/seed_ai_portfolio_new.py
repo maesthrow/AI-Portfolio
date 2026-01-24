@@ -63,13 +63,12 @@ PROFILE_DATA = {
     "status": "ready_to_connect_",
     "avatar_url": "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
     "summary_md": (
-        "ML/LLM инженер с продуктовым подходом и бэкенд-фоном (Python + .NET).\n"
-        "Делаю AI-функциональность удобной и надёжной: продумываю архитектуру, "
-        "забочусь о качестве моделей и интегрирую ML-решения так, чтобы они помогали бизнесу."
+        "ML/LLM-инженер с продуктовым подходом и опытом backend-разработки (Python, .NET).\n"
+        "Строю production AI-системы: RAG, AI-агенты и tool-интеграции — с упором на качество и надежность."
     ),
-    "hero_headline": "AI/ML Engineer | Backend Developer",
-    "hero_description": "Строю AI-системы от модели и агента до продакшн-сервиса.",
-    "current_position": "Backend / ML-инженер в Aston",
+    "hero_headline": "LLM / Agent Engineer | AI Systems | Backend",
+    "hero_description": "Строю production AI-системы: LLM, AI-агенты, RAG и ML-инфраструктуру — от идеи до продакшена.",
+    "current_position": "ML/LLM-инженер — AI-агенты для Сбера (аутстафф)",
 }
 
 CONTACTS_DATA = [
@@ -134,8 +133,8 @@ EXPERIENCE_DATA = [
         "project_slug": "t2-ml",
         "project_url": None,
         "start_date": date(2024, 10, 28),
-        "end_date": None,
-        "is_current": True,
+        "end_date": date(2025, 12, 30),
+        "is_current": False,
         "kind": "commercial",
         "company_role_md": "Разрабатываю ML‑продукты: LLM/RAG/CV, строю backend-архитектуру сервисов.",
         "summary_md": (
@@ -241,7 +240,7 @@ PROJECTS_DATA = [
             "- MLOps: MLflow, Celery, RabbitMQ, пайплайн автообучения, валидации и инференса ML-моделей компьютерного зрения.\n"
             "- Backend на FastAPI, интеграции с внутренними сервисами t2."
         ),
-        "period": "2024 — н.в.",
+        "period": "2024 — 2025",
         "company_name": "t2 (проект в Aston)",
         "company_website": "https://t2.ru",
         "domain": "ml_platform",
@@ -464,12 +463,11 @@ PUBLICATIONS_DATA = [
 ]
 
 STATS_DATA = [
-    # цифры примерные — легко поправишь в БД
     {
         "key": "repos",
         "label": "GitHub репозитории",
         "value": "30+",
-        "hint": "",
+        "hint": "Open-source • pet-проекты",
         "group_name": "about",
         "order_index": 10,
     },
@@ -477,7 +475,7 @@ STATS_DATA = [
         "key": "experience_years",
         "label": "Опыт в разработке",
         "value": "5+ лет",
-        "hint": "Python / .NET | Backend / ML / AI",
+        "hint": "Python/.NET • Backend • ML",
         "group_name": "about",
         "order_index": 20,
     },
@@ -485,7 +483,7 @@ STATS_DATA = [
         "key": "ml_projects",
         "label": "ML-проекты",
         "value": "5+",
-        "hint": "CV / LLM / AI-Agents",
+        "hint": "LLM • AI-агенты • RAG • CV",
         "group_name": "about",
         "order_index": 30,
     },
@@ -493,8 +491,8 @@ STATS_DATA = [
 
 TECH_FOCUS_DATA = [
     {
-        "label": "RAG, агенты и LLM",
-        "description": "AI-агенты, RAG-системы, работа с векторными хранилищами.",
+        "label": "LLM, RAG и AI-агенты",
+        "description": "AI-агенты, LLM, RAG-системы, работа с векторными хранилищами.",
         "order_index": 10,
         "tags": [
             "LangChain",
