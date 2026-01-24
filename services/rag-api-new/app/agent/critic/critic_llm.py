@@ -41,7 +41,7 @@ class CriticLLM:
     def __init__(self, llm: BaseChatModel):
         self.llm = llm
 
-    def evaluate(self, question: str, plan: QueryPlanV2, payload: FactsPayload) -> CriticDecision:
+    def evaluate(self, question: str, plan: QueryPlanV2, payload: FactsPayload) -> tuple[CriticDecision, Any]:
         facts_preview = []
         for item in (payload.items or [])[:5]:
             facts_preview.append(
@@ -93,11 +93,12 @@ class CriticLLM:
 
         try:
             resp = self.llm.invoke(messages)
+            usage = self._extract_usage(resp)
             raw = (resp.content or "").strip()
             parsed = _parse_json_object(raw)
             if not parsed:
                 logger.warning("Critic JSON parse failed, forcing search. raw_preview=%r", truncate_text(raw, limit=400))
-                return CriticDecision(sufficient=False, need_search=True, query=question, reason="critic_parse_failed")
+                return CriticDecision(sufficient=False, need_search=True, query=question, reason="critic_parse_failed"), usage
             decision = CriticDecision.model_validate(parsed)
             logger.info(
                 "Critic decision: sufficient=%s need_search=%s reason=%r query=%r",
@@ -106,8 +107,17 @@ class CriticLLM:
                 truncate_text(decision.reason, limit=200),
                 truncate_text(decision.query, limit=200),
             )
-            return decision
+            return decision, usage
         except Exception as e:
             logger.warning("Critic failed, forcing search: %s", e)
-            return CriticDecision(sufficient=False, need_search=True, query=question, reason="critic_failed")
+            return CriticDecision(sufficient=False, need_search=True, query=question, reason="critic_failed"), None
+
+    def _extract_usage(self, response: Any) -> Any:
+        """Extract usage_metadata from LLM response."""
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            return response.usage_metadata
+        if hasattr(response, "response_metadata"):
+            rm = response.response_metadata or {}
+            return rm.get("token_usage") or rm.get("usage")
+        return None
 

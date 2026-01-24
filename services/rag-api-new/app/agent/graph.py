@@ -86,9 +86,9 @@ def build_agent_graph():
     - Промпт: AGENT_SYSTEM_PROMPT
     """
     from .rag_tool import portfolio_rag_tool
-    from ..deps import chat_llm
+    from ..deps import agent_llm
 
-    llm = chat_llm()
+    llm = agent_llm()
     checkpointer = MemorySaver()
 
     # Single tool with full LLM pipeline

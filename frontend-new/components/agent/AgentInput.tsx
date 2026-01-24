@@ -8,6 +8,7 @@ type AgentInputProps = {
   inputDisabled?: boolean;
   sendDisabled?: boolean;
   suggestions?: string[];
+  suggestionsDisabled?: boolean;
   streaming?: boolean;
   onStop?: () => void;
 };
@@ -20,6 +21,7 @@ export default function AgentInput({
   inputDisabled = false,
   sendDisabled = false,
   suggestions = [],
+  suggestionsDisabled = false,
   streaming = false,
   onStop
 }: AgentInputProps) {
@@ -39,8 +41,13 @@ export default function AgentInput({
           <button
             key={s}
             type="button"
-            onClick={() => onChange(s)}
-            className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-xs text-slate-100 transition hover:-translate-y-0.5 hover:shadow-neon"
+            onClick={() => !suggestionsDisabled && onChange(s)}
+            disabled={suggestionsDisabled}
+            className={`rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-xs text-slate-100 transition ${
+              suggestionsDisabled
+                ? 'opacity-50 cursor-not-allowed'
+                : 'hover:-translate-y-0.5 hover:shadow-neon'
+            }`}
           >
             {s}
           </button>

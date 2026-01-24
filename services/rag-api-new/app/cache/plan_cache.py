@@ -9,7 +9,7 @@ Hybrid Plan Cache: shortcut -> Redis cache -> LLM fallback.
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from typing import Any, Callable
 
 from ..agent.planner.schemas_v3 import QueryPlanV3
 from ..agent.planner.shortcuts import try_shortcut
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def get_plan_with_cache(
     question: str,
     planner_llm_fn: Callable,
-) -> tuple[QueryPlanV3, str]:
+) -> tuple[QueryPlanV3, str, Any]:
     """
     Получить план с использованием многоуровневого кэширования.
 
@@ -35,7 +35,8 @@ def get_plan_with_cache(
         planner_llm_fn: Функция для получения LLM (lazy initialization)
 
     Returns:
-        tuple[QueryPlanV3, source] где source = "shortcut" | "cache" | "llm"
+        tuple[QueryPlanV3, source, usage] где source = "shortcut" | "cache" | "llm"
+        usage is None for shortcut/cache, dict for LLM
     """
     # 1. Try shortcut (rule-based, instant)
     plan = try_shortcut(question)
@@ -45,7 +46,7 @@ def get_plan_with_cache(
             [i.value for i in plan.intents],
             question[:50],
         )
-        return plan, "shortcut"
+        return plan, "shortcut", None
 
     # 2. Try Redis cache
     cache = get_cache_service()
@@ -58,7 +59,7 @@ def get_plan_with_cache(
                 [i.value for i in plan.intents],
                 question[:50],
             )
-            return plan, "cache"
+            return plan, "cache", None
         except Exception as e:
             logger.warning("Failed to parse cached plan: %s", e)
 
@@ -66,7 +67,7 @@ def get_plan_with_cache(
     from ..agent.planner import PlannerLLM
 
     planner = PlannerLLM(planner_llm_fn())
-    plan = planner.plan(question)
+    plan, usage = planner.plan(question)
 
     # Сохраняем в кэш для следующего раза
     try:
@@ -79,4 +80,4 @@ def get_plan_with_cache(
     except Exception as e:
         logger.warning("Failed to cache plan: %s", e)
 
-    return plan, "llm"
+    return plan, "llm", usage

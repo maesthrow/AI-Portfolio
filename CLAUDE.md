@@ -119,15 +119,18 @@ User Response (streaming or direct)
 - `app/main.py` - FastAPI app with routers, health endpoints (`/healthz`, `/meta`)
 - `app/settings.py` - Pydantic settings with LLM temperatures
 - `app/deps.py` - Shared dependencies (LLM instances, vectorstore, reranker)
+- `app/prefetch.py` - Cache warmup for popular questions
+  - `POPULAR_QUESTIONS` - List of common questions in both user-style and agent-style
+  - `prefetch_popular_plans()` - Warms up Redis cache after ingest (~60-70% cache hit rate)
 
 **API Routers** (`app/routers/`):
 - `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON
 - `ingest.py` - POST `/api/v1/ingest` - Single document ingestion
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Batch import from ExportPayload
+- `rate_limit.py` - GET `/api/v1/rate-limit/status` - Rate limit status for current IP
 - `admin.py` - Admin endpoints:
   - DELETE `/api/v1/admin/collection` - Clear ChromaDB collection
   - GET `/api/v1/admin/stats` - Collection and graph statistics
-  - GET `/api/v1/admin/cache/stats` - Cache statistics (Redis availability, key counts)
   - DELETE `/api/v1/admin/cache/plans` - Clear plan cache
   - DELETE `/api/v1/admin/cache/embeddings` - Clear embedding cache
   - DELETE `/api/v1/admin/cache` - Clear all caches
@@ -136,16 +139,24 @@ User Response (streaming or direct)
 - `graph.py` - LangGraph agent with ReAct pattern and memory
 - `rag_tool.py` - RAG tool for agent
 
-**Identity Handler** (`app/agent/identity/`):
-- `classifier.py` - Semantic matching for identity questions ("кто ты", "что умеешь")
-- `prompts.py` - Identity response prompt with CAPABILITIES list (easily extensible)
-- Uses embedding similarity (threshold 0.94) to detect identity questions
-- Bypasses full RAG pipeline for fast, consistent responses about the agent itself
+**Identity** (`app/agent/identity/`):
+- `classifier.py` - Semantic matching for identity questions ("who are you", "what can you do")
+  - Uses embedding similarity instead of regex for robustness to typos and paraphrases
+  - `SIMILARITY_THRESHOLD = 0.94` for conservative matching
+  - `is_identity_question(question)` returns `(is_identity, max_similarity)`
+  - `generate_identity_response(question)` generates LLM response about agent capabilities
+- `prompts.py` - Identity prompts and capabilities list
+  - `CAPABILITIES` - List of agent capabilities (easily extensible)
+  - `IDENTITY_REFERENCE_QUESTIONS` - Reference questions for semantic matching
+  - `get_identity_system_prompt()` - Generates system prompt with current capabilities
 
 **Planner** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-based query plan generator with structured output
 - `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCall, RenderStyleV3, AnswerStyleV3
 - `prompts.py` - System prompts for planner (intents, tools, entity extraction)
+- `shortcuts.py` - Plan shortcuts for unambiguous questions (contacts, current job, who is developer)
+  - `SAFE_SHORTCUTS` - Dict of regex patterns to pre-built QueryPlanV3
+  - `try_shortcut(question)` - Returns plan if shortcut matches, else None (falls back to LLM)
 
 **TechCategory** (for technology filtering):
 - `language` - Programming languages (Python, C#, JavaScript, SQL)
@@ -234,8 +245,23 @@ User Response (streaming or direct)
   - Question normalization for cache key consistency
   - Graceful degradation when Redis is unavailable
 
-**LLM Adapters** (`app/llm/`):
-- `gigachat_adapter.py` - GigaChat adapter for LangChain
+**Rate Limiting** (`app/rate_limit/`):
+- `limiter.py` - RateLimiter class for token-based IP rate limiting with Redis
+- `schemas.py` - RateLimitBucket, RateLimitInfo, RateLimitStatus schemas
+- Features:
+  - Token-based rate limiting per IP address (not per session)
+  - Configurable token limit and time window
+  - Warning threshold for approaching limit (default 80%)
+  - Redis-based storage with graceful degradation
+  - Rate limit info returned in streaming response `end` event
+  - Frontend displays warning when approaching limit, blocks when exceeded
+
+**LLM Factory** (`app/llm/`):
+- `factory.py` - `LLMFactory` class, `parse_llm_id()`, `get_llm_factory()`, `get_provider_info()`
+- `providers.py` - `LLMProvider` enum (GIGACHAT, DEEPSEEK, QWEN), `ProviderConfig`
+- `exceptions.py` - `LLMConfigError`, `LLMProviderError`
+- `validation.py` - `validate_llm_config()` for startup validation
+- `gigachat_adapter.py` - GigaChat adapter for LangChain (legacy)
 
 **Schemas** (`app/schemas/`):
 - `chat.py` - ChatRequest, ChatMessage (streaming types)
@@ -284,6 +310,8 @@ See legacy documentation in previous CLAUDE.md versions.
   - `AgentChatWindow.tsx` - Chat window UI
   - `AgentInput.tsx` - Message input
   - `AgentMessageList.tsx` - Message display with streaming
+  - `RateLimitWarning.tsx` - Warning banner when approaching rate limit (Framer Motion animated)
+  - `RateLimitBlocked.tsx` - Block UI when rate limit exceeded or service unavailable
 - `components/hero/` - Hero section:
   - `HeroIntro.tsx` - Hero content with Framer Motion animations
   - `HeroScrollHint.tsx` - Scroll down button with animation
@@ -335,13 +363,16 @@ See legacy documentation in previous CLAUDE.md versions.
   - `getSectionMeta(key)` - Fetch section metadata
   - `getAllSectionMeta()` - Fetch all section metadata
   - `askAgent(question, sessionId)` - Ask agent question
-  - `callAgentStream(body, opts)` - Streaming chat with agent
+  - `callAgentStream(body, opts)` - Streaming chat with agent (handles 429/503 as RateLimitError)
+  - `getRateLimitStatus()` - Get current rate limit status for IP
+  - `isRateLimitError(error)` - Type guard for RateLimitError
 - `lib/types.ts` - TypeScript type definitions:
   - `Profile`, `ExperienceItem`, `ExperienceProject`, `ExperienceDetail`
   - `StatItem`, `TechFocusItem`, `Project`, `ProjectDetail`
   - `Publication`, `Contact`, `AgentMessage`
   - `HeroTag`, `FocusArea`, `FocusAreaBullet`
   - `WorkApproach`, `WorkApproachBullet`, `SectionMeta`
+  - `RateLimitBucket`, `RateLimitInfo`, `RateLimitStatus`, `RateLimitError`
 
 ### 5. **Infrastructure** (`infra/`)
 - Docker Compose orchestration (compose.apps.yaml - primary compose file)
@@ -569,6 +600,104 @@ The new RAG system uses a sophisticated multi-layer architecture:
    - BULLETS, GROUPED_BULLETS, SHORT, TABLE, PARAGRAPH
    - See `app/agent/render/renderer.py:RenderEngine.render()`
 
+### Multi-Provider LLM Architecture (rag-api-new)
+
+The system supports multiple LLM providers with role-based model selection:
+
+**Supported Providers:**
+- `gigachat` - GigaChat API (Sber) via `langchain_gigachat` - excels at Russian language
+- `deepseek` - DeepSeek API via `ChatOpenAI` - excels at reasoning (R1 model)
+- `qwen` - Qwen via LiteLLM → vLLM (local) - cost-effective for simple tasks
+
+**LLM Roles (5 independent configurations):**
+
+| Role | Purpose | Default Model | Temperature |
+|------|---------|---------------|-------------|
+| `identity` | "Who are you?" responses | `deepseek:deepseek-chat` | 0.3 |
+| `planner` | QueryPlanV3 generation | `gigachat:GigaChat-2` | 0.0 |
+| `answer` | User-facing responses | `gigachat:GigaChat-2` | 0.2 |
+| `critic` | Fact sufficiency evaluation | `deepseek:deepseek-reasoner` | 0.2 |
+| `agent` | ReAct orchestration | `gigachat:GigaChat-2` | 0.2 |
+
+**LLM ID Format:** `provider:model` (e.g., `gigachat:GigaChat-2`, `deepseek:deepseek-reasoner`)
+
+**⚠️ DeepSeek Reasoner Limitation:**
+`deepseek-reasoner` (R1 model) does NOT support tool calling in LangChain/LangGraph due to missing `reasoning_content` field.
+
+| Role | DeepSeek Reasoner | DeepSeek Chat | Reason |
+|------|-------------------|---------------|--------|
+| `IDENTITY_LLM` | ⚠️ Overkill | ✅ | Simple responses |
+| `PLANNER_LLM` | ✅ | ✅ | Structured output only |
+| `ANSWER_LLM` | ⚠️ Overkill | ✅ | Text generation |
+| `CRITIC_LLM` | ✅ | ✅ | No tool calls |
+| `AGENT_LLM` | ❌ **CANNOT USE** | ✅ | Requires tool calling |
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  gigachat:model ──► GigaChat() ─────────────► GigaChat API     │
+│                     (langchain_gigachat)       (direct)         │
+│                                                                 │
+│  deepseek:model ──► ChatOpenAI() ───────────► DeepSeek API     │
+│                     (base_url=api.deepseek)    (direct)         │
+│                                                                 │
+│  qwen:model ──────► ChatOpenAI() ──► LiteLLM ──► vLLM          │
+│                     (base_url=litellm)         (local)          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Files:**
+- `app/llm/factory.py` - `LLMFactory` with caching by (provider, model, temperature)
+- `app/llm/providers.py` - `LLMProvider` enum, `ProviderConfig`
+- `app/llm/exceptions.py` - `LLMConfigError`, `LLMProviderError`
+- `app/llm/validation.py` - `validate_llm_config()` for startup validation
+- `app/deps.py` - Role-specific LLM getters: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`
+
+**Configuration (environment variables):**
+```bash
+# Provider credentials
+GIGA_AUTH_DATA=base64_credentials      # GigaChat
+DEEPSEEK_API_KEY=sk-xxx                # DeepSeek
+LITELLM_BASE_URL=http://localhost:8005/v1  # Qwen via LiteLLM
+
+# LLM roles (format: "provider:model")
+IDENTITY_LLM=deepseek:deepseek-chat
+PLANNER_LLM=deepseek:deepseek-reasoner
+ANSWER_LLM=gigachat:GigaChat-2
+CRITIC_LLM=deepseek:deepseek-reasoner
+AGENT_LLM=gigachat:GigaChat-2
+
+# Temperatures
+IDENTITY_TEMPERATURE=0.3
+PLANNER_TEMPERATURE=0.0
+ANSWER_TEMPERATURE=0.2
+CRITIC_TEMPERATURE=0.2
+AGENT_TEMPERATURE=0.2
+```
+
+**TokenUsageCollector (Rate Limiting Integration):**
+
+The system aggregates token usage from ALL LLM roles for accurate rate limiting:
+
+```
+Request Flow:
+Identity LLM ─────┐
+Planner LLM ──────┤
+Critic LLM ───────┼──► TokenUsageCollector ──► rate_limiter.record_usage()
+Answer LLM ───────┤
+Agent LLM ────────┘
+```
+
+- `app/rate_limit/usage_collector.py` - `TokenUsageCollector`, `RoleUsage`
+- Each LLM class returns `(result, usage)` tuple
+- `chat.py` aggregates usage from agent + rag_tool
+- Total tokens recorded in Redis for rate limiting
+
+**Usage Logging:**
+```
+INFO: TokenUsage summary: message_id=abc123 total=3847 breakdown=[planner=1200, critic=650, answer=1500, agent=497]
+```
+
 ### Knowledge Graph (rag-api-new)
 
 The system builds a knowledge graph from portfolio data:
@@ -755,10 +884,27 @@ Key variables (see `infra/.env.dev`):
 **LLM Infrastructure:**
 - `LITELLM_BASE_URL` - LiteLLM proxy URL (e.g., `http://litellm:4000/v1`)
 - `LITELLM_MASTER_KEY` - LiteLLM authentication key
-- `CHAT_MODEL` - Chat model alias (e.g., `Qwen2.5` or `GigaChat`, mapped in litellm/config.yaml)
+- `LITELLM_API_KEY` - LiteLLM API key for authentication
+- `CHAT_MODEL` - Chat model alias (legacy, e.g., `Qwen2.5` or `GigaChat`)
 - `EMBEDDING_MODEL` - Embedding model alias (e.g., `embedding-default`)
 - `GIGA_AUTH_DATA` - GigaChat base64 credentials (if using GigaChat)
+- `DEEPSEEK_API_KEY` - DeepSeek API key (if using DeepSeek)
+- `DEEPSEEK_BASE_URL` - DeepSeek API URL (default: `https://api.deepseek.com/v1`)
 - `HF_TOKEN` - HuggingFace token for model downloads
+
+**LLM Roles (Multi-Provider Architecture):**
+- `IDENTITY_LLM` - LLM for identity questions (format: `provider:model`, default: `deepseek:deepseek-chat`)
+- `PLANNER_LLM` - LLM for query planning (default: `deepseek:deepseek-reasoner`)
+- `ANSWER_LLM` - LLM for answer generation (default: `gigachat:GigaChat-2`)
+- `CRITIC_LLM` - LLM for fact evaluation (default: `deepseek:deepseek-reasoner`)
+- `AGENT_LLM` - LLM for ReAct agent (default: `gigachat:GigaChat-2`)
+
+**LLM Temperatures:**
+- `IDENTITY_TEMPERATURE` - Identity LLM temperature (default: 0.3)
+- `PLANNER_TEMPERATURE` - Planner LLM temperature (default: 0.0)
+- `ANSWER_TEMPERATURE` - Answer LLM temperature (default: 0.2)
+- `CRITIC_TEMPERATURE` - Critic LLM temperature (default: 0.2)
+- `AGENT_TEMPERATURE` - Agent LLM temperature (default: 0.2)
 
 **RAG API Specific:**
 - `reranker_model` - Reranker model (default: `BAAI/bge-reranker-base`)
@@ -766,14 +912,17 @@ Key variables (see `infra/.env.dev`):
 - `planner_temperature` - LLM temperature for planner (default: 0.0 for deterministic)
 - `answer_temperature` - LLM temperature for answer generation (default: 0.2)
 
+**Rate Limiting:**
+- `rate_limit_enabled` - Enable/disable rate limiting (default: true)
+- `rate_limit_ip_tokens` - Token limit per IP per window (default: 50000, use lower for testing e.g. 4500)
+- `rate_limit_window_seconds` - Rate limit window in seconds (default: 3600 = 1 hour)
+- `rate_limit_warning_threshold` - Warning threshold as decimal (default: 0.8 = 80%)
+
 **Redis Cache:**
 - `REDIS_URL` - Redis connection URL (e.g., `redis://localhost:6379/0`)
 - `CACHE_ENABLED` - Enable/disable caching (default: true)
 - `PLAN_CACHE_TTL` - Plan cache TTL in seconds (default: 3600)
 - `EMBEDDING_CACHE_TTL` - Embedding cache TTL in seconds (default: 86400)
-
-**Rerank Settings:**
-- `max_rerank_candidates` - Max documents for reranker (default: 80, limits CPU time)
 
 **Vector Database:**
 - `CHROMA_HOST` - ChromaDB host
@@ -844,6 +993,13 @@ Key variables (see `infra/.env.dev`):
     - After changing `prompts.py` or planner logic: clear plan cache via `/api/v1/admin/cache/plans`
     - After changing embedding model: clear embedding cache via `/api/v1/admin/cache/embeddings`
 
+14. **Rate Limit Token Consumption**:
+    - Each agent request consumes ~6000-9000 tokens due to multi-stage pipeline
+    - Pipeline stages: Agent system prompt (~2000), Planner LLM (~1500), RAG Tool (~1500), Answer LLM (~2000), Response (~1500)
+    - With default limit of 50000 tokens/hour, users can make ~5-8 requests per hour
+    - For testing, use lower limit (e.g., 4500) but be aware even one request may exceed it
+    - Rate limit is per IP, not per session - all users from same IP share the limit
+
 ---
 
 ## File Structure Reference
@@ -896,10 +1052,11 @@ AI-Portfolio/
 │   │   │   ├── main.py             # FastAPI app with routers
 │   │   │   ├── settings.py         # Pydantic settings (temperatures, etc.)
 │   │   │   ├── deps.py             # Shared dependencies (LLMs, vectorstore)
+│   │   │   ├── prefetch.py         # Cache warmup for popular questions
 │   │   │   ├── agent/              # Agent system
 │   │   │   │   ├── graph.py        # LangGraph agent
 │   │   │   │   ├── rag_tool.py     # RAG tool
-│   │   │   │   ├── identity/       # Identity question handler (classifier.py, prompts.py)
+│   │   │   │   ├── identity/       # Identity questions (classifier.py, prompts.py)
 │   │   │   │   ├── planner/        # LLM planner (planner_llm.py, schemas_v3.py, prompts.py, shortcuts.py)
 │   │   │   │   ├── scope_guard/    # Off-topic detection (scope_guard.py, schemas.py)
 │   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
@@ -933,12 +1090,21 @@ AI-Portfolio/
 │   │   │   │   ├── cache_service.py # CacheService with graceful degradation
 │   │   │   │   ├── plan_cache.py   # Plan caching (shortcut → cache → LLM)
 │   │   │   │   └── embedding_cache.py # Query embedding cache
-│   │   │   ├── llm/                # LLM adapters
-│   │   │   │   └── gigachat_adapter.py
+│   │   │   ├── rate_limit/         # Rate limiting
+│   │   │   │   ├── limiter.py      # RateLimiter class
+│   │   │   │   ├── schemas.py      # Rate limit schemas
+│   │   │   │   └── usage_collector.py # TokenUsageCollector for multi-role aggregation
+│   │   │   ├── llm/                # Multi-provider LLM factory
+│   │   │   │   ├── factory.py      # LLMFactory, parse_llm_id(), get_provider_info()
+│   │   │   │   ├── providers.py    # LLMProvider enum, ProviderConfig
+│   │   │   │   ├── exceptions.py   # LLMConfigError, LLMProviderError
+│   │   │   │   ├── validation.py   # validate_llm_config() for startup
+│   │   │   │   └── gigachat_adapter.py # Legacy adapter
 │   │   │   ├── routers/            # API routers
 │   │   │   │   ├── chat.py         # /api/v1/agent/chat/stream
 │   │   │   │   ├── ingest.py       # /api/v1/ingest
 │   │   │   │   ├── ingest_batch.py # /api/v1/ingest/batch
+│   │   │   │   ├── rate_limit.py   # /api/v1/rate-limit/status
 │   │   │   │   └── admin.py        # /api/v1/admin/*
 │   │   │   ├── schemas/            # Pydantic schemas
 │   │   │   │   ├── chat.py, ingest.py, export.py, admin.py, ask.py

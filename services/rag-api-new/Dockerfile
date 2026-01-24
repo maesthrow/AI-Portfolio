@@ -6,9 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
   && rm -rf /var/lib/apt/lists/*
 
-# сначала только манифесты
+# сначала только манифест (uv.lock не нужен для pip)
 COPY pyproject.toml ./
-COPY uv.lock ./
 
 # ставим зависимости проекта из pyproject (без GigaChat!)
 RUN pip install --no-cache-dir --upgrade pip \

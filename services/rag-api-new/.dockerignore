@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+ENV
+env
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Tests (не нужны в production образе)
+tests/
+pytest.ini
+.pytest_cache
+.coverage
+htmlcov/
+
+# Docs
+docs/
+*.md
+
+# Local env files
+.env
+.env.*
+
+# Lock files (pip uses pyproject.toml, not uv.lock)
+uv.lock
+poetry.lock
+
+# Misc
+*.log
+.DS_Store

@@ -15,6 +15,8 @@ import logging
 from langchain.tools import tool
 
 from ..deps import settings
+from ..llm import get_provider_info
+from ..rate_limit import TokenUsageCollector
 from ..utils.logging_utils import truncate_text
 
 logger = logging.getLogger(__name__)
@@ -55,7 +57,7 @@ def portfolio_rag_tool(question: str) -> dict:
     logger.info("portfolio_rag_tool: question=%r", question[:100])
 
     # Import dependencies
-    from ..deps import planner_llm, answer_llm
+    from ..deps import planner_llm, answer_llm, critic_llm
     from .planner import PlannerLLM
     from .executor import PlanExecutor
     from .render import RenderEngine
@@ -67,11 +69,20 @@ def portfolio_rag_tool(question: str) -> dict:
     from .normalizer.fact_bundle import build_fact_bundle
     from .grounding import GroundingVerifier
 
+    # Usage collector for rate limiting
+    collector = TokenUsageCollector()
+
     try:
         # 1. Plan (shortcut -> cache -> LLM fallback)
         from ..cache import get_plan_with_cache
 
-        plan, plan_source = get_plan_with_cache(question, planner_llm)
+        plan, plan_source, planner_usage = get_plan_with_cache(question, planner_llm)
+
+        # Record planner usage if available (only for LLM path)
+        if planner_usage:
+            s = settings()
+            provider, model = get_provider_info(s.planner_llm)
+            collector.add("planner", provider, model, planner_usage)
 
         logger.info("Plan source: %s", plan_source)
         logger.info(
@@ -124,8 +135,13 @@ def portfolio_rag_tool(question: str) -> dict:
                 )
                 decision = CriticDecision(sufficient=True, need_search=False, query="", reason="skipped")
             else:
-                critic = CriticLLM(planner_llm())
-                decision = critic.evaluate(question, plan, payload)
+                critic_instance = CriticLLM(critic_llm())
+                decision, critic_usage = critic_instance.evaluate(question, plan, payload)
+
+                # Record critic usage
+                if critic_usage:
+                    provider, model = get_provider_info(cfg.critic_llm)
+                    collector.add("critic", provider, model, critic_usage)
 
             search_already_used = any(tc.tool == "portfolio_search_tool" for tc in (plan.tool_calls or []))
             if decision.need_search and not search_already_used:
@@ -236,7 +252,13 @@ def portfolio_rag_tool(question: str) -> dict:
 
         # 6. Answer (LLM)
         answer_gen = AnswerLLM(answer_llm())
-        answer = answer_gen.generate(payload)
+        answer, answer_usage = answer_gen.generate(payload)
+
+        # Record answer usage
+        if answer_usage:
+            s = settings()
+            provider, model = get_provider_info(s.answer_llm)
+            collector.add("answer", provider, model, answer_usage)
 
         # 7. Grounding verification - check for hallucinations
         grounding_verifier = GroundingVerifier()
@@ -262,6 +284,9 @@ def portfolio_rag_tool(question: str) -> dict:
                 answer = grounding_result.suggested_rewrite
                 payload.warnings.append("Grounding: answer rewritten to remove ungrounded entities")
 
+        # Log usage summary
+        collector.log_summary(f"rag_tool_{id(question)}")
+
         return {
             "answer": answer,
             "rendered_facts": rendered,
@@ -272,6 +297,7 @@ def portfolio_rag_tool(question: str) -> dict:
             "intents": [i.value for i in payload.intents],
             "warnings": payload.warnings,
             "grounded": grounding_result.grounded,
+            "usage": collector.to_dict(),
         }
 
     except Exception as e:
@@ -285,4 +311,5 @@ def portfolio_rag_tool(question: str) -> dict:
             "found": False,
             "intents": [],
             "warnings": [str(e)],
+            "usage": collector.to_dict(),
         }

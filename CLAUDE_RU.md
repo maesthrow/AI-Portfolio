@@ -119,15 +119,18 @@
 - `app/main.py` - FastAPI приложение с роутерами, health endpoints (`/healthz`, `/meta`)
 - `app/settings.py` - Pydantic настройки с температурами LLM
 - `app/deps.py` - Общие зависимости (инстансы LLM, vectorstore, reranker)
+- `app/prefetch.py` - Прогрев кэша для популярных вопросов
+  - `POPULAR_QUESTIONS` - Список частых вопросов в user-style и agent-style формулировках
+  - `prefetch_popular_plans()` - Прогревает Redis кэш после ingest (~60-70% cache hit rate)
 
 **API роутеры** (`app/routers/`):
 - `chat.py` - POST `/api/v1/agent/chat/stream` - Стриминговый чат с NDJSON
 - `ingest.py` - POST `/api/v1/ingest` - Загрузка одного документа
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Пакетный импорт ExportPayload
+- `rate_limit.py` - GET `/api/v1/rate-limit/status` - Статус rate limit для текущего IP
 - `admin.py` - Админские эндпоинты:
   - DELETE `/api/v1/admin/collection` - Очистка коллекции ChromaDB
   - GET `/api/v1/admin/stats` - Статистика коллекции и графа
-  - GET `/api/v1/admin/cache/stats` - Статистика кэшей (доступность Redis, количество ключей)
   - DELETE `/api/v1/admin/cache/plans` - Очистка plan cache
   - DELETE `/api/v1/admin/cache/embeddings` - Очистка embedding cache
   - DELETE `/api/v1/admin/cache` - Очистка всех кэшей
@@ -136,16 +139,24 @@
 - `graph.py` - LangGraph агент с ReAct паттерном и памятью
 - `rag_tool.py` - RAG тулза для агента
 
-**Identity Handler** (`app/agent/identity/`):
+**Identity** (`app/agent/identity/`):
 - `classifier.py` - Semantic matching для identity-вопросов ("кто ты", "что умеешь")
-- `prompts.py` - Промпт ответа с CAPABILITIES списком (легко расширяемый)
-- Использует embedding similarity (порог 0.94) для детекции identity-вопросов
-- Обходит полный RAG pipeline для быстрых, стабильных ответов об агенте
+  - Использует embedding similarity вместо regex для устойчивости к опечаткам и перефразировкам
+  - `SIMILARITY_THRESHOLD = 0.94` для консервативного matching
+  - `is_identity_question(question)` возвращает `(is_identity, max_similarity)`
+  - `generate_identity_response(question)` генерирует LLM-ответ о возможностях агента
+- `prompts.py` - Промпты и список возможностей
+  - `CAPABILITIES` - Список возможностей агента (легко расширяемый)
+  - `IDENTITY_REFERENCE_QUESTIONS` - Референсные вопросы для semantic matching
+  - `get_identity_system_prompt()` - Генерирует системный промпт с актуальными возможностями
 
 **Планировщик** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-планировщик запросов со structured output
 - `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCall, RenderStyleV3, AnswerStyleV3
 - `prompts.py` - Системные промпты для планировщика (intents, tools, entity extraction)
+- `shortcuts.py` - Шорткаты планов для однозначных вопросов (контакты, текущая работа, кто разработчик)
+  - `SAFE_SHORTCUTS` - Dict regex-паттернов к готовым QueryPlanV3
+  - `try_shortcut(question)` - Возвращает план если shortcut подходит, иначе None (fallback на LLM)
 
 **TechCategory** (для фильтрации технологий):
 - `language` - Языки программирования (Python, C#, JavaScript, SQL)
@@ -234,8 +245,23 @@
   - Нормализация вопросов для консистентности ключей кэша
   - Graceful degradation при недоступности Redis
 
-**LLM адаптеры** (`app/llm/`):
-- `gigachat_adapter.py` - GigaChat адаптер для LangChain
+**Rate Limiting** (`app/rate_limit/`):
+- `limiter.py` - Класс RateLimiter для токен-лимитов по IP с Redis
+- `schemas.py` - Схемы RateLimitBucket, RateLimitInfo, RateLimitStatus
+- Возможности:
+  - Токен-лимиты по IP-адресу (не по сессии)
+  - Настраиваемый лимит токенов и временное окно
+  - Порог предупреждения при приближении к лимиту (по умолчанию 80%)
+  - Redis-хранилище с graceful degradation
+  - Информация о лимите возвращается в событии `end` стриминга
+  - Фронтенд показывает предупреждение при приближении к лимиту, блокирует при превышении
+
+**LLM Factory** (`app/llm/`):
+- `factory.py` - класс `LLMFactory`, `parse_llm_id()`, `get_llm_factory()`, `get_provider_info()`
+- `providers.py` - `LLMProvider` enum (GIGACHAT, DEEPSEEK, QWEN), `ProviderConfig`
+- `exceptions.py` - `LLMConfigError`, `LLMProviderError`
+- `validation.py` - `validate_llm_config()` для валидации при старте
+- `gigachat_adapter.py` - GigaChat адаптер для LangChain (legacy)
 
 **Schemas** (`app/schemas/`):
 - `chat.py` - ChatRequest, ChatMessage (стриминговые типы)
@@ -284,6 +310,8 @@
   - `AgentChatWindow.tsx` - UI окна чата
   - `AgentInput.tsx` - инпут сообщений
   - `AgentMessageList.tsx` - вывод сообщений со стримингом
+  - `RateLimitWarning.tsx` - предупреждение при приближении к лимиту (анимация Framer Motion)
+  - `RateLimitBlocked.tsx` - блокировка UI при превышении лимита или недоступности сервиса
 - `components/hero/` - Hero-секция:
   - `HeroIntro.tsx` - контент hero с анимациями Framer Motion
   - `HeroScrollHint.tsx` - кнопка скролла вниз с анимацией
@@ -335,13 +363,16 @@
   - `getSectionMeta(key)` - метаданные секции
   - `getAllSectionMeta()` - метаданные всех секций
   - `askAgent(question, sessionId)` - вопрос агенту
-  - `callAgentStream(body, opts)` - стриминг чата
+  - `callAgentStream(body, opts)` - стриминг чата (обрабатывает 429/503 как RateLimitError)
+  - `getRateLimitStatus()` - текущий статус rate limit для IP
+  - `isRateLimitError(error)` - type guard для RateLimitError
 - `lib/types.ts` - типы TypeScript:
   - `Profile`, `ExperienceItem`, `ExperienceProject`, `ExperienceDetail`
   - `StatItem`, `TechFocusItem`, `Project`, `ProjectDetail`
   - `Publication`, `Contact`, `AgentMessage`
   - `HeroTag`, `FocusArea`, `FocusAreaBullet`
   - `WorkApproach`, `WorkApproachBullet`, `SectionMeta`
+  - `RateLimitBucket`, `RateLimitInfo`, `RateLimitStatus`, `RateLimitError`
 
 ### 5. **Инфраструктура** (`infra/`)
 - Docker Compose оркестрация (compose.apps.yaml — основной файл)
@@ -569,6 +600,106 @@ pytest tests/
    - BULLETS, GROUPED_BULLETS, SHORT, TABLE, PARAGRAPH
    - См. `app/agent/render/renderer.py:RenderEngine.render()`
 
+### Мультипровайдерная архитектура LLM (rag-api-new)
+
+Система поддерживает несколько LLM-провайдеров с независимым выбором модели для каждой роли:
+
+**Поддерживаемые провайдеры:**
+- `gigachat` - GigaChat API (Сбер) через `langchain_gigachat` — силён в русском языке
+- `deepseek` - DeepSeek API через `ChatOpenAI` — силён в reasoning (модель R1)
+- `qwen` - Qwen через LiteLLM → vLLM (локальный) — экономичный для простых задач
+
+**Роли LLM (5 независимых конфигураций):**
+
+| Роль | Назначение | Модель по умолчанию | Температура |
+|------|------------|---------------------|-------------|
+| `identity` | Ответы на "кто ты?" | `deepseek:deepseek-chat` | 0.3 |
+| `planner` | Генерация QueryPlanV3 | `deepseek:deepseek-reasoner` | 0.0 |
+| `answer` | Генерация ответов пользователю | `gigachat:GigaChat-2` | 0.2 |
+| `critic` | Оценка достаточности фактов | `deepseek:deepseek-reasoner` | 0.2 |
+| `agent` | ReAct-оркестрация | `gigachat:GigaChat-2` | 0.2 |
+
+**Формат LLM ID:** `provider:model` (например, `gigachat:GigaChat-2`, `deepseek:deepseek-reasoner`)
+
+**⚠️ Ограничение DeepSeek Reasoner:**
+Модель `deepseek-reasoner` (R1) **НЕ поддерживает** tool calling в LangChain/LangGraph из-за отсутствия поля `reasoning_content` в ответе.
+
+| Роль | DeepSeek Reasoner | DeepSeek Chat | Причина |
+|------|-------------------|---------------|---------|
+| `IDENTITY_LLM` | ⚠️ Избыточно | ✅ | Простые ответы |
+| `PLANNER_LLM` | ✅ | ✅ | Только structured output |
+| `ANSWER_LLM` | ⚠️ Избыточно | ✅ | Генерация текста |
+| `CRITIC_LLM` | ✅ | ✅ | Без tool calls |
+| `AGENT_LLM` | ❌ **НЕЛЬЗЯ** | ✅ | Требует tool calling |
+
+**Рекомендация:** Для `AGENT_LLM` используйте `gigachat:GigaChat-2` или `deepseek:deepseek-chat`, НЕ `deepseek:deepseek-reasoner`.
+
+**Архитектура:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  gigachat:model ──► GigaChat() ─────────────► GigaChat API     │
+│                     (langchain_gigachat)       (напрямую)       │
+│                                                                 │
+│  deepseek:model ──► ChatOpenAI() ───────────► DeepSeek API     │
+│                     (base_url=api.deepseek)    (напрямую)       │
+│                                                                 │
+│  qwen:model ──────► ChatOpenAI() ──► LiteLLM ──► vLLM          │
+│                     (base_url=litellm)         (локальный)      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Ключевые файлы:**
+- `app/llm/factory.py` - `LLMFactory` с кэшированием по (provider, model, temperature)
+- `app/llm/providers.py` - `LLMProvider` enum, `ProviderConfig`
+- `app/llm/exceptions.py` - `LLMConfigError`, `LLMProviderError`
+- `app/llm/validation.py` - `validate_llm_config()` для валидации при старте
+- `app/deps.py` - Функции для ролей: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`
+
+**Конфигурация (переменные окружения):**
+```bash
+# Креды провайдеров
+GIGA_AUTH_DATA=base64_credentials      # GigaChat
+DEEPSEEK_API_KEY=sk-xxx                # DeepSeek
+LITELLM_BASE_URL=http://localhost:8005/v1  # Qwen через LiteLLM
+
+# Роли LLM (формат: "provider:model")
+IDENTITY_LLM=deepseek:deepseek-chat
+PLANNER_LLM=deepseek:deepseek-reasoner
+ANSWER_LLM=gigachat:GigaChat-2
+CRITIC_LLM=deepseek:deepseek-reasoner
+AGENT_LLM=gigachat:GigaChat-2
+
+# Температуры
+IDENTITY_TEMPERATURE=0.3
+PLANNER_TEMPERATURE=0.0
+ANSWER_TEMPERATURE=0.2
+CRITIC_TEMPERATURE=0.2
+AGENT_TEMPERATURE=0.2
+```
+
+**TokenUsageCollector (интеграция с Rate Limiting):**
+
+Система агрегирует usage токенов от ВСЕХ LLM-ролей для точного rate limiting:
+
+```
+Поток запроса:
+Identity LLM ─────┐
+Planner LLM ──────┤
+Critic LLM ───────┼──► TokenUsageCollector ──► rate_limiter.record_usage()
+Answer LLM ───────┤
+Agent LLM ────────┘
+```
+
+- `app/rate_limit/usage_collector.py` - `TokenUsageCollector`, `RoleUsage`
+- Каждый LLM-класс возвращает `(result, usage)` tuple
+- `chat.py` агрегирует usage от agent + rag_tool
+- Суммарные токены записываются в Redis для rate limiting
+
+**Логирование usage:**
+```
+INFO: TokenUsage summary: message_id=abc123 total=3847 breakdown=[planner=1200, critic=650, answer=1500, agent=497]
+```
+
 ### Knowledge Graph (rag-api-new)
 
 Система строит граф знаний из данных портфолио:
@@ -746,10 +877,27 @@ BM25 индекс хранится на диске:
 **LLM-инфраструктура:**
 - `LITELLM_BASE_URL` - URL LiteLLM (например, `http://litellm:4000/v1`)
 - `LITELLM_MASTER_KEY` - ключ LiteLLM
-- `CHAT_MODEL` - alias чат-модели (например, `Qwen2.5` или `GigaChat`, алиасы в `infra/litellm/config.yaml`)
+- `LITELLM_API_KEY` - API ключ для аутентификации в LiteLLM
+- `CHAT_MODEL` - alias чат-модели (legacy, например, `Qwen2.5` или `GigaChat`)
 - `EMBEDDING_MODEL` - alias embedding-модели (например, `embedding-default`)
 - `GIGA_AUTH_DATA` - Base64 креды GigaChat (если используется)
+- `DEEPSEEK_API_KEY` - API ключ DeepSeek (если используется)
+- `DEEPSEEK_BASE_URL` - URL DeepSeek API (по умолчанию: `https://api.deepseek.com/v1`)
 - `HF_TOKEN` - токен HuggingFace для загрузки моделей
+
+**Роли LLM (мультипровайдерная архитектура):**
+- `IDENTITY_LLM` - LLM для identity-вопросов (формат: `provider:model`, по умолчанию: `deepseek:deepseek-chat`)
+- `PLANNER_LLM` - LLM для планирования запросов (по умолчанию: `deepseek:deepseek-reasoner`)
+- `ANSWER_LLM` - LLM для генерации ответов (по умолчанию: `gigachat:GigaChat-2`)
+- `CRITIC_LLM` - LLM для оценки фактов (по умолчанию: `deepseek:deepseek-reasoner`)
+- `AGENT_LLM` - LLM для ReAct-агента (по умолчанию: `gigachat:GigaChat-2`)
+
+**Температуры LLM:**
+- `IDENTITY_TEMPERATURE` - температура Identity LLM (по умолчанию: 0.3)
+- `PLANNER_TEMPERATURE` - температура Planner LLM (по умолчанию: 0.0)
+- `ANSWER_TEMPERATURE` - температура Answer LLM (по умолчанию: 0.2)
+- `CRITIC_TEMPERATURE` - температура Critic LLM (по умолчанию: 0.2)
+- `AGENT_TEMPERATURE` - температура Agent LLM (по умолчанию: 0.2)
 
 **RAG API:**
 - `reranker_model` - модель реранкера (по умолчанию `BAAI/bge-reranker-base`)
@@ -757,14 +905,17 @@ BM25 индекс хранится на диске:
 - `planner_temperature` - температура LLM для планировщика (по умолчанию 0.0 для детерминизма)
 - `answer_temperature` - температура LLM для генерации ответов (по умолчанию 0.2)
 
+**Rate Limiting:**
+- `rate_limit_enabled` - включить/выключить rate limiting (по умолчанию true)
+- `rate_limit_ip_tokens` - лимит токенов на IP за окно (по умолчанию 50000, для тестов можно ниже, например 4500)
+- `rate_limit_window_seconds` - окно rate limit в секундах (по умолчанию 3600 = 1 час)
+- `rate_limit_warning_threshold` - порог предупреждения в долях (по умолчанию 0.8 = 80%)
+
 **Redis Cache:**
 - `REDIS_URL` - URL подключения Redis (например, `redis://localhost:6379/0`)
 - `CACHE_ENABLED` - включить/выключить кэширование (по умолчанию true)
 - `PLAN_CACHE_TTL` - TTL plan cache в секундах (по умолчанию 3600)
 - `EMBEDDING_CACHE_TTL` - TTL embedding cache в секундах (по умолчанию 86400)
-
-**Rerank настройки:**
-- `max_rerank_candidates` - Максимум документов для реранкера (по умолчанию 80, ограничивает CPU-время)
 
 **Векторная БД:**
 - `CHROMA_HOST` - хост ChromaDB
@@ -834,6 +985,13 @@ BM25 индекс хранится на диске:
     - После изменения `prompts.py` или логики планировщика: очистить plan cache через `/api/v1/admin/cache/plans`
     - После смены embedding модели: очистить embedding cache через `/api/v1/admin/cache/embeddings`
 
+14. **Потребление токенов Rate Limit**:
+    - Каждый запрос агенту потребляет ~6000-9000 токенов из-за многослойного пайплайна
+    - Стадии пайплайна: системный промпт агента (~2000), Planner LLM (~1500), RAG Tool (~1500), Answer LLM (~2000), ответ (~1500)
+    - При лимите 50000 токенов/час пользователь может сделать ~5-8 запросов в час
+    - Для тестирования используйте меньший лимит (например, 4500), но учтите, что даже один запрос может его превысить
+    - Rate limit по IP, не по сессии — все пользователи с одного IP делят лимит
+
 ---
 
 ## Структура проекта (справочно)
@@ -886,10 +1044,11 @@ AI-Portfolio/
 │   │   │   ├── main.py             # FastAPI с роутерами
 │   │   │   ├── settings.py         # Pydantic-настройки (температуры и др.)
 │   │   │   ├── deps.py             # Общие зависимости (LLMs, vectorstore)
+│   │   │   ├── prefetch.py         # Прогрев кэша для популярных вопросов
 │   │   │   ├── agent/              # Агентная система
 │   │   │   │   ├── graph.py        # LangGraph агент
 │   │   │   │   ├── rag_tool.py     # RAG тулза
-│   │   │   │   ├── identity/       # Identity handler (classifier.py, prompts.py)
+│   │   │   │   ├── identity/       # Identity-вопросы (classifier.py, prompts.py)
 │   │   │   │   ├── planner/        # LLM планировщик (planner_llm.py, schemas_v3.py, prompts.py, shortcuts.py)
 │   │   │   │   ├── scope_guard/    # Off-topic детекция (scope_guard.py, schemas.py)
 │   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
@@ -923,12 +1082,21 @@ AI-Portfolio/
 │   │   │   │   ├── cache_service.py # CacheService с graceful degradation
 │   │   │   │   ├── plan_cache.py   # Кэш планов (shortcut → cache → LLM)
 │   │   │   │   └── embedding_cache.py # Кэш embeddings запросов
-│   │   │   ├── llm/                # LLM адаптеры
-│   │   │   │   └── gigachat_adapter.py
+│   │   │   ├── rate_limit/         # Rate limiting
+│   │   │   │   ├── limiter.py      # Класс RateLimiter
+│   │   │   │   ├── schemas.py      # Схемы rate limit
+│   │   │   │   └── usage_collector.py # TokenUsageCollector для агрегации usage от всех ролей
+│   │   │   ├── llm/                # Мультипровайдерная LLM фабрика
+│   │   │   │   ├── factory.py      # LLMFactory, parse_llm_id(), get_provider_info()
+│   │   │   │   ├── providers.py    # LLMProvider enum, ProviderConfig
+│   │   │   │   ├── exceptions.py   # LLMConfigError, LLMProviderError
+│   │   │   │   ├── validation.py   # validate_llm_config() для валидации при старте
+│   │   │   │   └── gigachat_adapter.py # Legacy адаптер
 │   │   │   ├── routers/            # API роутеры
 │   │   │   │   ├── chat.py         # /api/v1/agent/chat/stream
 │   │   │   │   ├── ingest.py       # /api/v1/ingest
 │   │   │   │   ├── ingest_batch.py # /api/v1/ingest/batch
+│   │   │   │   ├── rate_limit.py   # /api/v1/rate-limit/status
 │   │   │   │   └── admin.py        # /api/v1/admin/*
 │   │   │   ├── schemas/            # Pydantic схемы
 │   │   │   │   ├── chat.py, ingest.py, export.py, admin.py, ask.py

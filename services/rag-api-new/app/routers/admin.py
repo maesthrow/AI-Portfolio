@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
-from app.deps import chroma_client, settings, vectorstore
+from app.deps import chroma_client, settings, vectorstore, rate_limiter
+from app.rate_limit import RateLimitStatus
 from app.indexing import bm25
 from app.schemas.admin import (
     ClearResult,
@@ -159,3 +160,32 @@ def clear_all_cache():
         embeddings_deleted=embeddings_deleted,
         message="All caches cleared",
     )
+
+
+def _get_client_ip(request: Request) -> str:
+    """Получить реальный IP клиента (учитывая прокси)."""
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        return x_forwarded_for.split(",")[0].strip()
+    x_real_ip = request.headers.get("X-Real-IP")
+    if x_real_ip:
+        return x_real_ip
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+@router.get("/rate-limit/status", response_model=RateLimitStatus)
+def get_rate_limit_status(request: Request):
+    """
+    Проверить текущий статус rate limit.
+
+    Вызывается фронтом при монтировании AgentDock для определения
+    доступности агента и текущего состояния лимитов.
+
+    Лимитирование только по IP-адресу клиента.
+    """
+    limiter = rate_limiter()
+    client_ip = _get_client_ip(request)
+
+    return limiter.get_status(client_ip)

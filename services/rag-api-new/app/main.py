@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.deps import settings
+from app.llm import validate_llm_config
 from app.routers import admin, chat, ingest, ingest_batch
 
 logging.basicConfig(
@@ -11,6 +12,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+# Валидация LLM конфигурации при старте
+validate_llm_config()
 
 app = FastAPI(title="RAG API (new)", docs_url="/api/swagger")
 
@@ -31,7 +34,9 @@ def healthz():
         "env": "rag-api-new",
         "log_level": s.log_level,
         "collection": s.chroma_collection,
-        "chat_model": s.chat_model,
+        "planner_llm": s.planner_llm,
+        "answer_llm": s.answer_llm,
+        "agent_llm": s.agent_llm,
         "embedding_model": s.embedding_model,
     }
 
@@ -40,7 +45,11 @@ def healthz():
 def meta():
     s = settings()
     return {
-        "chat_model": s.chat_model,
+        "identity_llm": s.identity_llm,
+        "planner_llm": s.planner_llm,
+        "answer_llm": s.answer_llm,
+        "critic_llm": s.critic_llm,
+        "agent_llm": s.agent_llm,
         "embedding_model": s.embedding_model,
     }
 

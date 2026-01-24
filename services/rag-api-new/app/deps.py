@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Optional
+import logging
 
 import torch
 from sentence_transformers import CrossEncoder
@@ -8,18 +9,17 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from langchain_core.language_models import BaseChatModel
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 
-from langchain_gigachat.chat_models import GigaChat
 from .agent.graph import build_agent_graph
-
+from .llm.factory import get_llm_factory
 from .settings import get_settings
-import logging
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
 
 @lru_cache()
 def settings():
@@ -67,51 +67,25 @@ def reranker() -> CrossEncoder:
     )
 
 
+# =============================================================================
+# LLM Functions (via LLMFactory)
+# =============================================================================
+
+
 @lru_cache()
-def chat_llm() -> BaseChatModel:
+def identity_llm() -> BaseChatModel:
+    """
+    LLM для Identity (ответы на 'кто ты?', 'что умеешь?').
+
+    Использует настройки из settings.identity_llm и settings.identity_temperature.
+    """
     s = settings()
-
-    logger.info(f"chat_model={s.chat_model}")
-
-    # если GigaChat
-    if s.chat_model.lower().startswith("gigachat"):
-        logger.info(f"LLM is gigachat")
-        return GigaChat(
-            credentials=s.giga_auth_data,
-            model=s.chat_model,            # "gigachat" / "gigachat-2" / "gigachat-pro" и т.п.
-            verify_ssl_certs=False,
-        )
-
-    # иначе – идём через LiteLLM / Qwen
-    return ChatOpenAI(
-        api_key=s.litellm_api_key or "EMPTY",
-        base_url=str(s.litellm_base_url),
-        model=s.chat_model,              # "Qwen2.5"
-        temperature=0.2,
+    factory = get_llm_factory()
+    logger.info("Creating identity LLM: %s (temp=%.2f)", s.identity_llm, s.identity_temperature)
+    return factory.create(
+        llm_id=s.identity_llm,
+        temperature=s.identity_temperature,
         max_tokens=512,
-        timeout=60,
-    )
-
-
-def _create_llm_with_temperature(temperature: float) -> BaseChatModel:
-    """Create LLM with specific temperature."""
-    s = settings()
-
-    if s.chat_model.lower().startswith("gigachat"):
-        return GigaChat(
-            credentials=s.giga_auth_data,
-            model=s.chat_model,
-            verify_ssl_certs=False,
-            temperature=temperature,
-        )
-
-    return ChatOpenAI(
-        api_key=s.litellm_api_key or "EMPTY",
-        base_url=str(s.litellm_base_url),
-        model=s.chat_model,
-        temperature=temperature,
-        max_tokens=1024,
-        timeout=60,
     )
 
 
@@ -123,8 +97,13 @@ def planner_llm() -> BaseChatModel:
     Использует temperature=0.0 для детерминированного вывода.
     """
     s = settings()
-    logger.info("Creating planner LLM with temperature=%.2f", s.planner_temperature)
-    return _create_llm_with_temperature(s.planner_temperature)
+    factory = get_llm_factory()
+    logger.info("Creating planner LLM: %s (temp=%.2f)", s.planner_llm, s.planner_temperature)
+    return factory.create(
+        llm_id=s.planner_llm,
+        temperature=s.planner_temperature,
+        max_tokens=1024,
+    )
 
 
 @lru_cache()
@@ -132,11 +111,55 @@ def answer_llm() -> BaseChatModel:
     """
     LLM для Answer (генерация ответов).
 
-    Использует temperature=0.3 для баланса креативности и точности.
+    Использует настройки из settings.answer_llm и settings.answer_temperature.
     """
     s = settings()
-    logger.info("Creating answer LLM with temperature=%.2f", s.answer_temperature)
-    return _create_llm_with_temperature(s.answer_temperature)
+    factory = get_llm_factory()
+    logger.info("Creating answer LLM: %s (temp=%.2f)", s.answer_llm, s.answer_temperature)
+    return factory.create(
+        llm_id=s.answer_llm,
+        temperature=s.answer_temperature,
+        max_tokens=1024,
+    )
+
+
+@lru_cache()
+def critic_llm() -> BaseChatModel:
+    """
+    LLM для Critic (оценка достаточности фактов).
+
+    Использует настройки из settings.critic_llm и settings.critic_temperature.
+    """
+    s = settings()
+    factory = get_llm_factory()
+    logger.info("Creating critic LLM: %s (temp=%.2f)", s.critic_llm, s.critic_temperature)
+    return factory.create(
+        llm_id=s.critic_llm,
+        temperature=s.critic_temperature,
+        max_tokens=512,
+    )
+
+
+@lru_cache()
+def agent_llm() -> BaseChatModel:
+    """
+    LLM для Agent (ReAct orchestration).
+
+    Использует настройки из settings.agent_llm и settings.agent_temperature.
+    """
+    s = settings()
+    factory = get_llm_factory()
+    logger.info("Creating agent LLM: %s (temp=%.2f)", s.agent_llm, s.agent_temperature)
+    return factory.create(
+        llm_id=s.agent_llm,
+        temperature=s.agent_temperature,
+        max_tokens=512,
+    )
+
+
+# =============================================================================
+# Application Components
+# =============================================================================
 
 
 @lru_cache()
@@ -155,3 +178,14 @@ def graph_store():
     """
     from .graph.store import get_graph_store
     return get_graph_store()
+
+
+@lru_cache()
+def rate_limiter():
+    """
+    Rate limiter singleton.
+
+    Ограничивает использование LLM токенов по сессии и IP.
+    """
+    from .rate_limit import RateLimiter
+    return RateLimiter(settings())

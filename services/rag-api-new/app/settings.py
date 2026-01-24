@@ -1,6 +1,7 @@
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyUrl
@@ -37,11 +38,34 @@ class Settings(BaseSettings):
     # === TEI (embeddings) - direct access bypassing LiteLLM ===
     tei_base_url: str | AnyUrl = "http://tei:80/v1"
 
-    # GigaChat
+    # === Provider: GigaChat ===
     giga_auth_data: str | None = None
+    """Base64-encoded credentials для GigaChat API."""
 
-    # Модели (алиасы, как в конфиге прокси)
-    chat_model: str
+    # === Provider: DeepSeek ===
+    deepseek_api_key: str | None = None
+    """API ключ для DeepSeek."""
+
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    """Base URL для DeepSeek API."""
+
+    # === LLM Roles (формат: "provider:model") ===
+    identity_llm: str = "gigachat:GigaChat-2"
+    """LLM для identity-вопросов ("кто ты?", "что умеешь?")."""
+
+    planner_llm: str = "gigachat:GigaChat-2"
+    """LLM для планирования запросов (structured output)."""
+
+    answer_llm: str = "gigachat:GigaChat-2"
+    """LLM для генерации ответов пользователю."""
+
+    critic_llm: str = "gigachat:GigaChat-2"
+    """LLM для оценки достаточности фактов."""
+
+    agent_llm: str = "gigachat:GigaChat-2"
+    """LLM для ReAct-агента (orchestration)."""
+
+    # === Embedding ===
     embedding_model: str = "text-embedding-3-large"
     embedding_batch_size: int = 4  # Small batch to avoid TEI 413 Payload Too Large
 
@@ -60,9 +84,21 @@ class Settings(BaseSettings):
     # logging
     log_level: str = "INFO"
 
-     # === LLM temperatures ===
-    planner_temperature: float = 0.0      # Planner LLM (детерминированный)
-    answer_temperature: float = 0.2       # Answer LLM (баланс креативности)
+    # === LLM Temperatures ===
+    identity_temperature: float = 0.3
+    """Температура для Identity (чуть выше для естественности)."""
+
+    planner_temperature: float = 0.0
+    """Температура для Planner (0.0 = детерминированный)."""
+
+    answer_temperature: float = 0.2
+    """Температура для Answer (баланс точности и естественности)."""
+
+    critic_temperature: float = 0.2
+    """Температура для Critic."""
+
+    agent_temperature: float = 0.2
+    """Температура для Agent."""
 
     # === Critic settings ===
     critic_enabled: bool = True
@@ -84,11 +120,27 @@ class Settings(BaseSettings):
     cache_enabled: bool = True
     """Глобальное включение/выключение кэширования"""
 
-    plan_cache_ttl: int = 3600
-    """TTL для кэша планов в секундах (1 час)"""
+    plan_cache_ttl: int = 3600 * 24 * 7
+    """TTL для кэша планов в секундах (7 дней)"""
 
-    embedding_cache_ttl: int = 86400
-    """TTL для кэша embeddings в секундах (24 часа)"""
+    embedding_cache_ttl: int = 3600 * 24 * 7
+    """TTL для кэша embeddings в секундах (7 дней)"""
+
+    # === Rate Limiting ===
+    rate_limit_enabled: bool = True
+    """Включение/выключение rate limiting"""
+
+    rate_limit_ip_tokens: int = 15_000 # 50_000
+    """Лимит токенов на IP за окно"""
+
+    rate_limit_window_seconds: int = 60  # 3600
+    """Окно rate limit в секундах (по умолчанию 1 час)"""
+
+    rate_limit_warning_threshold: float = 0.8
+    """Порог для показа warning (0.8 = 80% использовано)"""
+
+    rate_limit_log_ip_mode: Literal["masked", "full"] = "masked"
+    """Режим логирования IP: masked (85.140.10.*) или full"""
 
     # === Rerank settings ===
     max_rerank_candidates: int = 80

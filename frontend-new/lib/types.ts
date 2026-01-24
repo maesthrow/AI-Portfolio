@@ -140,3 +140,34 @@ export type SectionMeta = {
 export type ProjectDetail = Project & {
   long_description_md?: string | null;
 };
+
+// === Rate Limiting ===
+
+export interface RateLimitBucket {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
+export interface RateLimitInfo {
+  ip: RateLimitBucket;
+  reset_in_seconds: number;
+  window_seconds: number;
+  show_warning: boolean;
+  exceeded: boolean;
+}
+
+export interface RateLimitStatus {
+  available: boolean;
+  rate_limit: RateLimitInfo | null;
+}
+
+export interface RateLimitError {
+  code: 'RATE_LIMIT_EXCEEDED' | 'SERVICE_UNAVAILABLE';
+  message: string;
+  details?: {
+    exceeded: boolean;
+    reset_in_seconds: number;
+    reset_in_human: string;
+  };
+}
