@@ -174,10 +174,10 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
       # === LLM Roles (format: provider:model) ===
-      IDENTITY_LLM: ${IDENTITY_LLM:-gigachat:GigaChat-2}
+      IDENTITY_LLM: ${IDENTITY_LLM:-deepseek:deepseek-chat}
       PLANNER_LLM: ${PLANNER_LLM:-gigachat:GigaChat-2}
-      ANSWER_LLM: ${ANSWER_LLM:-gigachat:GigaChat-2}
-      CRITIC_LLM: ${CRITIC_LLM:-gigachat:GigaChat-2}
+      ANSWER_LLM: ${ANSWER_LLM:-deepseek:deepseek-chat}
+      CRITIC_LLM: ${CRITIC_LLM:-deepseek:deepseek-reasoner}
       AGENT_LLM: ${AGENT_LLM:-gigachat:GigaChat-2}
       # === LLM Temperatures ===
       IDENTITY_TEMPERATURE: ${IDENTITY_TEMPERATURE:-0.3}
