@@ -18,7 +18,8 @@
       "Bash(xargs:*)",
       "Bash(ls:*)",
       "Bash(docker restart:*)",
-      "Bash(.venv/Scripts/python.exe:*)"
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(pytest:*)"
     ],
     "deny": [],
     "ask": []

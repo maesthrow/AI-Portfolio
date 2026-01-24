@@ -55,7 +55,7 @@ def portfolio_rag_tool(question: str) -> dict:
     logger.info("portfolio_rag_tool: question=%r", question[:100])
 
     # Import dependencies
-    from ..deps import planner_llm, answer_llm
+    from ..deps import planner_llm, answer_llm, critic_llm
     from .planner import PlannerLLM
     from .executor import PlanExecutor
     from .render import RenderEngine
@@ -124,7 +124,7 @@ def portfolio_rag_tool(question: str) -> dict:
                 )
                 decision = CriticDecision(sufficient=True, need_search=False, query="", reason="skipped")
             else:
-                critic = CriticLLM(planner_llm())
+                critic = CriticLLM(critic_llm())
                 decision = critic.evaluate(question, plan, payload)
 
             search_already_used = any(tc.tool == "portfolio_search_tool" for tc in (plan.tool_calls or []))

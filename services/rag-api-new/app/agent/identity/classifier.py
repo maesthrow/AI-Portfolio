@@ -119,13 +119,12 @@ async def generate_identity_response(question: str) -> str:
     """
     Генерирует ответ на identity-вопрос через LLM.
 
-    Использует отдельный промпт с описанием возможностей агента.
+    Использует identity_llm с настройками из settings.
     """
     from langchain_core.messages import HumanMessage, SystemMessage
-    from app.deps import _create_llm_with_temperature
+    from app.deps import identity_llm
 
-    # Используем низкую температуру для стабильного ответа
-    llm = _create_llm_with_temperature(0.3)
+    llm = identity_llm()
 
     system_prompt = get_identity_system_prompt()
 

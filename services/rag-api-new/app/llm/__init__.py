@@ -21,6 +21,7 @@ from .factory import (
     reset_llm_factory,
 )
 from .providers import PROVIDER_CONFIGS, LLMProvider, ProviderConfig
+from .validation import validate_llm_config
 
 __all__ = [
     # Factory
@@ -36,4 +37,6 @@ __all__ = [
     # Exceptions
     "LLMConfigError",
     "LLMProviderError",
+    # Validation
+    "validate_llm_config",
 ]

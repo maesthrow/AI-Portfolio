@@ -65,9 +65,7 @@ class Settings(BaseSettings):
     agent_llm: str = "gigachat:GigaChat-2"
     """LLM для ReAct-агента (orchestration)."""
 
-    # === Legacy (удалить после миграции deps.py в Этапе 2) ===
-    chat_model: str = "GigaChat-2"
-    """DEPRECATED: Используется только в старом deps.py до миграции."""
+    # === Embedding ===
     embedding_model: str = "text-embedding-3-large"
     embedding_batch_size: int = 4  # Small batch to avoid TEI 413 Payload Too Large
 
