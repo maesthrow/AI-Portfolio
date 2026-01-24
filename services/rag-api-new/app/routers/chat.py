@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
-from app.deps import agent_app, identity_llm, rate_limiter
+from app.deps import agent_app, rate_limiter, settings
 from app.llm import get_provider_info
 from app.rate_limit import TokenUsageCollector
 from app.schemas.chat import ChatRequest
@@ -198,7 +198,8 @@ async def chat_stream(req: ChatRequest, request: Request):
             # Create collector and add identity usage
             collector = TokenUsageCollector()
             if identity_usage:
-                provider, model = get_provider_info(identity_llm())
+                s = settings()
+                provider, model = get_provider_info(s.identity_llm)
                 collector.add("identity", provider, model, identity_usage)
                 collector.log_summary(message_id)
 
@@ -329,8 +330,8 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         # === Add agent usage to collector ===
         if agent_usage:
-            from app.deps import agent_llm
-            provider, model = get_provider_info(agent_llm())
+            s = settings()
+            provider, model = get_provider_info(s.agent_llm)
             collector.add("agent", provider, model, agent_usage)
 
         # Log usage summary

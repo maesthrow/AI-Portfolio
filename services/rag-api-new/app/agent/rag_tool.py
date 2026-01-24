@@ -80,7 +80,8 @@ def portfolio_rag_tool(question: str) -> dict:
 
         # Record planner usage if available (only for LLM path)
         if planner_usage:
-            provider, model = get_provider_info(planner_llm())
+            s = settings()
+            provider, model = get_provider_info(s.planner_llm)
             collector.add("planner", provider, model, planner_usage)
 
         logger.info("Plan source: %s", plan_source)
@@ -139,7 +140,7 @@ def portfolio_rag_tool(question: str) -> dict:
 
                 # Record critic usage
                 if critic_usage:
-                    provider, model = get_provider_info(critic_llm())
+                    provider, model = get_provider_info(cfg.critic_llm)
                     collector.add("critic", provider, model, critic_usage)
 
             search_already_used = any(tc.tool == "portfolio_search_tool" for tc in (plan.tool_calls or []))
@@ -255,7 +256,8 @@ def portfolio_rag_tool(question: str) -> dict:
 
         # Record answer usage
         if answer_usage:
-            provider, model = get_provider_info(answer_llm())
+            s = settings()
+            provider, model = get_provider_info(s.answer_llm)
             collector.add("answer", provider, model, answer_usage)
 
         # 7. Grounding verification - check for hallucinations
