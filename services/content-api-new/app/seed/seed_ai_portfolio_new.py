@@ -57,18 +57,18 @@ def upsert_one(session, model, identity: dict, payload: dict):
 PROFILE_DATA = {
     "id": 1,
     "full_name": "Дмитрий Каргин",
-    "title": "Python / ML Engineer",
-    "subtitle": "CV, LLM, RAG, backend",
+    "title": "ML/LLM-инженер",
+    "subtitle": "LLM • AI-агенты • RAG • Backend",
     "location": "Самара, Россия",
     "status": "ready_to_connect_",
     "avatar_url": "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
     "summary_md": (
-        "ML/LLM-инженер с продуктовым подходом и опытом backend-разработки (Python, .NET).\n"
+        "ML/LLM-инженер с продуктовым подходом и опытом backend-разработки (Python/.NET).\n"
         "Строю production AI-системы: RAG, AI-агенты и tool-интеграции — с упором на качество и надежность."
     ),
-    "hero_headline": "LLM / Agent Engineer | AI Systems | Backend",
-    "hero_description": "Строю production AI-системы: LLM, AI-агенты, RAG и ML-инфраструктуру — от идеи до продакшена.",
-    "current_position": "ML/LLM-инженер — AI-агенты для Сбера (аутстафф)",
+    "hero_headline": "ML/LLM-инженер | AI-системы | Backend",
+    "hero_description": "Строю AI-системы: LLM, RAG, tool-интеграции и ML-инфраструктуру — от идеи до запуска.",
+    "current_position": "AI-агенты для Сбера (аутстафф)",
 }
 
 CONTACTS_DATA = [
@@ -512,6 +512,7 @@ TECH_FOCUS_DATA = [
         "description": "Машинное обучение, компьютерное зрение.",
         "order_index": 20,
         "tags": [
+            "PyTorch"
             "Ultralytics"
             "YOLO",
             "Detectron2",
@@ -522,15 +523,16 @@ TECH_FOCUS_DATA = [
     },
     {
         "label": "Backend и интеграции",
-        "description": "Python/.NET backend, API, брокеры сообщений, фоновые задачи.",
+        "description": "Python backend, API, брокеры сообщений, фоновые задачи.",
         "order_index": 30,
         "tags": [
+            "Python",
             "FastAPI",
-            "ASP.NET Core",
+            "SQLAlchemy",
             "PostgreSQL",
-            "RabbitMQ",
             "Redis",
             "Celery",
+            "RabbitMQ",
         ],
     },
     {
@@ -542,6 +544,7 @@ TECH_FOCUS_DATA = [
             "MLflow",
             "vLLM",
             "LiteLLM",
+            "TEI",
             "GitLab",
         ],
     },
@@ -554,7 +557,7 @@ HERO_TAGS_DATA = [
     {"name": "CV", "order_index": 40},
     {"name": "MLOps", "order_index": 50},
     {"name": "Python", "order_index": 60},
-    {"name": "C# / .NET", "order_index": 70},
+    {"name": ".NET", "order_index": 70},
     {"name": "GitHub", "url": "https://github.com/maesthrow", "icon": "github", "order_index": 80},
     {"name": "Telegram", "url": "https://t.me/kargindmitriy", "icon": "telegram", "order_index": 90},
     {"name": "LinkedIn", "url": "https://www.linkedin.com/in/dmitriy-kargin", "icon": "linkedin", "order_index": 100},
@@ -566,10 +569,10 @@ FOCUS_AREAS_DATA = [
         "is_primary": True,
         "order_index": 10,
         "bullets": [
-            "Fine-tuning моделей и LoRA-адаптеры, векторные пайплайны",
-            "Агентные сценарии с инструментальными вызовами (ReAct, LangChain/LangGraph)",
-            "RAG-архитектуры: поиск, ранжирование, хранение векторов (ChromaDB, TEI)",
-            "Контроль качества ответов, настройка промптов под прод",
+            "Fine-tuning и LoRA-адаптеры, промпт-инжиниринг под прод",
+            "Агентные сценарии и tool-calling (ReAct, Plan-and-Execute, LangGraph)",
+            "RAG-архитектуры: база знаний, retrieval + rerank, контекстная сборка",
+            "Оценка качества: golden set, регрессии, groundedness, success rate",
         ],
     },
     {
@@ -577,10 +580,10 @@ FOCUS_AREAS_DATA = [
         "is_primary": False,
         "order_index": 20,
         "bullets": [
-            "Детекция и сегментация (YOLO, Detectron2)",
-            "Пайплайны обработки изображений (подготовка датасетов, аугментации)",
-            "Цикл улучшения моделей по ошибкам (валидация, сбор сложных кейсов, дообучение)",
-            "Запуск CV-сервисов в прод",
+            "Классификация, детекция и сегментация объектов",
+            "Пайплайны обработки изображений: датасеты, аугментации, препроцессинг",
+            "Цикл улучшения моделей: валидация → сложные кейсы → дообучение",
+            "Запуск CV-сервисов в прод и контроль качества",
         ],
     },
     {
@@ -588,23 +591,23 @@ FOCUS_AREAS_DATA = [
         "is_primary": False,
         "order_index": 30,
         "bullets": [
-            "Backend: Python (FastAPI), C# / .NET (ASP.NET Core), PostgreSQL",
-            "Асинхронные задачи: Celery, RabbitMQ, Redis",
-            "MLOps: MLflow, пайплайны обучения/дообучения, контейнеризация (Docker)",
-            "Интеграции с внешними API и микросервисами",
+            "Backend для AI: API, микросервисы, базы данных и кэш",
+            "Асинхронные задачи и очереди: Celery, RabbitMQ",
+            "MLOps: пайплайны обучения/дообучения, инференс, контейнеризация",
+            "Интеграции с внешними API и внутренними сервисами",
         ],
     },
 ]
 
 WORK_APPROACHES_DATA = [
     {
-        "title": "Product-first дизайн AI",
+        "title": "Продуктовый подход",
         "icon": "lightbulb",
         "order_index": 10,
         "bullets": [
             "Начинаю с бизнес-задачи, а не с технологии",
             "Учитываю edge-кейсы и ошибки моделей заранее",
-            "Встраиваю фидбек-циклы: сбор ошибок моделей, обновление датасетов, переобучение",
+            "Выстраиваю цикл улучшений: логи → метрики → правки агентов/промптов → fine-tuning",
         ],
     },
     {
@@ -612,9 +615,9 @@ WORK_APPROACHES_DATA = [
         "icon": "blocks",
         "order_index": 20,
         "bullets": [
-            "Проектирую агентные сценарии: LLM как оркестратор инструментов и сервисов (ReAct, LangChain/LangGraph)",
-            "Разделяю retrieval, inference, business-logic — чтобы каждый компонент масштабировался независимо",
-            "Использую API-контракты и version-control для ML-артефактов",
+            "Строю архитектуру AI-сервисов вокруг LLM: агенты, RAG, инструменты, API",
+            "Разделяю поиск знаний, выполнение действий и бизнес-логику для масштабирования",
+            "Делаю интеграции надежными: схемы данных, ошибки, таймауты, ретраи",
         ],
     },
     {
@@ -622,9 +625,9 @@ WORK_APPROACHES_DATA = [
         "icon": "rocket",
         "order_index": 30,
         "bullets": [
-            "Выстраиваю пайплайны обучения/дообучения (Celery, MLflow, очереди), CI/CD для моделей и backend-сервисов",
-            "Настраиваю мониторинг качества моделей и алертинг",
-            "Пишу документацию и runbook для команды",
+            "Вывожу модели и AI-сервисы в прод: автоматизация, релизы и стабильная эксплуатация",
+            "Настраиваю мониторинг и алертинг: качество, ошибки, latency, стоимость",
+            "Документирую систему: архитектура, runbook, сценарии отказов и восстановление",
         ],
     },
 ]
