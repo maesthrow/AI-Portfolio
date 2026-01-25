@@ -128,7 +128,7 @@ def prefetch_popular_plans() -> int:
 
     for question in POPULAR_QUESTIONS:
         try:
-            _, source = get_plan_with_cache(question, planner_llm)
+            _, source, _ = get_plan_with_cache(question, planner_llm)
             if source == "llm":
                 llm_calls += 1
             elif source == "cache":
