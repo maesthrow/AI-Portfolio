@@ -67,7 +67,7 @@ PROFILE_DATA = {
         "Строю production AI-системы: RAG, AI-агенты и tool-интеграции — с упором на качество и надежность."
     ),
     "hero_headline": "ML/LLM-инженер | AI-системы | Backend",
-    "hero_description": "Строю AI-системы: LLM, RAG, tool-интеграции и ML-инфраструктуру — от идеи до запуска.",
+    "hero_description": "Строю надежные AI-системы: LLM, RAG, tool-интеграции и ML-инфраструктуру — от идеи до запуска.",
     "current_position": "AI-агенты для Сбера (аутстафф)",
 }
 
