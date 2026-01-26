@@ -64,10 +64,10 @@ PROFILE_DATA = {
     "avatar_url": "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
     "summary_md": (
         "ML/LLM-инженер с продуктовым подходом и опытом backend-разработки (Python/.NET).\n"
-        "Строю production AI-системы: RAG, AI-агенты и tool-интеграции — с упором на качество и надежность."
+        "Внедрял AI-решения в коммерческих проектах; фокус — архитектура агентных систем, качество продукта и бизнес-эффект."
     ),
     "hero_headline": "ML/LLM-инженер | AI-системы | Backend",
-    "hero_description": "Строю надежные AI-системы: LLM, RAG, tool-интеграции и ML-инфраструктуру — от идеи до запуска.",
+    "hero_description": "Строю надежные AI-системы: LLM, RAG, агентов и ML-инфраструктуру — от идеи до запуска.",
     "current_position": "AI-агенты для Сбера (аутстафф)",
 }
 
