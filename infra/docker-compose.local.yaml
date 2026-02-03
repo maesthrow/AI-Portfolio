@@ -8,6 +8,10 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: development
+      # SSR (server-side) — внутренняя Docker-сеть
+      CONTENT_API_BASE: http://content-api:8000/api/v1
+      AGENT_API_BASE: http://rag-api:8000
+      # Client-side (браузер) — внешние порты
       NEXT_PUBLIC_CONTENT_API_BASE: ${NEXT_PUBLIC_CONTENT_API_BASE:-http://localhost:${CONTENT_PORT:-8003}/api/v1}
       NEXT_PUBLIC_AGENT_API_BASE: ${NEXT_PUBLIC_AGENT_API_BASE:-http://localhost:${RAG_NEW_PORT:-8004}}
       NEXT_PUBLIC_CHARS_PER_SECOND: ${NEXT_PUBLIC_CHARS_PER_SECOND:-60}
