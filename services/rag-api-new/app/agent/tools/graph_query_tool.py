@@ -188,6 +188,9 @@ def _item_to_fact(item: Any, intent: Any) -> FactItem | None:
             fact_type = "experience"
         elif "kind" in item and ("url" in item or "value" in item):
             fact_type = "contact"
+        elif "title" in item and "summary_md" in item:
+            # Profile item from _profile_query()
+            fact_type = "profile"
         else:
             fact_type = intent.value if hasattr(intent, "value") else str(intent)
 

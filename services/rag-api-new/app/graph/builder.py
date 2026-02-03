@@ -107,6 +107,7 @@ def build_graph_from_export(payload: ExportPayload) -> GraphStore:
                 "hero_headline": p.hero_headline,
                 "hero_description": p.hero_description,
                 "summary_md": p.summary_md,
+                "location": p.location,
             }
         ))
 

@@ -56,13 +56,25 @@ SAFE_SHORTCUTS: dict[str, QueryPlanV3] = {
         limits=LimitsConfigV3(),
     ),
     # Кто такой Дмитрий / расскажи о разработчике - однозначно про владельца портфолио
+    # Использует Intent.PROFILE для получения данных PERSON node (name, title, summary, location)
     # NOTE: После нормализации имя "Дмитрий/Дмитрия" убирается, поэтому паттерны без имени
     r"кто такой|кто это|кто он|о разработчике|про разработчика": QueryPlanV3(
-        intents=[IntentV3.EXPERIENCE_SUMMARY],
+        intents=[IntentV3.PROFILE],
         entities=[],
-        tool_calls=[ToolCallV3(tool="graph_query_tool", args={"intent": "experience_summary"})],
+        tool_calls=[ToolCallV3(tool="graph_query_tool", args={"intent": "profile"})],
         render_style=RenderStyleV3.PARAGRAPH,
         answer_style=AnswerStyleV3.NATURAL_RU,
+        confidence=0.95,
+        limits=LimitsConfigV3(),
+    ),
+    # Местоположение разработчика - однозначно из PERSON node
+    # Паттерны учитывают варианты: "где живет", "в каком городе живет", "откуда он" и т.д.
+    r"где (живет|проживает|находится)|в каком городе( живет| проживает)?|местоположение|откуда( он)?|из какого города": QueryPlanV3(
+        intents=[IntentV3.PROFILE],
+        entities=[],
+        tool_calls=[ToolCallV3(tool="graph_query_tool", args={"intent": "profile"})],
+        render_style=RenderStyleV3.SHORT,
+        answer_style=AnswerStyleV3.CONCISE,
         confidence=0.95,
         limits=LimitsConfigV3(),
     ),
@@ -102,4 +114,10 @@ def try_shortcut(question: str) -> QueryPlanV3 | None:
             return plan.model_copy(deep=True)
 
     # Не нашли shortcut -> LLM (результат будет закэширован)
+    logger.debug(
+        "No shortcut matched: question=%r, normalized=%r, patterns_count=%d",
+        question[:80],
+        normalized[:80],
+        len(SAFE_SHORTCUTS),
+    )
     return None

@@ -88,44 +88,74 @@ def _achievements_query(entity_key: str | None) -> GraphQueryResult:
 
 
 def _current_job_query() -> GraphQueryResult:
-    """Запрос текущего места работы."""
+    """
+    Запрос текущего места работы.
+
+    Приоритет:
+    1. COMPANY nodes с is_current=True
+    2. Fallback: profile.current_position из PERSON node
+    """
     store = get_graph_store()
 
-    # Ищем компании с is_current=True
+    # 1. Ищем компании с is_current=True
     companies = store.find_nodes_by_data(NodeType.COMPANY, "is_current", True)
 
-    if not companies:
+    if companies:
+        items = [
+            {
+                "company": c.name,
+                "role": c.data.get("role"),
+                "start_date": c.data.get("start_date"),
+                "company_summary_md": c.data.get("company_summary_md"),
+                "company_role_md": c.data.get("company_role_md"),
+                "text": "\n".join(
+                    [
+                        f"{c.name} — {c.data.get('role')}" if c.data.get("role") else str(c.name),
+                        str(c.data.get("company_summary_md") or "").strip(),
+                        str(c.data.get("company_role_md") or "").strip(),
+                    ]
+                ).strip(),
+            }
+            for c in companies
+        ]
+
         return GraphQueryResult(
-            items=[],
-            found=False,
-            sources=[],
-            confidence=0.0,
+            items=items,
+            found=True,
+            sources=[_node_to_source(c) for c in companies],
+            confidence=0.95,
             intent=Intent.CURRENT_JOB,
         )
 
-    items = [
-        {
-            "company": c.name,
-            "role": c.data.get("role"),
-            "start_date": c.data.get("start_date"),
-            "company_summary_md": c.data.get("company_summary_md"),
-            "company_role_md": c.data.get("company_role_md"),
-            "text": "\n".join(
-                [
-                    f"{c.name} — {c.data.get('role')}" if c.data.get("role") else str(c.name),
-                    str(c.data.get("company_summary_md") or "").strip(),
-                    str(c.data.get("company_role_md") or "").strip(),
-                ]
-            ).strip(),
-        }
-        for c in companies
-    ]
+    # 2. Fallback: используем profile.current_position из PERSON node
+    persons = store.get_nodes_by_type(NodeType.PERSON)
+    if persons:
+        person = persons[0]
+        current_position = person.data.get("current_position")
 
+        if current_position:
+            logger.info(
+                "current_job fallback to profile.current_position: %r",
+                current_position[:50] if current_position else None,
+            )
+            return GraphQueryResult(
+                items=[{
+                    "current_position": current_position,
+                    "name": person.name,
+                    "text": f"Текущая позиция: {current_position}",
+                }],
+                found=True,
+                sources=[_node_to_source(person)],
+                confidence=0.90,
+                intent=Intent.CURRENT_JOB,
+            )
+
+    # Нет данных о текущей работе
     return GraphQueryResult(
-        items=items,
-        found=True,
-        sources=[_node_to_source(c) for c in companies],
-        confidence=0.95,
+        items=[],
+        found=False,
+        sources=[],
+        confidence=0.0,
         intent=Intent.CURRENT_JOB,
     )
 
@@ -152,6 +182,138 @@ def _contacts_query() -> GraphQueryResult:
         confidence=0.95 if items else 0.0,
         intent=Intent.CONTACTS,
     )
+
+
+def _profile_query() -> GraphQueryResult:
+    """
+    Запрос информации о разработчике (PERSON node).
+
+    Возвращает:
+    - Имя, должность, subtitle
+    - Summary, hero_description
+    - Местоположение (location)
+    - Текущая компания и роль
+    - Топ-5 технологий (через KNOWS edges)
+    """
+    store = get_graph_store()
+    persons = store.get_nodes_by_type(NodeType.PERSON)
+
+    if not persons:
+        logger.warning("No PERSON node found in graph")
+        return GraphQueryResult(
+            items=[],
+            found=False,
+            sources=[],
+            confidence=0.0,
+            intent=Intent.PROFILE,
+        )
+
+    person = persons[0]  # Единственный PERSON в портфолио
+
+    # Текущая компания
+    current_company = None
+    companies = store.get_nodes_by_type(NodeType.COMPANY)
+    for c in companies:
+        if c.data.get("is_current"):
+            current_company = c
+            break
+
+    # Топ-5 технологий через KNOWS edges
+    top_technologies = []
+    knows_edges = store.get_outgoing_edges(person.id, EdgeType.KNOWS)
+    tech_nodes = []
+    for edge in knows_edges:
+        tech = store.get_node(edge.target_id)
+        if tech and tech.type == NodeType.TECHNOLOGY:
+            tech_nodes.append(tech)
+
+    # Сортируем по количеству использований в проектах
+    tech_usage = []
+    for t in tech_nodes:
+        incoming = store.get_incoming_edges(t.id, EdgeType.USES)
+        count = len([e for e in incoming if store.get_node(e.source_id)])
+        tech_usage.append((t.name, count))
+
+    tech_usage.sort(key=lambda x: x[1], reverse=True)
+    top_technologies = [name for name, _ in tech_usage[:5]]
+
+    item = {
+        "name": person.name,
+        "title": person.data.get("title"),
+        "subtitle": person.data.get("subtitle"),
+        "current_position": person.data.get("current_position"),
+        "summary_md": person.data.get("summary_md"),
+        "hero_headline": person.data.get("hero_headline"),
+        "hero_description": person.data.get("hero_description"),
+        "location": person.data.get("location"),
+        "current_company": current_company.name if current_company else None,
+        "current_role": current_company.data.get("role") if current_company else None,
+        "top_technologies": top_technologies,
+        "text": _build_profile_text(person, current_company, top_technologies),
+    }
+
+    sources = [_node_to_source(person)]
+    if current_company:
+        sources.append(_node_to_source(current_company))
+
+    return GraphQueryResult(
+        items=[item],
+        found=True,
+        sources=sources,
+        confidence=0.95,
+        intent=Intent.PROFILE,
+    )
+
+
+def _build_profile_text(
+    person: GraphNode,
+    current_company: GraphNode | None,
+    top_technologies: list[str],
+) -> str:
+    """Собрать текстовое описание профиля для Answer LLM."""
+    parts = []
+
+    # Имя и должность
+    name = person.name
+    title = person.data.get("title") or ""
+    if title:
+        parts.append(f"{name} — {title}")
+    else:
+        parts.append(name)
+
+    # Subtitle
+    subtitle = person.data.get("subtitle")
+    if subtitle:
+        parts.append(subtitle)
+
+    # Текущая позиция
+    current_position = person.data.get("current_position")
+    if current_position:
+        parts.append(f"Текущая позиция: {current_position}")
+    elif current_company:
+        role = current_company.data.get("role") or ""
+        parts.append(f"Текущая позиция: {role} в {current_company.name}")
+
+    # Местоположение
+    location = person.data.get("location")
+    if location:
+        parts.append(f"Местоположение: {location}")
+
+    # Summary
+    summary = person.data.get("summary_md")
+    if summary:
+        parts.append(summary)
+
+    # Hero description
+    hero_desc = person.data.get("hero_description")
+    if hero_desc and hero_desc != summary:
+        parts.append(hero_desc)
+
+    # Топ технологии
+    if top_technologies:
+        parts.append(f"Ключевые технологии: {', '.join(top_technologies)}")
+
+    return "\n".join(parts)
 
 
 def _languages_query() -> GraphQueryResult:
@@ -437,6 +599,7 @@ def graph_query(intent: Intent, entity_key: str | None = None) -> GraphQueryResu
         Intent.ACHIEVEMENTS: lambda: _achievements_query(entity_key),
         Intent.CURRENT_JOB: _current_job_query,
         Intent.CONTACTS: _contacts_query,
+        Intent.PROFILE: _profile_query,
         Intent.LANGUAGES: _languages_query,
         Intent.TECHNOLOGIES: lambda: _technologies_query(entity_key),
         Intent.PROJECT_DETAILS: lambda: _project_details_query(entity_key or ""),

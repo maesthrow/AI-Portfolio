@@ -131,7 +131,8 @@ class CacheService:
         s = re.sub(r"[?!.,;:«»\"']+", "", s)  # Убрать пунктуацию
         s = re.sub(r"[-–—]+", " ", s)          # Дефисы → пробелы
         # Убираем имя владельца (агент добавляет контекст)
-        s = re.sub(r"\s+(дмитрия?|dmitriy?)\s*$", "", s, flags=re.IGNORECASE)
+        # FIX: дмитри[йя]? матчит "дмитрий" (номинатив) и "дмитрия" (генитив)
+        s = re.sub(r"\s+(дмитри[йя]?|dmitriy?)\s*$", "", s, flags=re.IGNORECASE)
         s = re.sub(r"\s+", " ", s).strip()     # Схлопнуть пробелы
         return s
 

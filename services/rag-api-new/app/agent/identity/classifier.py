@@ -1,14 +1,19 @@
 """
-Identity Classifier - semantic matching для identity-вопросов.
+Identity Classifier - определение вопросов об агенте.
 
-Использует embedding similarity вместо regex для устойчивости к:
-- Опечаткам ("ктоты", "тыкто")
-- Переформулировкам ("скажи кто ты", "а ты вообще кто")
-- Вариациям ("расскажи о себе", "чем можешь помочь")
+Два уровня проверки:
+1. Лингвистический: местоимения 2-го лица (ты, себя, твой) → Identity
+2. Semantic: embedding similarity с референсными вопросами → Identity
+
+Принцип: Наличие 2nd person marker имеет приоритет.
+- "кто ты" → Identity (есть "ты")
+- "расскажи о себе" → Identity (есть "себе")
+- "кто такой Дмитрий" → НЕ Identity (нет маркеров) → Profile/RAG
 """
 from __future__ import annotations
 
 import logging
+import re
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
@@ -26,6 +31,32 @@ logger = logging.getLogger(__name__)
 # - "расскажи об ML-проектах" (similarity ~0.87 с "расскажи о себе")
 # - "кто такой Дмитрий" (similarity ~0.86 с "кто ты такой")
 SIMILARITY_THRESHOLD = 0.92
+
+# Маркеры 2-го лица (русский язык)
+# Если вопрос содержит эти местоимения — это обращение к агенту
+SECOND_PERSON_MARKERS = frozenset({
+    # Личные местоимения 2-го лица
+    "ты", "тебя", "тебе", "тобой", "тобою",
+    # Возвратные местоимения (о себе = об агенте в контексте вопроса)
+    "себя", "себе", "собой", "собою",
+    # Притяжательные местоимения 2-го лица
+    "твой", "твоя", "твои", "твоё", "твоему", "твоей",
+})
+
+
+def _has_second_person_marker(text: str) -> bool:
+    """
+    Проверяет наличие местоимений 2-го лица и возвратных.
+
+    Если есть — вопрос об агенте (identity), не о разработчике (profile).
+
+    Examples:
+        "кто ты" → True (есть "ты")
+        "расскажи о себе" → True (есть "себе")
+        "кто такой Дмитрий" → False (нет маркеров)
+    """
+    words = set(re.findall(r"\b\w+\b", text.lower()))
+    return bool(words & SECOND_PERSON_MARKERS)
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -62,21 +93,49 @@ def _get_reference_embeddings() -> list[list[float]]:
 
 def is_identity_question(question: str, threshold: float = SIMILARITY_THRESHOLD) -> tuple[bool, float]:
     """
-    Проверяет, является ли вопрос identity-вопросом через semantic matching.
+    Проверяет, является ли вопрос identity-вопросом (про агента).
+
+    Два уровня проверки:
+    1. Лингвистический: местоимения 2-го лица → Identity (confidence=1.0)
+    2. Semantic: embedding similarity → Identity (confidence=similarity)
 
     Args:
         question: Вопрос пользователя
-        threshold: Порог similarity (по умолчанию 0.85)
+        threshold: Порог similarity для semantic check (по умолчанию 0.92)
 
     Returns:
-        tuple[is_identity, max_similarity]
+        tuple[is_identity, confidence]
+        - confidence=1.0 для pronoun detection (детерминированно)
+        - confidence=similarity для semantic detection
     """
-    from app.deps import embeddings
-
     # Нормализация
     normalized = question.lower().strip()
     if not normalized:
         return False, 0.0
+
+    # 1. Quick check: 2nd person pronouns → definitely identity
+    if _has_second_person_marker(normalized):
+        logger.info(
+            "Identity detected by pronoun marker: %r",
+            question,
+        )
+        return True, 1.0  # confidence = 1.0 (deterministic)
+
+    # 2. Fallback: semantic similarity (для нестандартных формулировок)
+    return _check_semantic_similarity(normalized, question, threshold)
+
+
+def _check_semantic_similarity(
+    normalized: str,
+    original_question: str,
+    threshold: float,
+) -> tuple[bool, float]:
+    """
+    Проверка через semantic similarity с референсными вопросами.
+
+    Используется как fallback когда pronoun check не сработал.
+    """
+    from app.deps import embeddings
 
     # Получаем embedding вопроса
     emb = embeddings()
@@ -103,13 +162,13 @@ def is_identity_question(question: str, threshold: float = SIMILARITY_THRESHOLD)
 
     if is_identity:
         logger.info(
-            "Identity question detected: %r -> best_match=%r, similarity=%.3f",
-            question, best_match, max_similarity
+            "Identity question detected by semantic: %r -> best_match=%r, similarity=%.3f",
+            original_question, best_match, max_similarity
         )
     else:
         logger.debug(
             "Not identity question: %r, max_similarity=%.3f (threshold=%.2f)",
-            question, max_similarity, threshold
+            original_question, max_similarity, threshold
         )
 
     return is_identity, max_similarity

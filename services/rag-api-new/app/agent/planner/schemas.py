@@ -24,6 +24,7 @@ class IntentV2(str, Enum):
     TECHNOLOGY_OVERVIEW = "technology_overview"
     TECHNOLOGY_USAGE = "technology_usage"
     EXPERIENCE_SUMMARY = "experience_summary"
+    PROFILE = "profile"  # Информация о разработчике (PERSON node: name, title, summary, location)
     CONTACTS = "contacts"
     GENERAL_UNSTRUCTURED = "general_unstructured"
 

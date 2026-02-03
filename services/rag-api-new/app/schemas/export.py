@@ -13,6 +13,7 @@ class ProfileExport(BaseModel):
     hero_headline: str | None = None
     hero_description: str | None = None
     current_position: str | None = None
+    location: str | None = None  # Местоположение (город, страна)
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
