@@ -10,6 +10,41 @@ import { AgentMessage, RateLimitInfo, RateLimitError } from "@/lib/types";
 const HINT_KEY = "hasSeenAgentHint_v2";
 const HINT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 дней
 
+/**
+ * Преобразует техническое сообщение об ошибке в понятное пользователю.
+ */
+function getUserFriendlyErrorMessage(technicalMessage: string): string {
+  const lower = technicalMessage.toLowerCase();
+
+  // Таймаут
+  if (lower.includes("timeout") || lower.includes("timed out") || lower.includes("таймаут")) {
+    return "Сервер не успел ответить. Попробуйте ещё раз.";
+  }
+
+  // Проблемы с сетью
+  if (lower.includes("network") || lower.includes("connection") || lower.includes("fetch") || lower.includes("econnrefused")) {
+    return "Не удалось подключиться к серверу. Проверьте интернет-соединение.";
+  }
+
+  // Ошибки сервера
+  if (lower.includes("500") || lower.includes("502") || lower.includes("503") || lower.includes("internal server") || lower.includes("service unavailable")) {
+    return "Сервер временно недоступен. Попробуйте позже.";
+  }
+
+  // LLM ошибки
+  if (lower.includes("llm") || lower.includes("model") || lower.includes("gigachat") || lower.includes("openai")) {
+    return "AI-модель временно недоступна. Попробуйте через несколько минут.";
+  }
+
+  // Пустой ответ
+  if (lower.includes("empty") || lower.includes("no response") || lower.includes("пустой")) {
+    return "Не удалось получить ответ. Попробуйте переформулировать вопрос.";
+  }
+
+  // По умолчанию — дружелюбное сообщение без технических деталей
+  return "Произошла ошибка. Попробуйте ещё раз или задайте другой вопрос.";
+}
+
 const generateSessionId = () => {
   const cryptoObj = typeof globalThis !== "undefined" ? (globalThis as any).crypto : undefined;
   if (cryptoObj && typeof cryptoObj.randomUUID === "function") {
@@ -296,7 +331,7 @@ export default function AgentDock() {
             }
           }
         } else if (event.type === "error") {
-          applyError(`Ошибка запроса: ${event.message}`);
+          applyError(getUserFriendlyErrorMessage(event.message || "unknown error"));
         }
       }
 
@@ -497,7 +532,7 @@ export default function AgentDock() {
         } else if (event.type === "error") {
           updateAgentMessage(tempId, (m) => ({
             ...m,
-            content: `Ошибка запроса: ${event.message}`,
+            content: getUserFriendlyErrorMessage(event.message || "unknown error"),
             status: "error"
           }));
         }
@@ -524,7 +559,7 @@ export default function AgentDock() {
       } else {
         updateAgentMessage(tempId, (m) => ({
           ...m,
-          content: "Не получилось связаться с агентом. Попробуй позже.",
+          content: "Не получилось связаться с агентом. Попробуйте позже.",
           status: "error"
         }));
       }
