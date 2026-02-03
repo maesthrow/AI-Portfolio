@@ -393,6 +393,59 @@ See legacy documentation in previous CLAUDE.md versions.
 
 Use `compose.apps.yaml` as the primary configuration.
 
+### 6. **Technical Documentation** (`discource/`)
+**Project specifications and technical requirements storage**
+
+The `discource/` folder contains all technical documentation for feature implementation:
+
+**Structure:**
+```
+discource/
+├── docs/                            # Technical Requirements (ТЗ)
+│   ├── TZ_MULTI_LLM_PROVIDERS.md   # Multi-provider LLM architecture (v1.3)
+│   ├── TZ_RATE_LIMIT.md            # Rate limiting implementation (v1.0)
+│   ├── TZ_RAG_OPTIMIZATION.md      # RAG optimization techniques (v1.1)
+│   └── TZ_AI-Portfolio_RAG_Agent_Hardening.md  # Agent hardening (v3)
+└── specs/                           # Implementation Specifications
+    └── agent-identity-vs-profile-detection.md  # Identity vs Profile question detection
+```
+
+**Document Types:**
+- **ТЗ (Technical Requirements)** in `docs/`: High-level requirements and architecture decisions
+- **Specs** in `specs/`: Detailed implementation specifications with code examples
+
+**Key Specifications:**
+
+1. **Multi-LLM Providers** (`TZ_MULTI_LLM_PROVIDERS.md`):
+   - GigaChat, DeepSeek, Qwen provider architecture
+   - 5 LLM roles (identity, planner, answer, critic, agent)
+   - LLMFactory with caching and validation
+
+2. **Rate Limiting** (`TZ_RATE_LIMIT.md`):
+   - Token-based IP rate limiting
+   - Redis-based storage with graceful degradation
+   - TokenUsageCollector for multi-role aggregation
+
+3. **RAG Optimization** (`TZ_RAG_OPTIMIZATION.md`):
+   - Hybrid retrieval (dense + BM25 + rerank)
+   - Plan caching and shortcuts
+   - Embedding cache strategies
+
+4. **Agent Hardening** (`TZ_AI-Portfolio_RAG_Agent_Hardening.md`):
+   - Scope Guard for off-topic detection
+   - Fact Normalizer for intent-based filtering
+   - Grounding verification
+
+5. **Identity vs Profile Detection** (`specs/agent-identity-vs-profile-detection.md`):
+   - Linguistic pattern for 2nd person pronouns → Identity questions
+   - 3rd person / name → Profile questions
+   - PROFILE intent implementation
+
+**When to Use:**
+- Before implementing a new feature, check if a spec exists in `discource/`
+- Create a new spec in `specs/` before starting complex implementations
+- Reference ТЗ documents for architectural decisions
+
 ---
 
 ## Development Commands
@@ -546,6 +599,21 @@ pytest tests/
 - No circular imports in backend
 - Separate business logic from controllers
 - Use SQLAlchemy ORM and Pydantic schemas
+
+### Systematic Problem Solving (CRITICAL)
+- **Always find root causes** - never fix symptoms, find and fix the underlying problem
+- **No workarounds or temporary patches** - if something doesn't work, investigate why and fix it properly
+- **Clean architectural solutions** - prefer well-designed, maintainable code over quick hacks
+- **No unnecessary constructs** - avoid overhead, extra abstractions, or code "just in case"
+- **Methodical debugging** - trace the problem systematically, don't guess or add random fixes
+- **Fix once, fix right** - spend time understanding the issue to avoid repeated fixes
+- **Question assumptions** - if behavior is unexpected, verify your understanding of the system
+- When encountering bugs:
+  1. Reproduce the issue reliably
+  2. Trace execution to find the actual cause
+  3. Understand WHY it happens, not just WHERE
+  4. Design a proper fix that addresses the root cause
+  5. Verify the fix doesn't introduce new issues
 
 ### Frontend
 - Components must be deterministic
@@ -1000,6 +1068,12 @@ Key variables (see `infra/.env.dev`):
     - For testing, use lower limit (e.g., 4500) but be aware even one request may exceed it
     - Rate limit is per IP, not per session - all users from same IP share the limit
 
+15. **Technical Specs in `discource/`**:
+    - Always check `discource/docs/` for existing ТЗ before implementing new features
+    - Check `discource/specs/` for detailed implementation specifications
+    - Create a new spec before starting complex implementations
+    - Note: folder is named `discource` (typo preserved for consistency)
+
 ---
 
 ## File Structure Reference
@@ -1140,6 +1214,15 @@ AI-Portfolio/
 │   └── models/
 │       └── intfloat/multilingual-e5-base/  # TEI embedding model
 │
+├── discource/                       # 📋 Technical specifications and specs
+│   ├── docs/                        # Technical requirements (ТЗ)
+│   │   ├── TZ_MULTI_LLM_PROVIDERS.md    # Multi-provider LLM architecture spec
+│   │   ├── TZ_RATE_LIMIT.md             # Rate limiting implementation spec
+│   │   ├── TZ_RAG_OPTIMIZATION.md       # RAG optimization techniques spec
+│   │   └── TZ_AI-Portfolio_RAG_Agent_Hardening.md  # Agent hardening spec
+│   └── specs/                       # Implementation specifications
+│       └── agent-identity-vs-profile-detection.md  # Identity vs Profile detection
+│
 ├── CONTRIBUTING.md                 # ⚠️ MANDATORY rules for AI tools
 ├── CLAUDE.md                       # This file (EN)
 └── CLAUDE_RU.md                    # This file (RU)
@@ -1164,6 +1247,7 @@ AI-Portfolio/
 6. Follow existing code patterns and naming conventions
 7. Ensure API endpoints include `/api/v1/` prefix
 8. Use markdown fields (`*_md`) for rich content that will be rendered with `react-markdown`
+9. **Check `discource/` for specs** before implementing new features - specs may already exist
 
 **Never:**
 1. Use deleted directories (`content-api`, `frontend`)
@@ -1174,6 +1258,8 @@ AI-Portfolio/
 6. Change project structure without explicit permission
 7. Skip API versioning (`/api/v1/` prefix)
 8. Hardcode API URLs (use environment variables)
+9. **Add workarounds or hacks** - always fix root causes, not symptoms
+10. **Add "temporary" fixes** - there's nothing more permanent than a temporary solution
 
 **Before Committing:**
 1. ✅ Verify you modified the correct service (`*-new` versions)
