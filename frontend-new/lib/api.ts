@@ -50,16 +50,24 @@ function getAgentApiBase(): string {
 
 async function getJson<T>(path: string): Promise<T> {
   const base = CONTENT_API_BASE;
-  if (!base) {
-    throw new Error("CONTENT_API_BASE is missing");
+  if (!base) throw new Error("CONTENT_API_BASE is missing");
+
+  const url = `${base}${path}`;
+  const isProd = process.env.NODE_ENV === "production";
+
+  let res: Response;
+  try {
+    res = await fetch(url, isProd ? { next: { revalidate: 60 } } : { cache: "no-store" });
+  } catch (e) {
+    throw new Error(`Fetch failed for ${url}: ${(e as Error)?.message ?? String(e)}`);
   }
-  const res = await fetch(`${base}${path}`, {
-    next: { revalidate: 60 }
-  });
+
   if (!res.ok) {
-    throw new Error(`Failed to fetch ${path}`);
+    const body = await res.text().catch(() => "");
+    throw new Error(`Failed to fetch ${url}: HTTP ${res.status}. ${body.slice(0, 200)}`);
   }
-  return res.json();
+
+  return (await res.json()) as T;
 }
 
 export async function getProfile(): Promise<Profile> {

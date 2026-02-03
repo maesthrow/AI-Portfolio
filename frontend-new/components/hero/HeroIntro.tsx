@@ -86,7 +86,7 @@ function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntroProps) {
               transition={{ duration: 0.2, delay: 0.8 }}
               className="hero-tagline hero-tagline-typing mt-2 text-sm text-accent/85 md:text-base"
             >
-              Портфолио со встроенным AI-агентом
+              Киберпанк-портфолио со встроенным AI-агентом
             </motion.p>
           </div>
         </div>
@@ -117,7 +117,7 @@ function HeroIntro({ profile, contacts, heroTags = [] }: HeroIntroProps) {
           >
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/10 px-4 py-1.5 text-[11px] font-semibold text-accent sm:text-xs md:text-sm">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
+                <span className="hidden h-2 w-2 animate-pulse rounded-full bg-accent" />
                 {headline}
               </span>
             </div>

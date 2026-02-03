@@ -51,7 +51,7 @@ export default function AgentChatWindow({
       <div className="flex items-center justify-between">
         <div>
           <p className="font-mono text-xs uppercase text-accent-soft">AI-агент</p>
-          <p className="mt-1 text-xs text-slate-300">GigaChat + RAG по данным портфолио</p>
+          <p className="mt-1 text-xs text-slate-300">Быстро найду нужное в портфолио</p>
         </div>
         <div className={`flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold ${
           isBlocked
