@@ -192,6 +192,7 @@ class LLMFactory:
             temperature=temperature,
             max_tokens=max_tokens or 1024,
             verify_ssl_certs=False,
+            timeout=90,  # Увеличенный таймаут для стабильности
         )
 
     def _create_deepseek(
