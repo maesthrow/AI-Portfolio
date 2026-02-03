@@ -1,7 +1,7 @@
 """
 Render Engine - deterministic rendering of facts to formatted text.
 
-Supports multiple render styles: BULLETS, GROUPED_BULLETS, SHORT, TABLE.
+Supports multiple render styles: BULLETS, GROUPED_BULLETS, SHORT, TABLE, PARAGRAPH.
 Based on ТЗ section 8.
 """
 from __future__ import annotations
@@ -32,7 +32,7 @@ class RenderEngine:
 
         Args:
             facts: List of facts to render
-            style: Render style (BULLETS, GROUPED_BULLETS, SHORT, TABLE)
+            style: Render style (BULLETS, GROUPED_BULLETS, SHORT, TABLE, PARAGRAPH)
             intents: Detected intents for context-aware rendering
             max_items: Maximum items to render
 
@@ -53,6 +53,8 @@ class RenderEngine:
             return self._render_short(limited_facts)
         elif style == RenderStyle.TABLE:
             return self._render_table(limited_facts, intents)
+        elif style == RenderStyle.PARAGRAPH:
+            return self._render_paragraph(limited_facts)
 
         # Default to bullets
         return self._render_bullets(limited_facts)
@@ -96,6 +98,15 @@ class RenderEngine:
             if text:
                 texts.append(text)
         return " ".join(texts)
+
+    def _render_paragraph(self, facts: list[FactItem]) -> str:
+        """Render all facts as continuous paragraph with line breaks."""
+        texts = []
+        for fact in facts:
+            text = self._clean_text(fact.text)
+            if text:
+                texts.append(text)
+        return "\n\n".join(texts)
 
     def _render_table(self, facts: list[FactItem], intents: list[IntentV2]) -> str:
         """Render as markdown table."""

@@ -15,6 +15,7 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
 - technology_overview - какие технологии знает/использует
 - technology_usage - где применялась конкретная технология
 - experience_summary - общий опыт работы, где работал, сколько лет опыта
+- profile - информация о разработчике: кто такой, имя, должность, местоположение, краткое описание
 - contacts - контактная информация, пользователь хочет связаться, просит контакты
 - general_unstructured - общий вопрос без конкретной сущности
 
@@ -95,6 +96,18 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
   "fallback": {"enabled": true, "tool": "portfolio_search_tool", "when": ["NO_RESULTS"]},
   "limits": {"max_items": 5, "max_groups": 2, "max_paragraphs": 2},
   "render_style": "short",
+  "answer_style": "natural_ru",
+  "confidence": 0.95
+}
+
+Вопрос: "Кто такой Дмитрий?" / "Кто он?" / "Расскажи о разработчике" / "Где живет?"
+{
+  "intents": ["profile"],
+  "entities": [],
+  "tool_calls": [{"tool": "graph_query_tool", "args": {"intent": "profile"}}],
+  "fallback": {"enabled": true, "tool": "portfolio_search_tool", "when": ["NO_RESULTS"]},
+  "limits": {"max_items": 5, "max_groups": 2, "max_paragraphs": 3},
+  "render_style": "paragraph",
   "answer_style": "natural_ru",
   "confidence": 0.95
 }

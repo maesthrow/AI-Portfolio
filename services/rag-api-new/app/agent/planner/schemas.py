@@ -39,6 +39,7 @@ class RenderStyle(str, Enum):
     GROUPED_BULLETS = "grouped_bullets"
     SHORT = "short"
     TABLE = "table"
+    PARAGRAPH = "paragraph"
 
 
 class AnswerStyle(str, Enum):

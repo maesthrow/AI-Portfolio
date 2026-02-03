@@ -79,6 +79,7 @@ def _profile_docs(profile: ProfileExport) -> Iterable[NormalizedDoc]:
             profile.hero_headline,
             profile.hero_description,
             profile.summary_md,
+            f"Местоположение: {profile.location}" if profile.location else None,
         ]
     )
     if not text:
@@ -89,6 +90,7 @@ def _profile_docs(profile: ProfileExport) -> Iterable[NormalizedDoc]:
         "title": profile.title,
         "subtitle": profile.subtitle,
         "current_position": profile.current_position,
+        "location": profile.location,
         "priority": "high",
     }
     return chunk_doc("profile", profile.id, text, meta, split_text)
