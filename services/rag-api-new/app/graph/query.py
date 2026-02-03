@@ -101,23 +101,31 @@ def _current_job_query() -> GraphQueryResult:
     companies = store.find_nodes_by_data(NodeType.COMPANY, "is_current", True)
 
     if companies:
-        items = [
-            {
+        items = []
+        for c in companies:
+            start_date = c.data.get("start_date")
+            role = c.data.get("role")
+            summary_md = c.data.get("company_summary_md")
+            role_md = c.data.get("company_role_md")
+
+            # Формируем текст с датой начала
+            header = f"{c.name} — {role}" if role else str(c.name)
+            text_parts = [header]
+            if start_date:
+                text_parts.append(f"С {start_date} по настоящее время")
+            if summary_md:
+                text_parts.append(str(summary_md).strip())
+            if role_md:
+                text_parts.append(str(role_md).strip())
+
+            items.append({
                 "company": c.name,
-                "role": c.data.get("role"),
-                "start_date": c.data.get("start_date"),
-                "company_summary_md": c.data.get("company_summary_md"),
-                "company_role_md": c.data.get("company_role_md"),
-                "text": "\n".join(
-                    [
-                        f"{c.name} — {c.data.get('role')}" if c.data.get("role") else str(c.name),
-                        str(c.data.get("company_summary_md") or "").strip(),
-                        str(c.data.get("company_role_md") or "").strip(),
-                    ]
-                ).strip(),
-            }
-            for c in companies
-        ]
+                "role": role,
+                "start_date": start_date,
+                "company_summary_md": summary_md,
+                "company_role_md": role_md,
+                "text": "\n".join([p for p in text_parts if p]),
+            })
 
         return GraphQueryResult(
             items=items,
@@ -555,9 +563,25 @@ def _experience_query(entity_key: str | None) -> GraphQueryResult:
         summary_md = c.data.get("company_summary_md")
         role_md = c.data.get("company_role_md")
         role = c.data.get("role")
-        period = f"{c.data.get('start_date')} - {c.data.get('end_date') or 'present'}"
+        start_date = c.data.get("start_date")
+        end_date = c.data.get("end_date")
+        is_current = c.data.get("is_current")
 
-        text_parts = [f"{c.name} — {role}" if role else str(c.name)]
+        # Формируем читаемый период
+        if start_date and end_date:
+            period = f"{start_date} — {end_date}"
+        elif start_date and is_current:
+            period = f"{start_date} — настоящее время"
+        elif start_date:
+            period = f"с {start_date}"
+        else:
+            period = None
+
+        # Формируем текст с датами
+        header = f"{c.name} — {role}" if role else str(c.name)
+        text_parts = [header]
+        if period:
+            text_parts.append(f"Период: {period}")
         if summary_md:
             text_parts.append(str(summary_md))
         if role_md:
