@@ -167,6 +167,31 @@ async def chat_stream(req: ChatRequest, request: Request):
     thread_id = session_id
     config = {"configurable": {"thread_id": thread_id}}
 
+    # === Input Length Validation ===
+    s = settings()
+    if len(req.question) > s.max_user_input_length:
+        async def validation_error_generator():
+            yield json.dumps(
+                {
+                    "type": "error",
+                    "error": "Message too long",
+                    "detail": f"Максимальная длина сообщения {s.max_user_input_length} символов (получено: {len(req.question)})"
+                },
+                ensure_ascii=False,
+            ) + "\n"
+
+        logger.warning(
+            "Input validation failed: message too long message_id=%s length=%d max=%d",
+            message_id,
+            len(req.question),
+            s.max_user_input_length,
+        )
+
+        return StreamingResponse(
+            validation_error_generator(),
+            media_type="application/x-ndjson",
+        )
+
     question = req.question
     if req.system_prompt:
         question = f"{question}\n\nДоп. инструкции: {req.system_prompt.strip()}"
