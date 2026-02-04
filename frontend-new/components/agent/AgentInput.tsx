@@ -13,6 +13,8 @@ type AgentInputProps = {
   onStop?: () => void;
 };
 
+const MAX_INPUT_LENGTH = 500;
+
 export default function AgentInput({
   value,
   onChange,
@@ -31,8 +33,25 @@ export default function AgentInput({
     onSubmit();
   };
 
+  const charCount = value.length;
+  const ratio = charCount / MAX_INPUT_LENGTH;
+  const showCounter = ratio >= 0.9; // Show at 90% (450 chars)
+  const isExceeded = charCount > MAX_INPUT_LENGTH;
+
+  // Cyberpunk glow colors
+  const getCounterColor = () => {
+    if (!showCounter) return "";
+    if (isExceeded) {
+      return "text-red-400 shadow-[0_0_12px_rgba(248,113,113,0.4)] animate-pulse-slow";
+    }
+    if (charCount === MAX_INPUT_LENGTH) {
+      return "text-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.4)]";
+    }
+    return "text-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.3)]";
+  };
+
   const inputIsDisabled = inputDisabled || disabled;
-  const sendIsDisabled = sendDisabled || disabled || streaming;
+  const sendIsDisabled = sendDisabled || disabled || streaming || isExceeded;
 
   return (
     <div className="space-y-3">
@@ -60,6 +79,8 @@ export default function AgentInput({
           disabled={inputIsDisabled}
           placeholder={inputIsDisabled ? "Ожидание ответа..." : "Напишите вопрос..."}
           className="flex-1 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-sm text-slate-100 outline-none ring-accent/30 transition focus:border-accent focus:ring-2 disabled:opacity-50"
+          aria-label="Введите вопрос о портфолио"
+          aria-describedby={showCounter ? "char-counter" : undefined}
         />
         {streaming ? (
           <button
@@ -82,6 +103,24 @@ export default function AgentInput({
           </button>
         )}
       </form>
+
+      {showCounter && (
+        <div className="flex justify-end mt-1">
+          <span
+            id="char-counter"
+            className={`text-xs font-mono transition-all duration-200 ${getCounterColor()}`}
+            role="status"
+            aria-live="polite"
+          >
+            {charCount} / {MAX_INPUT_LENGTH}
+            {charCount > MAX_INPUT_LENGTH
+              ? " • Слишком длинное сообщение"
+              : charCount === MAX_INPUT_LENGTH
+                ? " • Лимит достигнут"
+                : " • Почти лимит"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

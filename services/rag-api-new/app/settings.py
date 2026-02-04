@@ -142,6 +142,10 @@ class Settings(BaseSettings):
     rate_limit_log_ip_mode: Literal["masked", "full"] = "masked"
     """Режим логирования IP: masked (85.140.10.*) или full"""
 
+    # === User Input Validation ===
+    max_user_input_length: int = 500
+    """Maximum length for user input message in characters"""
+
     # === Rerank settings ===
     max_rerank_candidates: int = 80
     """Максимум документов для reranker (ограничение CPU-времени).
