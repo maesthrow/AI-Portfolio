@@ -10,7 +10,7 @@
 - ✅ `frontend-new/` - Активный Next.js фронтенд (киберпанк-тема)
 - ✅ `services/content-api-new/` - Активный Content API с версионными эндпоинтами
 - ✅ `services/rag-api-new/` - **НОВЫЙ** Активный RAG & Agent API (многослойный пайплайн, LLM планировщик)
-- ✅ `infra/compose.apps.yaml` - Актуальная конфигурация Docker Compose
+- ✅ `infra/docker-compose.local.yaml` - Актуальная конфигурация Docker Compose (локальная разработка)
 
 **Legacy сервис (доступен, но для новой разработки используйте rag-api-new):**
 - ⚠️ `services/rag-api/` - Legacy RAG API (упрощенная архитектура, порт 8004)
@@ -74,12 +74,12 @@
   - `projects.py` - GET `/api/v1/projects`, GET `/api/v1/projects/{slug}`
   - `publications.py` - GET `/api/v1/publications`
   - `contacts.py` - GET `/api/v1/contacts`
-  - `rag.py` - GET `/api/v1/rag/documents` (экспорт данных для RAG)
+  - `rag.py` - GET `/api/v1/rag/export` (экспорт данных для RAG-индексации)
   - `hero_tags.py` - GET `/api/v1/hero-tags`
   - `focus_areas.py` - GET `/api/v1/focus-areas`
   - `work_approaches.py` - GET `/api/v1/work-approaches`
   - `section_meta.py` - GET `/api/v1/section-meta`, GET `/api/v1/section-meta/{section_key}`
-- `app/schemas/` - Pydantic-схемы
+- `app/schemas/` - Pydantic-схемы (включая `rag_export.py` — ExportPayload для RAG)
 - `app/settings.py` - настройки приложения
 - `alembic/` - миграции базы данных
 
@@ -91,7 +91,7 @@
 - Scope Guard для детекции off-topic вопросов
 - Детерминированная нормализация фактов и генерация ответов
 - Точка входа: `app/main.py`
-- Порт: 8014
+- Порт: 8004 (в compose сервис `rag-api` собирается из rag-api-new/)
 - Документация: `/api/swagger`
 
 **Архитектура многослойного пайплайна:**
@@ -124,25 +124,29 @@
   - `prefetch_popular_plans()` - Прогревает Redis кэш после ingest (~60-70% cache hit rate)
 
 **API роутеры** (`app/routers/`):
-- `chat.py` - POST `/api/v1/agent/chat/stream` - Стриминговый чат с NDJSON
+- `chat.py` - POST `/api/v1/agent/chat/stream` - Стриминговый чат с NDJSON (status-события через unified asyncio.Queue)
 - `ingest.py` - POST `/api/v1/ingest` - Загрузка одного документа
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Пакетный импорт ExportPayload
-- `rate_limit.py` - GET `/api/v1/rate-limit/status` - Статус rate limit для текущего IP
 - `admin.py` - Админские эндпоинты:
   - DELETE `/api/v1/admin/collection` - Очистка коллекции ChromaDB
   - GET `/api/v1/admin/stats` - Статистика коллекции и графа
+  - GET `/api/v1/admin/cache/stats` - Статистика кэша (Redis)
   - DELETE `/api/v1/admin/cache/plans` - Очистка plan cache
   - DELETE `/api/v1/admin/cache/embeddings` - Очистка embedding cache
   - DELETE `/api/v1/admin/cache` - Очистка всех кэшей
+  - GET `/api/v1/rate-limit/status` - Статус rate limit для текущего IP
 
 **Агентная система** (`app/agent/`):
 - `graph.py` - LangGraph агент с ReAct паттерном и памятью
-- `rag_tool.py` - RAG тулза для агента
+- `rag_tool.py` - Async RAG тулза для агента с эмиссией статусов пайплайна
+  - `_emit_status(stage, text, config)` - Отправляет status-события на фронтенд через `asyncio.Queue` из `config["configurable"]["_status_queue"]`
+  - Этапы: `planning`, `searching`, `verifying`, `answering`
+  - Тяжёлые sync-операции обёрнуты в `asyncio.to_thread()` (planner, executor, critic, search, answer)
 
 **Identity** (`app/agent/identity/`):
 - `classifier.py` - Semantic matching для identity-вопросов ("кто ты", "что умеешь")
   - Использует embedding similarity вместо regex для устойчивости к опечаткам и перефразировкам
-  - `SIMILARITY_THRESHOLD = 0.94` для консервативного matching
+  - `SIMILARITY_THRESHOLD = 0.92` для консервативного matching
   - `is_identity_question(question)` возвращает `(is_identity, max_similarity)`
   - `generate_identity_response(question)` генерирует LLM-ответ о возможностях агента
 - `prompts.py` - Промпты и список возможностей
@@ -222,6 +226,7 @@
 - `formatter.py` - FormatRenderer для пост-обработки
 - `search_types.py` - SearchResult, Intent, EntityType
 - `types.py` - Doc, ScoredDoc, SourceInfo
+- `utils.py` - Вспомогательные утилиты RAG пайплайна
 
 **Knowledge Graph** (`app/graph/`):
 - `schema.py` - NodeType (PERSON, COMPANY, PROJECT, ACHIEVEMENT, TECHNOLOGY, CONTACT), EdgeType
@@ -306,10 +311,11 @@
 
 **Компоненты:**
 - `components/agent/` - чат с RAG-агентом:
-  - `AgentDock.tsx` - глобальный плавающий чат
-  - `AgentChatWindow.tsx` - UI окна чата
+  - `AgentDock.tsx` - глобальный плавающий чат (управляет состоянием `thinkingStatus`)
+  - `AgentChatWindow.tsx` - UI окна чата (прокидывает thinkingStatus в список сообщений)
   - `AgentInput.tsx` - инпут сообщений
-  - `AgentMessageList.tsx` - вывод сообщений со стримингом
+  - `AgentMessageList.tsx` - вывод сообщений со стримингом и авто-скроллом при thinking status
+  - `ThinkingStatus.tsx` - индикатор этапа пайплайна с очередью min-duration (800мс) и crossfade-анимацией (200мс)
   - `RateLimitWarning.tsx` - предупреждение при приближении к лимиту (анимация Framer Motion)
   - `RateLimitBlocked.tsx` - блокировка UI при превышении лимита или недоступности сервиса
 - `components/hero/` - Hero-секция:
@@ -327,7 +333,6 @@
 - `components/projects/` - проекты:
   - `ProjectsSection.tsx` - грид избранных проектов
   - `ProjectCard.tsx` - карточка проекта (memoized)
-  - `GithubBadgeIcon.tsx` - SVG-иконка GitHub для бейджей
 - `components/publications/` - публикации:
   - `PublicationsSection.tsx` - список статей/публикаций
   - `PublicationCard.tsx` - карточка публикации (memoized)
@@ -363,7 +368,7 @@
   - `getSectionMeta(key)` - метаданные секции
   - `getAllSectionMeta()` - метаданные всех секций
   - `askAgent(question, sessionId)` - вопрос агенту
-  - `callAgentStream(body, opts)` - стриминг чата (обрабатывает 429/503 как RateLimitError)
+  - `callAgentStream(body, opts)` - стриминг чата (обрабатывает 429/503 как RateLimitError, `ChatStreamEvent` union включает тип `status`)
   - `getRateLimitStatus()` - текущий статус rate limit для IP
   - `isRateLimitError(error)` - type guard для RateLimitError
 - `lib/types.ts` - типы TypeScript:
@@ -375,23 +380,26 @@
   - `RateLimitBucket`, `RateLimitInfo`, `RateLimitStatus`, `RateLimitError`
 
 ### 5. **Инфраструктура** (`infra/`)
-- Docker Compose оркестрация (compose.apps.yaml — основной файл)
-- Альтернативные compose-файлы: `compose.db.yaml`
-- Сервисы:
-  - PostgreSQL (внешний, доступ через host.docker.internal)
-  - ChromaDB (векторная БД, порт 8001 внешний / 8000 внутренний)
-  - vLLM (Qwen2.5-7B-Instruct-AWQ через OpenAI-совместимый API, порт 8002)
-  - TEI (Text Embeddings Inference для multilingual-e5-base, порт 8006)
-  - LiteLLM (прокси LLM/embeddings, порт 8005 внешний / 4000 внутренний)
-  - content-api (порт 8003) — собирается из content-api-new/
-  - rag-api (порт 8004) — legacy RAG сервис
-  - rag-api-new (порт 8014) — новый многослойный RAG сервис
+- Docker Compose оркестрация
+- Compose-файлы:
+  - `docker-compose.local.yaml` — **основной** (локальная разработка, все сервисы)
+  - `docker-compose-prod.yaml` — продакшен конфигурация
+- Сервисы (`docker-compose.local.yaml`):
+  - `frontend` (порт 3000) — Next.js фронтенд, собирается из frontend-new/
+  - `postgres` (порт 5433) — PostgreSQL 16
+  - `content-api` (порт 8003) — собирается из content-api-new/
+  - `chroma` (порт 8001 внешний / 8000 внутренний) — ChromaDB
+  - `tei` (порт 8006) — Text Embeddings Inference (multilingual-e5-base)
+  - `litellm` (порт 8005 внешний / 4000 внутренний) — прокси LLM/embeddings
+  - `redis` (порт 6379) — Redis для кэша и rate limit
+  - `rag-api` (порт 8004) — **собирается из rag-api-new/** (не из rag-api/)
+  - `rag-ingest` — одноразовый контейнер: экспорт из content-api → инжест в rag-api
+- Другие файлы:
+  - `.env.dev` — пример переменных окружения
+  - `litellm/config.yaml` — алиасы моделей LiteLLM
+  - `models/intfloat/multilingual-e5-base/` — модель для TEI
 
-**Примечание:** Compose-файлы:
-- `compose.apps.yaml` - основной со всеми сервисами
-- `compose.db.yaml` - конфигурация БД
-
-Используйте `compose.apps.yaml` как основной.
+**Важно:** В compose сервис `rag-api` собирается из `../services/rag-api-new`. Отдельного сервиса `rag-api-new` в compose нет.
 
 ### 6. **Техническая документация** (`discource/`)
 **Хранилище технических заданий и спецификаций проекта**
@@ -464,7 +472,7 @@ npm run lint         # запуск ESLint
 Переменные окружения (`.env.local`):
 ```bash
 NEXT_PUBLIC_CONTENT_API_BASE=http://localhost:8003/api/v1
-NEXT_PUBLIC_AGENT_API_BASE=http://localhost:8014  # Используйте rag-api-new
+NEXT_PUBLIC_AGENT_API_BASE=http://localhost:8004  # rag-api (собирается из rag-api-new)
 ```
 
 ### Content API (content-api-new)
@@ -508,26 +516,42 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # Откройте http://localhost:8000/api/swagger
 
 # Загрузка документов в ChromaDB (после наполнения content-api)
-# 1. Экспорт из content-api: GET http://localhost:8003/api/v1/rag/documents
-# 2. Импорт в rag-api-new: POST http://localhost:8014/api/v1/ingest/batch
+# 1. Экспорт из content-api: GET http://localhost:8003/api/v1/rag/export
+# 2. Импорт в rag-api: POST http://localhost:8004/api/v1/ingest/batch
+# Или используйте docker compose сервис rag-ingest для автоматического экспорта+импорта
 ```
 
 Переменные окружения:
 ```bash
 litellm_base_url=http://localhost:8005/v1
 litellm_api_key=dev-secret-123
-chat_model=Qwen2.5  # модель LLM (или GigaChat)
-embedding_model=embedding-default
+tei_base_url=http://localhost:8006/v1      # TEI embeddings (прямой доступ)
+embedding_model=intfloat/multilingual-e5-base  # модель embeddings
+embedding_batch_size=4                     # размер батча для embeddings
 reranker_model=BAAI/bge-reranker-base
+max_rerank_candidates=80                   # макс. кандидатов на реранкинг
 CHROMA_HOST=localhost
 CHROMA_PORT=8001
-chroma_collection=portfolio_new  # отличается от legacy
+chroma_collection=portfolio_new            # отличается от legacy
 FRONTEND_ORIGIN=http://localhost:3000
 frontend_local_ip=http://localhost:3000
 LOG_LEVEL=INFO
+max_user_input_tokens=250                  # макс. длина сообщения в токенах
+
+# Роли LLM (все по умолчанию в коде: gigachat:GigaChat-2)
+IDENTITY_LLM=gigachat:GigaChat-2
+PLANNER_LLM=gigachat:GigaChat-2
+ANSWER_LLM=gigachat:GigaChat-2
+CRITIC_LLM=gigachat:GigaChat-2
+AGENT_LLM=gigachat:GigaChat-2
+
+# Температуры
 planner_temperature=0.0   # детерминированное планирование
 answer_temperature=0.2    # сбалансированная генерация
-giga_auth_data=  # Base64 креды GigaChat (опционально)
+
+# Креды провайдеров (опционально)
+giga_auth_data=           # Base64 креды GigaChat
+DEEPSEEK_API_KEY=         # API ключ DeepSeek
 ```
 
 ### RAG API Legacy (rag-api)
@@ -547,21 +571,24 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 cd infra
 
 # запустить все сервисы (рекомендуется)
-docker compose -f compose.apps.yaml up -d
+docker compose -f docker-compose.local.yaml up -d
 
 # запустить отдельные сервисы
-docker compose -f compose.apps.yaml up -d chroma tei litellm
-docker compose -f compose.apps.yaml up -d content-api rag-api rag-api-new
+docker compose -f docker-compose.local.yaml up -d chroma tei litellm
+docker compose -f docker-compose.local.yaml up -d content-api rag-api
+
+# одноразовый импорт данных (экспорт из content-api → инжест в rag-api)
+docker compose -f docker-compose.local.yaml run --rm rag-ingest
 
 # проверить состояние
-docker compose -f compose.apps.yaml ps
+docker compose -f docker-compose.local.yaml ps
 
 # посмотреть логи
-docker compose -f compose.apps.yaml logs -f content-api
-docker compose -f compose.apps.yaml logs -f rag-api-new
+docker compose -f docker-compose.local.yaml logs -f content-api
+docker compose -f docker-compose.local.yaml logs -f rag-api
 
 # пересобрать и перезапустить
-docker compose -f compose.apps.yaml up -d --build rag-api-new
+docker compose -f docker-compose.local.yaml up -d --build rag-api
 ```
 
 ### Запуск тестов
@@ -574,7 +601,7 @@ pytest tests/
 
 ---
 
-## Критические правила (из CONTRIBUTING.md)
+## Критические правила
 
 ### Кодировка (СТРОГО)
 - **Все файлы ДОЛЖНЫ быть UTF-8 без BOM**
@@ -626,13 +653,41 @@ pytest tests/
 ## Поток данных
 
 1. Управление контентом: админ/скрипты → PostgreSQL (через content-api-new)
-2. RAG-индексация: content-api-new `/api/v1/rag/documents` → rag-api-new `/api/v1/ingest/batch` → ChromaDB + BM25 + Knowledge Graph
+2. RAG-индексация: content-api-new `/api/v1/rag/export` → rag-api-new `/api/v1/ingest/batch` → ChromaDB + BM25 + Knowledge Graph (или через docker-сервис `rag-ingest` для автоматизации)
 3. Frontend SSR: Next.js → content-api-new `/api/v1/*` → PostgreSQL → JSON
 4. Чат агента: пользователь → frontend-new AgentDock → rag-api-new `/api/v1/agent/chat/stream` → многослойный пайплайн
 5. Запрос RAG (rag-api-new):
    - ScopeGuard → PlannerLLM → PlanExecutor
    - → HybridRetriever (dense + BM25) → Rerank → Evidence
    - → FactNormalizer → AnswerLLM → RenderEngine → Ответ
+6. Thinking Status события: rag_tool.py `_emit_status()` → `asyncio.Queue` через config → chat.py unified queue → NDJSON `status` event → фронтенд ThinkingStatus компонент
+
+### NDJSON Streaming Events (`/api/v1/agent/chat/stream`)
+
+Стриминговый эндпоинт отправляет NDJSON-события следующих типов:
+
+| Тип события | Поля | Описание |
+|-------------|------|----------|
+| `start` | `message_id`, `created_at` | Стрим открыт, сразу за ним идёт начальный status |
+| `status` | `stage`, `text` | Индикатор этапа пайплайна (thinking, planning, searching, verifying, answering, identity) |
+| `tool_start` | `tool` | Вызов инструмента агента начат |
+| `tool_end` | — | Вызов инструмента завершён |
+| `delta` | `content` | Инкрементальный чанк текста от LLM |
+| `error` | `message` | Ошибка обработки |
+| `end` | `message_id`, `usage`, `rate_limit` | Стрим завершён |
+
+**Этапы status-событий:**
+
+| Stage | Текст | Источник |
+|-------|-------|----------|
+| `thinking` | Анализирую вопрос... | chat.py (немедленно, после `start`) |
+| `planning` | Составляю план поиска... | rag_tool.py |
+| `searching` | Ищу в базе знаний... | rag_tool.py |
+| `verifying` | Проверяю полноту данных... | rag_tool.py (условный, critic) |
+| `answering` | Формирую ответ... | rag_tool.py |
+| `identity` | Формирую ответ... | chat.py (identity fast-path) |
+
+**Механизм доставки статусов:** `rag_tool.py` использует `_emit_status()`, которая помещает события в `asyncio.Queue` из `config["configurable"]["_status_queue"]`. `chat.py` запускает две конкурентные задачи — `_run_agent` (LangGraph события) и `_relay_status` (consumer очереди) — объединённые в unified queue для упорядоченной NDJSON эмиссии.
 
 ---
 
@@ -679,13 +734,15 @@ pytest tests/
 
 **Роли LLM (5 независимых конфигураций):**
 
-| Роль | Назначение | Модель по умолчанию | Температура |
-|------|------------|---------------------|-------------|
-| `identity` | Ответы на "кто ты?" | `deepseek:deepseek-chat` | 0.3 |
-| `planner` | Генерация QueryPlanV3 | `deepseek:deepseek-reasoner` | 0.0 |
-| `answer` | Генерация ответов пользователю | `gigachat:GigaChat-2` | 0.2 |
-| `critic` | Оценка достаточности фактов | `deepseek:deepseek-reasoner` | 0.2 |
-| `agent` | ReAct-оркестрация | `gigachat:GigaChat-2` | 0.2 |
+| Роль | Назначение | Умолч. в коде | Умолч. в compose | Температура |
+|------|------------|---------------|-------------------|-------------|
+| `identity` | Ответы на "кто ты?" | `gigachat:GigaChat-2` | `deepseek:deepseek-chat` | 0.3 |
+| `planner` | Генерация QueryPlanV3 | `gigachat:GigaChat-2` | `gigachat:GigaChat-2` | 0.0 |
+| `answer` | Генерация ответов пользователю | `gigachat:GigaChat-2` | `deepseek:deepseek-chat` | 0.2 |
+| `critic` | Оценка достаточности фактов | `gigachat:GigaChat-2` | `deepseek:deepseek-reasoner` | 0.2 |
+| `agent` | ReAct-оркестрация | `gigachat:GigaChat-2` | `gigachat:GigaChat-2` | 0.2 |
+
+**Примечание:** В `settings.py` все роли по умолчанию `gigachat:GigaChat-2`. В `docker-compose.local.yaml` env-переменные переопределяют на конфигурацию выше.
 
 **Формат LLM ID:** `provider:model` (например, `gigachat:GigaChat-2`, `deepseek:deepseek-reasoner`)
 
@@ -730,12 +787,12 @@ GIGA_AUTH_DATA=base64_credentials      # GigaChat
 DEEPSEEK_API_KEY=sk-xxx                # DeepSeek
 LITELLM_BASE_URL=http://localhost:8005/v1  # Qwen через LiteLLM
 
-# Роли LLM (формат: "provider:model")
-IDENTITY_LLM=deepseek:deepseek-chat
-PLANNER_LLM=deepseek:deepseek-reasoner
-ANSWER_LLM=gigachat:GigaChat-2
-CRITIC_LLM=deepseek:deepseek-reasoner
-AGENT_LLM=gigachat:GigaChat-2
+# Роли LLM (формат: "provider:model", умолч. в коде: gigachat:GigaChat-2)
+IDENTITY_LLM=deepseek:deepseek-chat          # compose default
+PLANNER_LLM=gigachat:GigaChat-2              # compose default
+ANSWER_LLM=deepseek:deepseek-chat            # compose default
+CRITIC_LLM=deepseek:deepseek-reasoner        # compose default
+AGENT_LLM=gigachat:GigaChat-2                # compose default
 
 # Температуры
 IDENTITY_TEMPERATURE=0.3
@@ -848,6 +905,8 @@ BM25 индекс хранится на диске:
 - `hero-bounce-slow` — прыгающая кнопка скролла
 - `cursor-breathe` — дыхание курсора
 - `animate-cursor-ripple` — ripple при клике
+- `breathe` — пульсирующее свечение индикатора thinking status (box-shadow с accent-soft)
+- `pulse-slow` — медленная пульсация (2s, 50-100% opacity)
 - `@media (prefers-reduced-motion)` — поддержка предпочтений
 - Мобильные оптимизации: меньше blur, медленнее анимации
 
@@ -954,11 +1013,11 @@ BM25 индекс хранится на диске:
 - `HF_TOKEN` - токен HuggingFace для загрузки моделей
 
 **Роли LLM (мультипровайдерная архитектура):**
-- `IDENTITY_LLM` - LLM для identity-вопросов (формат: `provider:model`, по умолчанию: `deepseek:deepseek-chat`)
-- `PLANNER_LLM` - LLM для планирования запросов (по умолчанию: `deepseek:deepseek-reasoner`)
-- `ANSWER_LLM` - LLM для генерации ответов (по умолчанию: `gigachat:GigaChat-2`)
-- `CRITIC_LLM` - LLM для оценки фактов (по умолчанию: `deepseek:deepseek-reasoner`)
-- `AGENT_LLM` - LLM для ReAct-агента (по умолчанию: `gigachat:GigaChat-2`)
+- `IDENTITY_LLM` - LLM для identity-вопросов (формат: `provider:model`, умолч. в коде: `gigachat:GigaChat-2`, в compose: `deepseek:deepseek-chat`)
+- `PLANNER_LLM` - LLM для планирования запросов (умолч. в коде: `gigachat:GigaChat-2`, в compose: `gigachat:GigaChat-2`)
+- `ANSWER_LLM` - LLM для генерации ответов (умолч. в коде: `gigachat:GigaChat-2`, в compose: `deepseek:deepseek-chat`)
+- `CRITIC_LLM` - LLM для оценки фактов (умолч. в коде: `gigachat:GigaChat-2`, в compose: `deepseek:deepseek-reasoner`)
+- `AGENT_LLM` - LLM для ReAct-агента (умолч. в коде: `gigachat:GigaChat-2`, в compose: `gigachat:GigaChat-2`)
 
 **Температуры LLM:**
 - `IDENTITY_TEMPERATURE` - температура Identity LLM (по умолчанию: 0.3)
@@ -970,33 +1029,46 @@ BM25 индекс хранится на диске:
 **RAG API:**
 - `reranker_model` - модель реранкера (по умолчанию `BAAI/bge-reranker-base`)
 - `chroma_collection` - имя коллекции ChromaDB (по умолчанию `portfolio` для legacy, `portfolio_new` для нового)
+- `tei_base_url` - URL TEI для прямого доступа к embeddings (по умолчанию `http://tei:80/v1`)
+- `embedding_model` - модель embeddings (по умолчанию `intfloat/multilingual-e5-base`)
+- `embedding_batch_size` - размер батча для embeddings (по умолчанию 4)
+- `max_rerank_candidates` - макс. кандидатов для реранкинга (по умолчанию 80)
+- `max_user_input_tokens` - макс. длина сообщения пользователя в токенах (по умолчанию 250)
 - `planner_temperature` - температура LLM для планировщика (по умолчанию 0.0 для детерминизма)
 - `answer_temperature` - температура LLM для генерации ответов (по умолчанию 0.2)
 
 **Rate Limiting:**
 - `rate_limit_enabled` - включить/выключить rate limiting (по умолчанию true)
-- `rate_limit_ip_tokens` - лимит токенов на IP за окно (по умолчанию 50000, для тестов можно ниже, например 4500)
-- `rate_limit_window_seconds` - окно rate limit в секундах (по умолчанию 3600 = 1 час)
+- `rate_limit_ip_tokens` - лимит токенов на IP за окно (в коде: 15000 для локального тестирования, в compose: 50000)
+- `rate_limit_window_seconds` - окно rate limit в секундах (в коде: 60, в compose: 3600 = 1 час)
 - `rate_limit_warning_threshold` - порог предупреждения в долях (по умолчанию 0.8 = 80%)
+- `rate_limit_log_ip_mode` - режим логирования IP (по умолчанию `masked`)
+
+**Critic (ленивый критик):**
+- `critic_enabled` - включить/выключить CriticLLM (по умолчанию true)
+- `critic_confidence_threshold` - порог уверенности для пропуска критика (по умолчанию 0.8)
+- `critic_min_facts_threshold` - мин. количество фактов для пропуска критика (по умолчанию 3)
+- `critic_skip_intents` - интенты, для которых критик не нужен (по умолчанию: `["contacts"]`)
 
 **Redis Cache:**
 - `REDIS_URL` - URL подключения Redis (например, `redis://localhost:6379/0`)
 - `CACHE_ENABLED` - включить/выключить кэширование (по умолчанию true)
-- `PLAN_CACHE_TTL` - TTL plan cache в секундах (по умолчанию 3600)
-- `EMBEDDING_CACHE_TTL` - TTL embedding cache в секундах (по умолчанию 86400)
+- `PLAN_CACHE_TTL` - TTL plan cache в секундах (по умолчанию 604800 = 7 дней)
+- `EMBEDDING_CACHE_TTL` - TTL embedding cache в секундах (по умолчанию 604800 = 7 дней)
 
 **Векторная БД:**
 - `CHROMA_HOST` - хост ChromaDB
 - `CHROMA_PORT` - порт ChromaDB (по умолчанию 8001 внешний / 8000 внутренний)
 
-**Порты сервисов:**
-- `CHROMA_PORT` - 8001 (ChromaDB)
-- `VLLM_PORT` - 8002 (vLLM)
-- `CONTENT_PORT` - 8003 (content-api-new)
-- `RAG_PORT` - 8004 (rag-api legacy)
-- `RAG_NEW_PORT` - 8014 (rag-api-new)
-- `LITELLM_PORT` - 8005 (LiteLLM proxy)
-- `TEI_PORT` - 8006 (Text Embeddings Inference)
+**Порты сервисов (docker-compose.local.yaml):**
+- `frontend` - 3000 (Next.js)
+- `postgres` - 5433 (PostgreSQL)
+- `content-api` - 8003 (Content API)
+- `chroma` - 8001 (ChromaDB)
+- `tei` - 8006 (Text Embeddings Inference)
+- `litellm` - 8005 (LiteLLM proxy)
+- `redis` - 6379 (Redis)
+- `rag-api` - 8004 (RAG API, собирается из rag-api-new/)
 
 ---
 
@@ -1018,7 +1090,7 @@ BM25 индекс хранится на диске:
    - Всегда проверяйте `alembic current` перед созданием миграции
    - Миграции: `services/content-api-new/alembic/versions/`
 
-5. **Проблемы с кодировкой**: проверяйте UTF-8, особенно для кириллицы (обязательно из CONTRIBUTING.md)
+5. **Проблемы с кодировкой**: проверяйте UTF-8, особенно для кириллицы
 
 6. **Использование инструментов агента**: RAG-агент обязан вызывать тулзы для вопросов о портфолио
 
@@ -1080,12 +1152,12 @@ AI-Portfolio/
 │   │   ├── projects/[slug]/        # Страница проекта
 │   │   └── experience/[company_slug]/ # Страница опыта
 │   ├── components/
-│   │   ├── agent/                  # Чат с RAG-агентом (AgentDock, AgentChatWindow и др.)
+│   │   ├── agent/                  # Чат с RAG-агентом (AgentDock, AgentChatWindow, ThinkingStatus и др.)
 │   │   ├── hero/                   # Hero (HeroIntro, HeroScrollHint, ParticlesBackground)
 │   │   ├── about/                  # About (AboutMeSection, StatsGrid)
 │   │   ├── experience/             # Опыт (ExperienceSection, ExperienceCard)
 │   │   ├── tech/                   # TechFocusSection
-│   │   ├── projects/               # ProjectsSection, ProjectCard, GithubBadgeIcon
+│   │   ├── projects/               # ProjectsSection, ProjectCard
 │   │   ├── publications/           # PublicationsSection, PublicationCard
 │   │   ├── contacts/               # ContactsSection, ContactCard
 │   │   ├── how/                    # HowIWorkSection
@@ -1105,7 +1177,7 @@ AI-Portfolio/
 │   │   │   ├── db.py               # Подключение БД
 │   │   │   ├── models/             # Модели SQLAlchemy (см. выше)
 │   │   │   ├── routers/            # Эндпоинты (/api/v1/*)
-│   │   │   ├── schemas/            # Pydantic-схемы
+│   │   │   ├── schemas/            # Pydantic-схемы (включая rag_export.py)
 │   │   │   └── core/config.py      # Базовые настройки
 │   │   ├── seed/                   # Наполнение БД
 │   │   ├── alembic/                # Миграции
@@ -1141,7 +1213,8 @@ AI-Portfolio/
 │   │   │   │   ├── nlp.py          # NLP утилиты
 │   │   │   │   ├── formatter.py    # Format rendering
 │   │   │   │   ├── search_types.py # Типы поиска
-│   │   │   │   └── types.py        # Базовые типы
+│   │   │   │   ├── types.py        # Базовые типы
+│   │   │   │   └── utils.py        # Утилиты RAG
 │   │   │   ├── graph/              # Knowledge graph
 │   │   │   │   ├── schema.py       # NodeType, EdgeType
 │   │   │   │   ├── builder.py      # Построение графа
@@ -1170,8 +1243,7 @@ AI-Portfolio/
 │   │   │   │   ├── chat.py         # /api/v1/agent/chat/stream
 │   │   │   │   ├── ingest.py       # /api/v1/ingest
 │   │   │   │   ├── ingest_batch.py # /api/v1/ingest/batch
-│   │   │   │   ├── rate_limit.py   # /api/v1/rate-limit/status
-│   │   │   │   └── admin.py        # /api/v1/admin/*
+│   │   │   │   └── admin.py        # /api/v1/admin/*, /api/v1/rate-limit/status
 │   │   │   ├── schemas/            # Pydantic схемы
 │   │   │   │   ├── chat.py, ingest.py, export.py, admin.py, ask.py
 │   │   │   └── utils/              # Утилиты
@@ -1198,8 +1270,8 @@ AI-Portfolio/
 │   └── settings.py
 │
 ├── infra/
-│   ├── compose.apps.yaml           # ✅ Основной docker compose
-│   ├── compose.db.yaml             # Compose для БД
+│   ├── docker-compose.local.yaml   # ✅ Основной compose (локальная разработка)
+│   ├── docker-compose-prod.yaml    # Продакшен compose
 │   ├── .env.dev                    # Пример переменных окружения
 │   ├── litellm/
 │   │   └── config.yaml             # Алиасы моделей LiteLLM
@@ -1215,7 +1287,6 @@ AI-Portfolio/
 │   └── specs/                       # Спецификации реализации
 │       └── agent-identity-vs-profile-detection.md  # Identity vs Profile детекция
 │
-├── CONTRIBUTING.md                 # ⚠️ Обязательные правила для AI-инструментов
 ├── CLAUDE.md                       # Эта инструкция (EN)
 └── CLAUDE_RU.md                    # Эта инструкция (RU)
 ```
@@ -1223,8 +1294,8 @@ AI-Portfolio/
 **Ключевые пункты:**
 - ✅ Активные сервисы: `frontend-new`, `content-api-new`, `rag-api-new`
 - ⚠️ Legacy: `rag-api` (доступен, упрощенная архитектура)
-- 🐳 Docker: используйте `infra/compose.apps.yaml`
-- 📑 Правила: всегда читайте `CONTRIBUTING.md` перед изменениями
+- 🐳 Docker: используйте `infra/docker-compose.local.yaml`
+- 📝 В compose сервис `rag-api` собирается из `rag-api-new/` — отдельного `rag-api-new` сервиса нет
 
 ---
 
@@ -1232,14 +1303,13 @@ AI-Portfolio/
 
 **Всегда:**
 1. Проверяйте директории сервисов: используйте `content-api-new`, `frontend-new`, `rag-api-new`
-2. Прочитайте `CONTRIBUTING.md` (обязательные правила UTF-8 и прочее)
-3. Убедитесь, что кодировка UTF-8 (особенно для кириллицы/markdown)
-4. Создайте Alembic миграцию при изменении моделей в `content-api-new`
-5. Тестируйте локально перед коммитом
-6. Следуйте существующим паттернам и соглашениям
-7. Для всех API используйте префикс `/api/v1/`
-8. Используйте markdown-поля (`*_md`) для контента, рендерящегося на фронте
-9. **Проверьте `discource/` на наличие спецификаций** перед реализацией новых фич — спецификация может уже существовать
+2. Убедитесь, что кодировка UTF-8 (особенно для кириллицы/markdown)
+3. Создайте Alembic миграцию при изменении моделей в `content-api-new`
+4. Тестируйте локально перед коммитом
+5. Следуйте существующим паттернам и соглашениям
+6. Для всех API используйте префикс `/api/v1/`
+7. Используйте markdown-поля (`*_md`) для контента, рендерящегося на фронте
+8. **Проверьте `discource/`** на наличие спецификаций перед реализацией новых фич
 
 **Никогда:**
 1. Не используйте удаленные директории (`content-api`, `frontend`)

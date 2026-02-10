@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ `frontend-new/` - Active Next.js frontend (cyberpunk theme)
 - ✅ `services/content-api-new/` - Active Content API with versioned endpoints
 - ✅ `services/rag-api-new/` - **NEW** Active RAG & Agent API (multi-layer pipeline, LLM planner)
-- ✅ `infra/compose.apps.yaml` - Active Docker Compose configuration
+- ✅ `infra/docker-compose.local.yaml` - Active Docker Compose configuration (local dev)
 
 **Legacy service (still available, but use rag-api-new for new development):**
 - ⚠️ `services/rag-api/` - Legacy RAG API (simpler architecture, port 8004)
@@ -79,7 +79,7 @@ Key modules:
   - `focus_areas.py` - GET `/api/v1/focus-areas`
   - `work_approaches.py` - GET `/api/v1/work-approaches`
   - `section_meta.py` - GET `/api/v1/section-meta`, GET `/api/v1/section-meta/{section_key}`
-- `app/schemas/` - Pydantic schemas for each model
+- `app/schemas/` - Pydantic schemas for each model (includes `rag_export.py` for comprehensive RAG export structures)
 - `app/settings.py` - Application settings
 - `alembic/` - Database migrations
 
@@ -124,25 +124,29 @@ User Response (streaming or direct)
   - `prefetch_popular_plans()` - Warms up Redis cache after ingest (~60-70% cache hit rate)
 
 **API Routers** (`app/routers/`):
-- `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON
+- `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON (status events via unified asyncio.Queue)
 - `ingest.py` - POST `/api/v1/ingest` - Single document ingestion
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Batch import from ExportPayload
-- `rate_limit.py` - GET `/api/v1/rate-limit/status` - Rate limit status for current IP
-- `admin.py` - Admin endpoints:
+- `admin.py` - Admin and utility endpoints:
   - DELETE `/api/v1/admin/collection` - Clear ChromaDB collection
   - GET `/api/v1/admin/stats` - Collection and graph statistics
+  - GET `/api/v1/admin/cache/stats` - Cache statistics
   - DELETE `/api/v1/admin/cache/plans` - Clear plan cache
   - DELETE `/api/v1/admin/cache/embeddings` - Clear embedding cache
   - DELETE `/api/v1/admin/cache` - Clear all caches
+  - GET `/api/v1/rate-limit/status` - Rate limit status for current IP
 
 **Agent System** (`app/agent/`):
 - `graph.py` - LangGraph agent with ReAct pattern and memory
-- `rag_tool.py` - RAG tool for agent
+- `rag_tool.py` - Async RAG tool for agent with pipeline status emission
+  - `_emit_status(stage, text, config)` - Sends status events to frontend via `asyncio.Queue` from `config["configurable"]["_status_queue"]`
+  - Stages emitted: `planning`, `searching`, `verifying`, `answering`
+  - Heavy sync operations wrapped in `asyncio.to_thread()` (planner, executor, critic, search, answer)
 
 **Identity** (`app/agent/identity/`):
 - `classifier.py` - Semantic matching for identity questions ("who are you", "what can you do")
   - Uses embedding similarity instead of regex for robustness to typos and paraphrases
-  - `SIMILARITY_THRESHOLD = 0.94` for conservative matching
+  - `SIMILARITY_THRESHOLD = 0.92` for conservative matching
   - `is_identity_question(question)` returns `(is_identity, max_similarity)`
   - `generate_identity_response(question)` generates LLM response about agent capabilities
 - `prompts.py` - Identity prompts and capabilities list
@@ -222,6 +226,7 @@ User Response (streaming or direct)
 - `formatter.py` - FormatRenderer for post-processing
 - `search_types.py` - SearchResult, Intent, EntityType
 - `types.py` - Doc, ScoredDoc, SourceInfo
+- `utils.py` - Utility functions
 
 **Knowledge Graph** (`app/graph/`):
 - `schema.py` - NodeType (PERSON, COMPANY, PROJECT, ACHIEVEMENT, TECHNOLOGY, CONTACT), EdgeType
@@ -306,10 +311,11 @@ See legacy documentation in previous CLAUDE.md versions.
 
 **Components:**
 - `components/agent/` - RAG agent chat:
-  - `AgentDock.tsx` - Global floating chat with RAG agent
-  - `AgentChatWindow.tsx` - Chat window UI
+  - `AgentDock.tsx` - Global floating chat with RAG agent (manages `thinkingStatus` state)
+  - `AgentChatWindow.tsx` - Chat window UI (passes thinkingStatus to message list)
   - `AgentInput.tsx` - Message input
-  - `AgentMessageList.tsx` - Message display with streaming
+  - `AgentMessageList.tsx` - Message display with streaming and auto-scroll on thinking status
+  - `ThinkingStatus.tsx` - Pipeline stage indicator with min-duration queue (800ms) and crossfade animation (200ms)
   - `RateLimitWarning.tsx` - Warning banner when approaching rate limit (Framer Motion animated)
   - `RateLimitBlocked.tsx` - Block UI when rate limit exceeded or service unavailable
 - `components/hero/` - Hero section:
@@ -327,7 +333,6 @@ See legacy documentation in previous CLAUDE.md versions.
 - `components/projects/` - Projects section:
   - `ProjectsSection.tsx` - Featured projects grid
   - `ProjectCard.tsx` - Individual project card (memoized)
-  - `GithubBadgeIcon.tsx` - GitHub SVG icon for project badges
 - `components/publications/` - Publications section:
   - `PublicationsSection.tsx` - Articles/publications list
   - `PublicationCard.tsx` - Individual publication card (memoized)
@@ -363,7 +368,7 @@ See legacy documentation in previous CLAUDE.md versions.
   - `getSectionMeta(key)` - Fetch section metadata
   - `getAllSectionMeta()` - Fetch all section metadata
   - `askAgent(question, sessionId)` - Ask agent question
-  - `callAgentStream(body, opts)` - Streaming chat with agent (handles 429/503 as RateLimitError)
+  - `callAgentStream(body, opts)` - Streaming chat with agent (handles 429/503 as RateLimitError, `ChatStreamEvent` union includes `status` type)
   - `getRateLimitStatus()` - Get current rate limit status for IP
   - `isRateLimitError(error)` - Type guard for RateLimitError
 - `lib/types.ts` - TypeScript type definitions:
@@ -375,23 +380,26 @@ See legacy documentation in previous CLAUDE.md versions.
   - `RateLimitBucket`, `RateLimitInfo`, `RateLimitStatus`, `RateLimitError`
 
 ### 5. **Infrastructure** (`infra/`)
-- Docker Compose orchestration (compose.apps.yaml - primary compose file)
-- Alternative compose files: `compose.db.yaml`
-- Services:
-  - PostgreSQL (external, accessed via host.docker.internal)
-  - ChromaDB (vector database, port 8001 external / 8000 internal)
-  - vLLM (Qwen2.5-7B-Instruct-AWQ via OpenAI-compatible API, port 8002)
-  - TEI (Text Embeddings Inference for multilingual-e5-base, port 8006)
-  - LiteLLM (unified proxy for LLM/embeddings, port 8005 external / 4000 internal)
+- Docker Compose orchestration
+- Compose files:
+  - `docker-compose.local.yaml` - **Primary** local development compose (all services)
+  - `docker-compose-prod.yaml` - Production deployment
+- Services (in `docker-compose.local.yaml`):
+  - frontend (port 3000) - Next.js dev server
+  - postgres (port 5433) - PostgreSQL 16 database
   - content-api (port 8003) - builds from content-api-new/
-  - rag-api (port 8004) - legacy RAG service
-  - rag-api-new (port 8014) - new multi-layer RAG service
-
-**Note:** Compose files:
-- `compose.apps.yaml` - Main file with all services
-- `compose.db.yaml` - Database configuration
-
-Use `compose.apps.yaml` as the primary configuration.
+  - chroma (port 8001 external / 8000 internal) - ChromaDB vector database
+  - tei (port 8006) - Text Embeddings Inference for multilingual-e5-base
+  - litellm (port 8005 external / 4000 internal) - unified proxy for LLM/embeddings
+  - redis (port 6379) - Redis for caching and rate limiting
+  - rag-api (port 8004) - builds from rag-api-new/ (service name kept, builds new codebase)
+  - rag-ingest - one-shot service: exports from content-api → ingests into rag-api
+- Additional:
+  - `caddy/Caddyfile` - Reverse proxy configuration (production)
+  - `init/postgres-init.sql` - Database initialization (uuid-ossp)
+  - `scripts/ingest.py` - RAG document ingestion script
+  - `.env.dev`, `.env.local`, `.env.prod`, `.env.example` - Environment variable templates
+  - `DOCKER-LOCAL.md`, `DOCKER-PROD.md` - Docker setup guides
 
 ### 6. **Technical Documentation** (`discource/`)
 **Project specifications and technical requirements storage**
@@ -508,26 +516,38 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # Visit http://localhost:8000/api/swagger
 
 # Ingest documents into ChromaDB (after content-api is populated)
-# 1. Export from content-api: GET http://localhost:8003/api/v1/rag/documents
-# 2. Import to rag-api-new: POST http://localhost:8014/api/v1/ingest/batch
+# 1. Export from content-api: GET http://localhost:8003/api/v1/rag/export
+# 2. Import to rag-api: POST http://localhost:8004/api/v1/ingest/batch
+# Or use the rag-ingest service: docker compose -f docker-compose.local.yaml up rag-ingest
 ```
 
-Environment variables:
+Environment variables (see `infra/.env.dev` and `infra/.env.example` for full list):
 ```bash
 litellm_base_url=http://localhost:8005/v1
 litellm_api_key=dev-secret-123
-chat_model=Qwen2.5  # LLM model (or GigaChat)
-embedding_model=embedding-default
+TEI_BASE_URL=http://tei:80/v1         # Direct TEI access for embeddings
+embedding_model=text-embedding-3-large
 reranker_model=BAAI/bge-reranker-base
+MAX_RERANK_CANDIDATES=80              # Limits CPU usage (~1.3s)
 CHROMA_HOST=localhost
 CHROMA_PORT=8001
-chroma_collection=portfolio_new  # Different collection from legacy
+chroma_collection=portfolio_new
 FRONTEND_ORIGIN=http://localhost:3000
-frontend_local_ip=http://localhost:3000
 LOG_LEVEL=INFO
-planner_temperature=0.0   # Deterministic planning
-answer_temperature=0.2    # Balanced generation
+# LLM Roles (format: provider:model)
+IDENTITY_LLM=deepseek:deepseek-chat
+PLANNER_LLM=gigachat:GigaChat-2
+ANSWER_LLM=deepseek:deepseek-chat
+CRITIC_LLM=deepseek:deepseek-reasoner
+AGENT_LLM=gigachat:GigaChat-2
 giga_auth_data=  # Base64 GigaChat credentials (optional)
+DEEPSEEK_API_KEY=  # DeepSeek API key (optional)
+# Cache & Rate Limiting
+REDIS_URL=redis://localhost:6379/0
+PLAN_CACHE_TTL=604800                 # 7 days
+RATE_LIMIT_IP_TOKENS=50000
+RATE_LIMIT_WINDOW_SECONDS=3600        # 1 hour
+MAX_USER_INPUT_TOKENS=250             # ~1000 chars
 ```
 
 ### RAG API Legacy (rag-api)
@@ -547,21 +567,24 @@ Environment variables (same as rag-api-new but with `chroma_collection=portfolio
 cd infra
 
 # Start all services (recommended)
-docker compose -f compose.apps.yaml up -d
+docker compose -f docker-compose.local.yaml up -d
 
 # Start specific services
-docker compose -f compose.apps.yaml up -d chroma tei litellm
-docker compose -f compose.apps.yaml up -d content-api rag-api rag-api-new
+docker compose -f docker-compose.local.yaml up -d chroma tei litellm redis
+docker compose -f docker-compose.local.yaml up -d content-api rag-api
+
+# Run ingestion (one-shot, exports content-api data → rag-api)
+docker compose -f docker-compose.local.yaml up rag-ingest
 
 # Check service health
-docker compose -f compose.apps.yaml ps
+docker compose -f docker-compose.local.yaml ps
 
 # View logs
-docker compose -f compose.apps.yaml logs -f content-api
-docker compose -f compose.apps.yaml logs -f rag-api-new
+docker compose -f docker-compose.local.yaml logs -f content-api
+docker compose -f docker-compose.local.yaml logs -f rag-api
 
 # Rebuild and restart
-docker compose -f compose.apps.yaml up -d --build rag-api-new
+docker compose -f docker-compose.local.yaml up -d --build rag-api
 ```
 
 ### Running Tests
@@ -574,7 +597,7 @@ pytest tests/
 
 ---
 
-## Critical Rules (from CONTRIBUTING.md)
+## Critical Rules
 
 ### Encoding (STRICT)
 - **All files MUST be UTF-8 without BOM**
@@ -626,13 +649,41 @@ pytest tests/
 ## Data Flow
 
 1. **Content Management**: Admin/scripts → PostgreSQL (via content-api-new)
-2. **RAG Ingestion**: content-api-new `/api/v1/rag/documents` → rag-api-new `/api/v1/ingest/batch` → ChromaDB + BM25 + Knowledge Graph
+2. **RAG Ingestion**: content-api-new `/api/v1/rag/export` → rag-api-new `/api/v1/ingest/batch` → ChromaDB + BM25 + Knowledge Graph (automated via `rag-ingest` service in compose)
 3. **Frontend SSR**: Next.js → content-api-new `/api/v1/*` → PostgreSQL → JSON response
 4. **Agent Chat**: User → frontend-new AgentDock → rag-api-new `/api/v1/agent/chat/stream` → Multi-layer pipeline
 5. **RAG Query Flow (rag-api-new)**:
    - ScopeGuard → PlannerLLM → PlanExecutor
    - → HybridRetriever (dense + BM25) → Rerank → Evidence
    - → FactNormalizer → AnswerLLM → RenderEngine → Response
+6. **Thinking Status Events**: rag_tool.py `_emit_status()` → `asyncio.Queue` via config → chat.py unified queue → NDJSON `status` event → frontend ThinkingStatus component
+
+### NDJSON Streaming Events (`/api/v1/agent/chat/stream`)
+
+The streaming endpoint emits NDJSON events with the following types:
+
+| Event type | Fields | Description |
+|------------|--------|-------------|
+| `start` | `message_id`, `created_at` | Stream opened, immediately followed by initial status |
+| `status` | `stage`, `text` | Pipeline stage indicator (thinking, planning, searching, verifying, answering, identity) |
+| `tool_start` | `tool` | Agent tool invocation started |
+| `tool_end` | — | Agent tool invocation completed |
+| `delta` | `content` | Incremental text chunk from LLM |
+| `error` | `message` | Error during processing |
+| `end` | `message_id`, `usage`, `rate_limit` | Stream finished |
+
+**Status event stages:**
+
+| Stage | Text | Source |
+|-------|------|--------|
+| `thinking` | Анализирую вопрос... | chat.py (immediate, after `start`) |
+| `planning` | Составляю план поиска... | rag_tool.py |
+| `searching` | Ищу в базе знаний... | rag_tool.py |
+| `verifying` | Проверяю полноту данных... | rag_tool.py (conditional, critic) |
+| `answering` | Формирую ответ... | rag_tool.py |
+| `identity` | Формирую ответ... | chat.py (identity fast-path) |
+
+**Status delivery mechanism:** `rag_tool.py` uses `_emit_status()` which puts events into an `asyncio.Queue` stored in `config["configurable"]["_status_queue"]`. `chat.py` runs two concurrent tasks — `_run_agent` (LangGraph events) and `_relay_status` (queue consumer) — merged into a unified queue for ordered NDJSON emission.
 
 ---
 
@@ -679,13 +730,13 @@ The system supports multiple LLM providers with role-based model selection:
 
 **LLM Roles (5 independent configurations):**
 
-| Role | Purpose | Default Model | Temperature |
-|------|---------|---------------|-------------|
-| `identity` | "Who are you?" responses | `deepseek:deepseek-chat` | 0.3 |
-| `planner` | QueryPlanV3 generation | `gigachat:GigaChat-2` | 0.0 |
-| `answer` | User-facing responses | `gigachat:GigaChat-2` | 0.2 |
-| `critic` | Fact sufficiency evaluation | `deepseek:deepseek-reasoner` | 0.2 |
-| `agent` | ReAct orchestration | `gigachat:GigaChat-2` | 0.2 |
+| Role | Purpose | Compose Default | Code Default | Temperature |
+|------|---------|-----------------|--------------|-------------|
+| `identity` | "Who are you?" responses | `deepseek:deepseek-chat` | `gigachat:GigaChat-2` | 0.3 |
+| `planner` | QueryPlanV3 generation | `gigachat:GigaChat-2` | `gigachat:GigaChat-2` | 0.0 |
+| `answer` | User-facing responses | `deepseek:deepseek-chat` | `gigachat:GigaChat-2` | 0.2 |
+| `critic` | Fact sufficiency evaluation | `deepseek:deepseek-reasoner` | `gigachat:GigaChat-2` | 0.2 |
+| `agent` | ReAct orchestration | `gigachat:GigaChat-2` | `gigachat:GigaChat-2` | 0.2 |
 
 **LLM ID Format:** `provider:model` (e.g., `gigachat:GigaChat-2`, `deepseek:deepseek-reasoner`)
 
@@ -728,10 +779,10 @@ GIGA_AUTH_DATA=base64_credentials      # GigaChat
 DEEPSEEK_API_KEY=sk-xxx                # DeepSeek
 LITELLM_BASE_URL=http://localhost:8005/v1  # Qwen via LiteLLM
 
-# LLM roles (format: "provider:model")
+# LLM roles (format: "provider:model") — compose defaults:
 IDENTITY_LLM=deepseek:deepseek-chat
-PLANNER_LLM=deepseek:deepseek-reasoner
-ANSWER_LLM=gigachat:GigaChat-2
+PLANNER_LLM=gigachat:GigaChat-2
+ANSWER_LLM=deepseek:deepseek-chat
 CRITIC_LLM=deepseek:deepseek-reasoner
 AGENT_LLM=gigachat:GigaChat-2
 
@@ -848,6 +899,8 @@ The hero section includes sophisticated animations:
 - `hero-bounce-slow` - Scroll button bounce
 - `cursor-breathe` - Cursor breathing animation
 - `animate-cursor-ripple` - Click ripple effect
+- `pulse-slow` - Slow pulse opacity animation (2.5s)
+- `breathe` - Thinking status indicator glow pulse (box-shadow with accent-soft color)
 - `@media (prefers-reduced-motion)` - Respects user preferences
 - Mobile optimizations: reduced blur, slower animations
 
@@ -961,11 +1014,11 @@ Key variables (see `infra/.env.dev`):
 - `HF_TOKEN` - HuggingFace token for model downloads
 
 **LLM Roles (Multi-Provider Architecture):**
-- `IDENTITY_LLM` - LLM for identity questions (format: `provider:model`, default: `deepseek:deepseek-chat`)
-- `PLANNER_LLM` - LLM for query planning (default: `deepseek:deepseek-reasoner`)
-- `ANSWER_LLM` - LLM for answer generation (default: `gigachat:GigaChat-2`)
-- `CRITIC_LLM` - LLM for fact evaluation (default: `deepseek:deepseek-reasoner`)
-- `AGENT_LLM` - LLM for ReAct agent (default: `gigachat:GigaChat-2`)
+- `IDENTITY_LLM` - LLM for identity questions (format: `provider:model`, compose default: `deepseek:deepseek-chat`)
+- `PLANNER_LLM` - LLM for query planning (compose default: `gigachat:GigaChat-2`)
+- `ANSWER_LLM` - LLM for answer generation (compose default: `deepseek:deepseek-chat`)
+- `CRITIC_LLM` - LLM for fact evaluation (compose default: `deepseek:deepseek-reasoner`)
+- `AGENT_LLM` - LLM for ReAct agent (compose default: `gigachat:GigaChat-2`)
 
 **LLM Temperatures:**
 - `IDENTITY_TEMPERATURE` - Identity LLM temperature (default: 0.3)
@@ -975,35 +1028,45 @@ Key variables (see `infra/.env.dev`):
 - `AGENT_TEMPERATURE` - Agent LLM temperature (default: 0.2)
 
 **RAG API Specific:**
+- `TEI_BASE_URL` - Direct TEI access URL (default: `http://tei:80/v1`)
+- `EMBEDDING_MODEL` - Embedding model (default: `text-embedding-3-large`)
+- `EMBEDDING_BATCH_SIZE` - Batch size for embeddings (default: 4, small to avoid TEI 413)
 - `reranker_model` - Reranker model (default: `BAAI/bge-reranker-base`)
-- `chroma_collection` - ChromaDB collection name (default: `portfolio` for legacy, `portfolio_new` for new)
-- `planner_temperature` - LLM temperature for planner (default: 0.0 for deterministic)
-- `answer_temperature` - LLM temperature for answer generation (default: 0.2)
+- `MAX_RERANK_CANDIDATES` - Max docs for reranker (default: 80, limits CPU to ~1.3s)
+- `chroma_collection` - ChromaDB collection name (default: `portfolio_new`)
+- `MAX_USER_INPUT_TOKENS` - Approximate token limit for user input (default: 250, ~1000 chars)
+
+**Critic Settings:**
+- `CRITIC_ENABLED` - Enable/disable Critic LLM (default: true)
+- `CRITIC_CONFIDENCE_THRESHOLD` - Skip critic if plan confidence >= threshold (default: 0.7)
+- `CRITIC_MIN_FACTS_THRESHOLD` - Skip critic if facts >= threshold (default: 2)
 
 **Rate Limiting:**
-- `rate_limit_enabled` - Enable/disable rate limiting (default: true)
-- `rate_limit_ip_tokens` - Token limit per IP per window (default: 50000, use lower for testing e.g. 4500)
-- `rate_limit_window_seconds` - Rate limit window in seconds (default: 3600 = 1 hour)
-- `rate_limit_warning_threshold` - Warning threshold as decimal (default: 0.8 = 80%)
+- `RATE_LIMIT_ENABLED` - Enable/disable rate limiting (default: true)
+- `RATE_LIMIT_IP_TOKENS` - Token limit per IP per window (compose default: 50000)
+- `RATE_LIMIT_WINDOW_SECONDS` - Rate limit window in seconds (compose default: 3600 = 1 hour)
+- `RATE_LIMIT_WARNING_THRESHOLD` - Warning threshold as decimal (default: 0.8 = 80%)
+- `RATE_LIMIT_LOG_IP_MODE` - IP logging mode: `masked` or `full` (default: `masked`)
 
 **Redis Cache:**
 - `REDIS_URL` - Redis connection URL (e.g., `redis://localhost:6379/0`)
 - `CACHE_ENABLED` - Enable/disable caching (default: true)
-- `PLAN_CACHE_TTL` - Plan cache TTL in seconds (default: 3600)
-- `EMBEDDING_CACHE_TTL` - Embedding cache TTL in seconds (default: 86400)
+- `PLAN_CACHE_TTL` - Plan cache TTL in seconds (default: 604800 = 7 days)
+- `EMBEDDING_CACHE_TTL` - Embedding cache TTL in seconds (default: 604800 = 7 days)
 
 **Vector Database:**
 - `CHROMA_HOST` - ChromaDB host
 - `CHROMA_PORT` - ChromaDB port (default: 8001 external, 8000 internal)
 
-**Service Ports:**
+**Service Ports (docker-compose.local.yaml defaults):**
+- Frontend - 3000
+- `POSTGRES_PORT` - 5433 (PostgreSQL)
+- `CONTENT_PORT` - 8003 (content-api)
 - `CHROMA_PORT` - 8001 (ChromaDB)
-- `VLLM_PORT` - 8002 (vLLM inference)
-- `CONTENT_PORT` - 8003 (content-api-new)
-- `RAG_PORT` - 8004 (rag-api legacy)
-- `RAG_NEW_PORT` - 8014 (rag-api-new)
-- `LITELLM_PORT` - 8005 (LiteLLM proxy)
 - `TEI_PORT` - 8006 (Text Embeddings Inference)
+- `LITELLM_PORT` - 8005 (LiteLLM proxy)
+- `REDIS_PORT` - 6379 (Redis)
+- `RAG_NEW_PORT` - 8004 (rag-api, builds from rag-api-new/)
 
 ---
 
@@ -1025,7 +1088,7 @@ Key variables (see `infra/.env.dev`):
    - Always check `alembic current` before creating migrations
    - Migration location: `services/content-api-new/alembic/versions/`
 
-5. **Encoding Issues**: Verify UTF-8 encoding, especially when working with Cyrillic text (MANDATORY from CONTRIBUTING.md)
+5. **Encoding Issues**: Verify UTF-8 encoding, especially when working with Cyrillic text (MANDATORY)
 
 6. **Agent Tool Usage**: The RAG agent MUST call tools for portfolio questions - don't let LLM answer directly
 
@@ -1088,12 +1151,12 @@ AI-Portfolio/
 │   │   ├── projects/[slug]/        # Project detail page
 │   │   └── experience/[company_slug]/ # Experience detail page
 │   ├── components/
-│   │   ├── agent/                  # RAG agent chat (AgentDock, AgentChatWindow, etc.)
+│   │   ├── agent/                  # RAG agent chat (AgentDock, AgentChatWindow, ThinkingStatus, etc.)
 │   │   ├── hero/                   # Hero section (HeroIntro, HeroScrollHint, ParticlesBackground)
 │   │   ├── about/                  # About section (AboutMeSection, StatsGrid)
 │   │   ├── experience/             # Experience section (ExperienceSection, ExperienceCard)
 │   │   ├── tech/                   # Tech focus (TechFocusSection)
-│   │   ├── projects/               # Projects (ProjectsSection, ProjectCard, GithubBadgeIcon)
+│   │   ├── projects/               # Projects (ProjectsSection, ProjectCard)
 │   │   ├── publications/           # Publications (PublicationsSection, PublicationCard)
 │   │   ├── contacts/               # Contacts (ContactsSection, ContactCard)
 │   │   ├── how/                    # How I Work (HowIWorkSection)
@@ -1178,8 +1241,7 @@ AI-Portfolio/
 │   │   │   │   ├── chat.py         # /api/v1/agent/chat/stream
 │   │   │   │   ├── ingest.py       # /api/v1/ingest
 │   │   │   │   ├── ingest_batch.py # /api/v1/ingest/batch
-│   │   │   │   ├── rate_limit.py   # /api/v1/rate-limit/status
-│   │   │   │   └── admin.py        # /api/v1/admin/*
+│   │   │   │   └── admin.py        # /api/v1/admin/* + /api/v1/rate-limit/status
 │   │   │   ├── schemas/            # Pydantic schemas
 │   │   │   │   ├── chat.py, ingest.py, export.py, admin.py, ask.py
 │   │   │   └── utils/              # Utilities
@@ -1206,9 +1268,17 @@ AI-Portfolio/
 │   └── settings.py
 │
 ├── infra/
-│   ├── compose.apps.yaml           # ✅ Main docker compose (ACTIVE)
-│   ├── compose.db.yaml             # Database compose
-│   ├── .env.dev                    # Environment variables template
+│   ├── docker-compose.local.yaml   # ✅ Primary local dev compose
+│   ├── docker-compose-prod.yaml    # Production compose
+│   ├── .env.dev                    # Development env variables
+│   ├── .env.local                  # Local env variables
+│   ├── .env.prod                   # Production env variables
+│   ├── .env.example                # Comprehensive env example
+│   ├── DOCKER-LOCAL.md             # Local Docker setup guide
+│   ├── DOCKER-PROD.md              # Production Docker setup guide
+│   ├── caddy/Caddyfile             # Reverse proxy (production)
+│   ├── init/postgres-init.sql      # DB init (uuid-ossp)
+│   ├── scripts/ingest.py           # RAG ingestion script
 │   ├── litellm/
 │   │   └── config.yaml             # LiteLLM model aliases
 │   └── models/
@@ -1223,7 +1293,6 @@ AI-Portfolio/
 │   └── specs/                       # Implementation specifications
 │       └── agent-identity-vs-profile-detection.md  # Identity vs Profile detection
 │
-├── CONTRIBUTING.md                 # ⚠️ MANDATORY rules for AI tools
 ├── CLAUDE.md                       # This file (EN)
 └── CLAUDE_RU.md                    # This file (RU)
 ```
@@ -1231,8 +1300,8 @@ AI-Portfolio/
 **Key Points:**
 - ✅ **Active services**: `frontend-new`, `content-api-new`, `rag-api-new`
 - ⚠️ **Legacy**: `rag-api` (still available, simpler architecture)
-- 🐳 **Docker**: Use `infra/compose.apps.yaml` for orchestration
-- 📝 **Rules**: Always read `CONTRIBUTING.md` before making changes
+- 🐳 **Docker**: Use `infra/docker-compose.local.yaml` for local development
+- 📝 **Rules**: Follow encoding and architecture rules in Critical Rules section
 
 ---
 
@@ -1240,7 +1309,7 @@ AI-Portfolio/
 
 **Always:**
 1. **Verify service directories**: Use `content-api-new`, `frontend-new`, `rag-api-new`
-2. Read `CONTRIBUTING.md` first (mandatory UTF-8 encoding rules)
+2. Ensure all files are UTF-8 without BOM (mandatory encoding rule)
 3. Check encoding is UTF-8 (especially for Cyrillic text in markdown fields)
 4. Create Alembic migration if modifying SQLAlchemy models in `content-api-new`
 5. Test locally before committing
