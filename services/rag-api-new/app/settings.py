@@ -143,8 +143,8 @@ class Settings(BaseSettings):
     """Режим логирования IP: masked (85.140.10.*) или full"""
 
     # === User Input Validation ===
-    max_user_input_length: int = 500
-    """Maximum length for user input message in characters"""
+    max_user_input_tokens: int = 250
+    """Approximate token limit for user input (~4 chars per token)"""
 
     # === Rerank settings ===
     max_rerank_candidates: int = 80

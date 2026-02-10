@@ -13,7 +13,8 @@ type AgentInputProps = {
   onStop?: () => void;
 };
 
-const MAX_INPUT_LENGTH = 500;
+const MAX_INPUT_TOKENS = Number(process.env.NEXT_PUBLIC_MAX_INPUT_TOKENS) || 100;
+const CHARS_PER_TOKEN = Number(process.env.NEXT_PUBLIC_CHARS_PER_TOKEN) || 4;
 
 export default function AgentInput({
   value,
@@ -33,10 +34,10 @@ export default function AgentInput({
     onSubmit();
   };
 
-  const charCount = value.length;
-  const ratio = charCount / MAX_INPUT_LENGTH;
-  const showCounter = ratio >= 0.9; // Show at 90% (450 chars)
-  const isExceeded = charCount > MAX_INPUT_LENGTH;
+  const approxTokens = Math.ceil(value.length / CHARS_PER_TOKEN);
+  const ratio = approxTokens / MAX_INPUT_TOKENS;
+  const showCounter = ratio >= 0.9;
+  const isExceeded = approxTokens > MAX_INPUT_TOKENS;
 
   // Cyberpunk glow colors
   const getCounterColor = () => {
@@ -44,7 +45,7 @@ export default function AgentInput({
     if (isExceeded) {
       return "text-red-400 shadow-[0_0_12px_rgba(248,113,113,0.4)] animate-pulse-slow";
     }
-    if (charCount === MAX_INPUT_LENGTH) {
+    if (approxTokens === MAX_INPUT_TOKENS) {
       return "text-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.4)]";
     }
     return "text-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.3)]";
@@ -80,7 +81,7 @@ export default function AgentInput({
           placeholder={inputIsDisabled ? "Ожидание ответа..." : "Напишите вопрос..."}
           className="flex-1 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-sm text-slate-100 outline-none ring-accent/30 transition focus:border-accent focus:ring-2 disabled:opacity-50"
           aria-label="Введите вопрос о портфолио"
-          aria-describedby={showCounter ? "char-counter" : undefined}
+          aria-describedby={showCounter ? "token-counter" : undefined}
         />
         {streaming ? (
           <button
@@ -107,17 +108,17 @@ export default function AgentInput({
       {showCounter && (
         <div className="flex justify-end mt-1">
           <span
-            id="char-counter"
+            id="token-counter"
             className={`text-xs font-mono transition-all duration-200 ${getCounterColor()}`}
             role="status"
             aria-live="polite"
           >
-            {charCount} / {MAX_INPUT_LENGTH}
-            {charCount > MAX_INPUT_LENGTH
+            {approxTokens} / {MAX_INPUT_TOKENS} токенов
+            {isExceeded
               ? " • Слишком длинное сообщение"
-              : charCount === MAX_INPUT_LENGTH
-                ? " • Лимит достигнут"
-                : " • Почти лимит"}
+              : approxTokens === MAX_INPUT_TOKENS
+                ? " • Лимит ввода достигнут"
+                : " • Лимит ввода"}
           </span>
         </div>
       )}
