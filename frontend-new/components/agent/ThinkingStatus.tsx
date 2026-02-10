@@ -117,7 +117,10 @@ export default function ThinkingStatus({ status }: ThinkingStatusProps) {
         transition: `opacity ${FADE_MS}ms ease-in-out`,
       }}
     >
-      <span className="inline-block h-1 w-1 rounded-full bg-accent-soft/60 animate-pulse" />
+      <span
+        className="inline-block h-2.5 w-2.5 rounded-full border border-accent-soft/50 border-t-transparent animate-spin"
+        style={{ animationDuration: "1.6s" }}
+      />
       <span className="font-mono text-[11px] text-accent-soft/70 select-none">
         {visible.text}
       </span>
