@@ -3,10 +3,12 @@ import ReactMarkdown from "react-markdown";
 import clsx from "clsx";
 
 import { AgentMessage } from "@/lib/types";
+import ThinkingStatus, { StatusEntry } from "@/components/agent/ThinkingStatus";
 
 type AgentMessageListProps = {
   messages: AgentMessage[];
   typing?: boolean;
+  thinkingStatus?: StatusEntry | null;
   canRetry?: boolean;
   onRetry?: (question: string) => void;
 };
@@ -45,6 +47,7 @@ const TypingDots = () => (
 export default function AgentMessageList({
   messages,
   typing = false,
+  thinkingStatus = null,
   canRetry = false,
   onRetry
 }: AgentMessageListProps) {
@@ -54,7 +57,7 @@ export default function AgentMessageList({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, typing]);
+  }, [messages, typing, thinkingStatus]);
 
   // Найти последнее сообщение пользователя без ответа
   const findUnansweredUserMessage = (): string | null => {
@@ -78,6 +81,11 @@ export default function AgentMessageList({
 
   const unansweredId = findUnansweredUserMessage();
 
+  // Определить, нужно ли показывать ThinkingStatus под последним бабблом агента
+  const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+  const showThinkingAfterLast =
+    lastMsg?.role === "agent" && lastMsg?.status === "streaming" && typing;
+
   return (
     <div
       ref={scrollRef}
@@ -94,66 +102,72 @@ export default function AgentMessageList({
           const showRetry = canRetry && onRetry && m.id === unansweredId && m.role === "user";
 
           return (
-            <div
-              key={m.id}
-              className={clsx(
-                "rounded-xl border px-3 py-2",
-                m.role === "user"
-                  ? "border-accent/40 bg-accent/10 text-slate-50"
-                  : "border-slate-700/70 bg-slate-900/60 text-slate-100"
+            <div key={m.id}>
+              <div
+                className={clsx(
+                  "rounded-xl border px-3 py-2",
+                  m.role === "user"
+                    ? "border-accent/40 bg-accent/10 text-slate-50"
+                    : "border-slate-700/70 bg-slate-900/60 text-slate-100"
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-accent-soft/80">
+                    {m.role === "user" ? "вы" : "агент"}
+                  </p>
+                  {showRetry && (
+                    <button
+                      onClick={() => onRetry(m.content)}
+                      className="flex-shrink-0 p-1 rounded hover:bg-accent/20 transition-colors text-accent-soft hover:text-accent"
+                      title="Повторить запрос"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2.5}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <div className="mt-1 text-sm leading-relaxed">
+                  {showTyping ? (
+                    <TypingDots />
+                  ) : (
+                    <ReactMarkdown
+                      components={{
+                        p: ({ node, ...props }) => (
+                          <p className="whitespace-pre-wrap leading-relaxed" {...props} />
+                        ),
+                        strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
+                        ul: ({ node, ...props }) => <ul className="ml-4 list-disc space-y-1" {...props} />,
+                        ol: ({ node, ...props }) => <ol className="ml-4 list-decimal space-y-1" {...props} />,
+                        li: ({ node, ...props }) => <li className="whitespace-pre-wrap" {...props} />,
+                        code: ({ node, className, ...props }) => {
+                          const isInline = !className?.includes("language-");
+                          return isInline ? (
+                            <code className="rounded bg-slate-800 px-1 py-0.5 text-xs" {...props} />
+                          ) : (
+                            <code
+                              className="block whitespace-pre-wrap rounded bg-slate-900 px-3 py-2 text-xs"
+                              {...props}
+                            />
+                          );
+                        }
+                      }}
+                    >
+                      {m.content}
+                    </ReactMarkdown>
+                  )}
+                </div>
+              </div>
+
+              {/* ThinkingStatus — below the last agent bubble while typing */}
+              {isLast && showThinkingAfterLast && (
+                <ThinkingStatus status={thinkingStatus ?? null} />
               )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-accent-soft/80">
-                  {m.role === "user" ? "вы" : "агент"}
-                </p>
-                {showRetry && (
-                  <button
-                    onClick={() => onRetry(m.content)}
-                    className="flex-shrink-0 p-1 rounded hover:bg-accent/20 transition-colors text-accent-soft hover:text-accent"
-                    title="Повторить запрос"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2.5}
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                      />
-                    </svg>
-                  </button>
-                )}
-              </div>
-              <div className="mt-1 text-sm leading-relaxed">
-                {showTyping ? (
-                  <TypingDots />
-                ) : (
-                  <ReactMarkdown
-                    components={{
-                      p: ({ node, ...props }) => (
-                        <p className="whitespace-pre-wrap leading-relaxed" {...props} />
-                      ),
-                      strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
-                      ul: ({ node, ...props }) => <ul className="ml-4 list-disc space-y-1" {...props} />,
-                      ol: ({ node, ...props }) => <ol className="ml-4 list-decimal space-y-1" {...props} />,
-                      li: ({ node, ...props }) => <li className="whitespace-pre-wrap" {...props} />,
-                      code: ({ node, className, ...props }) => {
-                        const isInline = !className?.includes("language-");
-                        return isInline ? (
-                          <code className="rounded bg-slate-800 px-1 py-0.5 text-xs" {...props} />
-                        ) : (
-                          <code
-                            className="block whitespace-pre-wrap rounded bg-slate-900 px-3 py-2 text-xs"
-                            {...props}
-                          />
-                        );
-                      }
-                    }}
-                  >
-                    {m.content}
-                  </ReactMarkdown>
-                )}
-              </div>
             </div>
           );
         })

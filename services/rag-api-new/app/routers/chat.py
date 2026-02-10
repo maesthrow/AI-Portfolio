@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -218,6 +219,12 @@ async def chat_stream(req: ChatRequest, request: Request):
                 ensure_ascii=False,
             ) + "\n"
 
+            yield json.dumps({
+                "type": "status",
+                "stage": "identity",
+                "text": "Формирую ответ...",
+            }, ensure_ascii=False) + "\n"
+
             # Генерируем ответ через LLM
             response, identity_usage = await generate_identity_response(req.question)
             yield json.dumps({"type": "delta", "content": response}, ensure_ascii=False) + "\n"
@@ -274,8 +281,49 @@ async def chat_stream(req: ChatRequest, request: Request):
             {"type": "start", "message_id": message_id, "created_at": created_at},
             ensure_ascii=False,
         ) + "\n"
+        # --- Status queue: real-time pipeline status from rag_tool ---
+        status_queue = asyncio.Queue()
+        config["configurable"]["_status_queue"] = status_queue
+        unified = asyncio.Queue()
+
+        async def _run_agent():
+            try:
+                async for ev in _iterate_agent_events(agent, state, config):
+                    await unified.put(("event", ev))
+            except Exception as exc:
+                await unified.put(("error", exc))
+            await unified.put(("done", None))
+
+        async def _relay_status():
+            while True:
+                item = await status_queue.get()
+                if item is None:
+                    return
+                await unified.put(("status", item))
+
+        agent_task = asyncio.create_task(_run_agent())
+        status_task = asyncio.create_task(_relay_status())
+
         try:
-            async for event in _iterate_agent_events(agent, state, config):
+            while True:
+                tag, q_data = await unified.get()
+
+                if tag == "done":
+                    break
+
+                if tag == "error":
+                    raise q_data
+
+                if tag == "status":
+                    yield json.dumps({
+                        "type": "status",
+                        "stage": q_data.get("stage", ""),
+                        "text": q_data.get("text", ""),
+                    }, ensure_ascii=False) + "\n"
+                    continue
+
+                # tag == "event" — process LangChain/LangGraph event
+                event = q_data
                 kind = event.get("event")
 
                 if kind == "on_chat_model_stream":
@@ -318,6 +366,11 @@ async def chat_stream(req: ChatRequest, request: Request):
                         compact_json(tool_input, limit=2000),
                     )
                     yield json.dumps({"type": "tool_start", "tool": tool_name}, ensure_ascii=False) + "\n"
+                    yield json.dumps({
+                        "type": "status",
+                        "stage": "scope_check",
+                        "text": "Анализирую вопрос...",
+                    }, ensure_ascii=False) + "\n"
 
                 elif kind == "on_tool_end":
                     data = event.get("data") or {}
@@ -368,6 +421,10 @@ async def chat_stream(req: ChatRequest, request: Request):
             logger.exception("Agent streaming failed")
             yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False) + "\n"
             return
+        finally:
+            status_queue.put_nowait(None)
+            agent_task.cancel()
+            status_task.cancel()
 
         # Post-process final text
         if final_text:

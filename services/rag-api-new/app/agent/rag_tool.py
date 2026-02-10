@@ -11,8 +11,10 @@ Agent decides whether to call this tool or respond directly.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from langchain.tools import tool
+from langchain_core.runnables import RunnableConfig
 
 from ..deps import settings
 from ..llm import get_provider_info
@@ -22,8 +24,25 @@ from ..utils.logging_utils import truncate_text
 logger = logging.getLogger(__name__)
 
 
+def _emit_status(stage: str, text: str, config: RunnableConfig) -> None:
+    """Put a pipeline status event onto the queue from config.
+
+    Uses an asyncio.Queue passed via config["configurable"]["_status_queue"]
+    to deliver status events to the streaming response in chat.py.
+    This bypasses the LangChain event system entirely for reliability.
+    Failures are silently ignored to never break the RAG pipeline.
+    """
+    queue = (config.get("configurable") or {}).get("_status_queue")
+    if queue is None:
+        return
+    try:
+        queue.put_nowait({"stage": stage, "text": text})
+    except Exception:
+        pass
+
+
 @tool("portfolio_rag_tool")
-def portfolio_rag_tool(question: str) -> dict:
+async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
     """
     Полноценный RAG-инструмент с LLM-планированием и защитой от галлюцинаций.
 
@@ -74,9 +93,13 @@ def portfolio_rag_tool(question: str) -> dict:
 
     try:
         # 1. Plan (shortcut -> cache -> LLM fallback)
+        _emit_status("planning", "Составляю план поиска...", config)
+
         from ..cache import get_plan_with_cache
 
-        plan, plan_source, planner_usage = get_plan_with_cache(question, planner_llm)
+        plan, plan_source, planner_usage = await asyncio.to_thread(
+            get_plan_with_cache, question, planner_llm
+        )
 
         # Record planner usage if available (only for LLM path)
         if planner_usage:
@@ -94,8 +117,10 @@ def portfolio_rag_tool(question: str) -> dict:
         )
 
         # 2. Execute
+        _emit_status("searching", "Ищу в базе знаний...", config)
+
         executor = PlanExecutor()
-        payload = executor.execute(plan, question)
+        payload = await asyncio.to_thread(executor.execute, plan, question)
 
         # 2.1 Self-check: if retrieval is insufficient, run hybrid search and merge context
         try:
@@ -135,8 +160,11 @@ def portfolio_rag_tool(question: str) -> dict:
                 )
                 decision = CriticDecision(sufficient=True, need_search=False, query="", reason="skipped")
             else:
+                _emit_status("verifying", "Проверяю полноту данных...", config)
                 critic_instance = CriticLLM(critic_llm())
-                decision, critic_usage = critic_instance.evaluate(question, plan, payload)
+                decision, critic_usage = await asyncio.to_thread(
+                    critic_instance.evaluate, question, plan, payload
+                )
 
                 # Record critic usage
                 if critic_usage:
@@ -147,7 +175,8 @@ def portfolio_rag_tool(question: str) -> dict:
             if decision.need_search and not search_already_used:
                 search_query = (decision.query or "").strip() or question
                 logger.info("Self-check triggering portfolio_search_tool query=%r", truncate_text(search_query, limit=200))
-                facts2, sources2, found2, confidence2, evidence2 = execute_portfolio_search(
+                facts2, sources2, found2, confidence2, evidence2 = await asyncio.to_thread(
+                    execute_portfolio_search,
                     query=search_query,
                     k=8,
                 )
@@ -251,8 +280,10 @@ def portfolio_rag_tool(question: str) -> dict:
         )
 
         # 6. Answer (LLM)
+        _emit_status("answering", "Формирую ответ...", config)
+
         answer_gen = AnswerLLM(answer_llm())
-        answer, answer_usage = answer_gen.generate(payload)
+        answer, answer_usage = await asyncio.to_thread(answer_gen.generate, payload)
 
         # Record answer usage
         if answer_usage:

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 
 import AgentChatWindow from "@/components/agent/AgentChatWindow";
+import { StatusEntry } from "@/components/agent/ThinkingStatus";
 import { askAgent, callAgentStream, ChatStreamEvent, getRateLimitStatus, isRateLimitError } from "@/lib/api";
 import { AgentMessage, RateLimitInfo, RateLimitError } from "@/lib/types";
 
@@ -74,6 +75,7 @@ export default function AgentDock() {
   const lastTickRef = useRef<number>(performance.now());
   const releasePendingRef = useRef<boolean>(false);
   const [streamingStarted, setStreamingStarted] = useState(false);
+  const [thinkingStatus, setThinkingStatus] = useState<StatusEntry | null>(null);
   const hintTimerRef = useRef<number | null>(null);
   const hintHideTimerRef = useRef<number | null>(null);
 
@@ -272,6 +274,7 @@ export default function AgentDock() {
     setInputValue("");
     setLoading(true);
     setStreamingStarted(false);
+    setThinkingStatus(null);
     releasePendingRef.current = false;
 
     const controller = new AbortController();
@@ -300,9 +303,12 @@ export default function AgentDock() {
         if (event.type === "start" && event.message_id) {
           currentOutputIdRef.current = event.message_id;
           updateAgentMessage(tempId, (m) => ({ ...m, id: event.message_id }));
+        } else if (event.type === "status") {
+          setThinkingStatus({ stage: event.stage, text: event.text });
         } else if (event.type === "delta") {
           if (!streamingStarted) {
             setStreamingStarted(true);
+            setThinkingStatus(null);
           }
           enqueueChars(tempId, event.content);
           updateAgentMessage(tempId, (m) => ({
@@ -384,6 +390,7 @@ export default function AgentDock() {
     } finally {
       streamControllerRef.current = null;
       activeAgentIdRef.current = null;
+      setThinkingStatus(null);
       if (!charQueueRef.current.length) {
         stopCharPump();
         tryReleaseLoading();
@@ -393,6 +400,7 @@ export default function AgentDock() {
 
   const handleStop = () => {
     const targetId = currentOutputIdRef.current || activeAgentIdRef.current;
+    setThinkingStatus(null);
     if (streamControllerRef.current) {
       streamControllerRef.current.abort();
       stopCharPump();
@@ -481,6 +489,7 @@ export default function AgentDock() {
     setMessages((prev) => [...prev, agentPlaceholder]);
     setLoading(true);
     setStreamingStarted(false);
+    setThinkingStatus(null);
     releasePendingRef.current = false;
 
     const controller = new AbortController();
@@ -501,9 +510,12 @@ export default function AgentDock() {
         if (event.type === "start" && event.message_id) {
           currentOutputIdRef.current = event.message_id;
           updateAgentMessage(tempId, (m) => ({ ...m, id: event.message_id }));
+        } else if (event.type === "status") {
+          setThinkingStatus({ stage: event.stage, text: event.text });
         } else if (event.type === "delta") {
           if (!streamingStarted) {
             setStreamingStarted(true);
+            setThinkingStatus(null);
           }
           enqueueChars(tempId, event.content);
           updateAgentMessage(tempId, (m) => ({
@@ -568,6 +580,7 @@ export default function AgentDock() {
     } finally {
       streamControllerRef.current = null;
       activeAgentIdRef.current = null;
+      setThinkingStatus(null);
       if (!charQueueRef.current.length) {
         stopCharPump();
         tryReleaseLoading();
@@ -609,6 +622,7 @@ export default function AgentDock() {
             sendDisabled={loading}
             streaming={loading}
             onStop={handleStop}
+            thinkingStatus={thinkingStatus}
             rateLimitInfo={rateLimitInfo}
             rateLimitError={rateLimitError}
             onRateLimitRetry={handleRateLimitRetry}

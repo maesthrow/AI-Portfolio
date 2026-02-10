@@ -20,6 +20,7 @@ import {
 export type ChatStreamEvent =
   | { type: "start"; message_id: string; created_at: string }
   | { type: "delta"; content: string }
+  | { type: "status"; stage: string; text: string }
   | { type: "tool_start"; tool: string }
   | { type: "tool_end" }
   | {

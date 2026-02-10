@@ -2,6 +2,7 @@ import AgentMessageList from "@/components/agent/AgentMessageList";
 import AgentInput from "@/components/agent/AgentInput";
 import { RateLimitWarning } from "@/components/agent/RateLimitWarning";
 import { RateLimitBlocked } from "@/components/agent/RateLimitBlocked";
+import { StatusEntry } from "@/components/agent/ThinkingStatus";
 import { AgentMessage, RateLimitInfo, RateLimitError } from "@/lib/types";
 
 type AgentChatWindowProps = {
@@ -15,6 +16,7 @@ type AgentChatWindowProps = {
   streaming?: boolean;
   streamingStarted?: boolean;
   onStop?: () => void;
+  thinkingStatus?: StatusEntry | null;
   rateLimitInfo?: RateLimitInfo | null;
   rateLimitError?: RateLimitError | null;
   onRateLimitRetry?: () => void;
@@ -32,6 +34,7 @@ export default function AgentChatWindow({
   streaming = false,
   streamingStarted = false,
   onStop,
+  thinkingStatus,
   rateLimitInfo,
   rateLimitError,
   onRateLimitRetry,
@@ -64,6 +67,7 @@ export default function AgentChatWindow({
       <AgentMessageList
         messages={messages}
         typing={typing}
+        thinkingStatus={thinkingStatus ?? null}
         canRetry={canRetry}
         onRetry={onMessageRetry}
       />
