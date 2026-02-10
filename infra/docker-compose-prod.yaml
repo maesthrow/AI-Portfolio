@@ -97,6 +97,7 @@ services:
     restart: unless-stopped
     environment:
       CHROMA_SERVER_AUTH_ENABLED: "false"
+      ANONYMIZED_TELEMETRY: "false"
     command: ["run", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - chroma_data:/data
@@ -199,6 +200,7 @@ services:
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
       chroma_collection: ${CHROMA_COLLECTION:-portfolio_new}
+      ANONYMIZED_TELEMETRY: "false"
       # === CORS ===
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       FRONTEND_LOCAL_IP: ${FRONTEND_LOCAL_IP:-}
