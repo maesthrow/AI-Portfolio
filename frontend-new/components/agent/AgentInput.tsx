@@ -88,19 +88,47 @@ export default function AgentInput({
             type="button"
             onClick={onStop}
             disabled={!onStop}
-            className="rounded-xl border border-accent/60 bg-red-500/40 px-3 py-2 text-sm font-semibold text-slate-100 shadow-neon transition hover:-translate-y-0.5 hover:shadow-neon-strong disabled:opacity-50"
+            aria-label="Остановить генерацию"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-400/60 bg-red-500/20 shadow-[0_0_16px_rgba(248,113,113,0.3)] transition hover:-translate-y-0.5 hover:bg-red-500/30 hover:shadow-[0_0_24px_rgba(248,113,113,0.45)] disabled:opacity-50"
           >
-            Стоп
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="text-red-300"
+            >
+              <rect x="1" y="1" width="12" height="12" rx="2" fill="currentColor" />
+            </svg>
           </button>
         ) : (
           <button
             type="submit"
             disabled={sendIsDisabled || !value.trim()}
-            className={`rounded-xl border border-accent/60 bg-accent/20 px-3 py-2 text-sm font-semibold shadow-neon transition enabled:hover:-translate-y-0.5 enabled:hover:shadow-neon-strong disabled:opacity-50 ${
-              value.trim() ? "text-slate-100" : "text-slate-900"
-            }`}
+            aria-label="Отправить сообщение"
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition ${
+              value.trim()
+                ? "border-accent/60 bg-accent/20 shadow-[0_0_16px_rgba(0,255,195,0.25)] enabled:hover:-translate-y-0.5 enabled:hover:bg-accent/30 enabled:hover:shadow-[0_0_24px_rgba(0,255,195,0.4)]"
+                : "border-slate-700 bg-black/40"
+            } disabled:opacity-50`}
           >
-            Отправить
+            <svg
+              width="16"
+              height="18"
+              viewBox="0 0 16 18"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className={value.trim() ? "text-accent" : "text-slate-600"}
+            >
+              <path
+                d="M8 16V2.5L3 7.5M8 2.5L13 7.5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         )}
       </form>
