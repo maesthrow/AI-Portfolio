@@ -69,7 +69,7 @@ export default function AgentMessageList({
     if (wasNull && thinkingStatus && scrollRef.current) {
       const timer = setTimeout(() => {
         if (scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
         }
       }, 50);
       return () => clearTimeout(timer);
