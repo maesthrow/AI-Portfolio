@@ -267,3 +267,25 @@ a {
 .animate-cursor-ripple {
   animation: cursor-ripple 0.5s ease-out forwards;
 }
+
+@keyframes ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@keyframes breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(34, 240, 192, 0.4);
+    opacity: 0.6;
+  }
+  50% {
+    box-shadow: 0 0 6px 2px rgba(34, 240, 192, 0.3);
+    opacity: 1;
+  }
+}
