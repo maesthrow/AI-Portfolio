@@ -52,12 +52,29 @@ export default function AgentMessageList({
   onRetry
 }: AgentMessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prevThinkingRef = useRef<StatusEntry | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, typing, thinkingStatus]);
+  }, [messages, typing]);
+
+  // Auto-scroll only on the first thinking status per request (null → non-null).
+  // setTimeout defers scroll until after ThinkingStatus updates its internal
+  // `visible` state and renders (it returns null on first render cycle).
+  useEffect(() => {
+    const wasNull = prevThinkingRef.current === null;
+    prevThinkingRef.current = thinkingStatus ?? null;
+    if (wasNull && thinkingStatus && scrollRef.current) {
+      const timer = setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [thinkingStatus]);
 
   // Найти последнее сообщение пользователя без ответа
   const findUnansweredUserMessage = (): string | null => {
