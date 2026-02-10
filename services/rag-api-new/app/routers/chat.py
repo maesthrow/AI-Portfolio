@@ -281,6 +281,11 @@ async def chat_stream(req: ChatRequest, request: Request):
             {"type": "start", "message_id": message_id, "created_at": created_at},
             ensure_ascii=False,
         ) + "\n"
+        yield json.dumps({
+            "type": "status",
+            "stage": "thinking",
+            "text": "Анализирую вопрос...",
+        }, ensure_ascii=False) + "\n"
         # --- Status queue: real-time pipeline status from rag_tool ---
         status_queue = asyncio.Queue()
         config["configurable"]["_status_queue"] = status_queue
@@ -366,11 +371,6 @@ async def chat_stream(req: ChatRequest, request: Request):
                         compact_json(tool_input, limit=2000),
                     )
                     yield json.dumps({"type": "tool_start", "tool": tool_name}, ensure_ascii=False) + "\n"
-                    yield json.dumps({
-                        "type": "status",
-                        "stage": "scope_check",
-                        "text": "Анализирую вопрос...",
-                    }, ensure_ascii=False) + "\n"
 
                 elif kind == "on_tool_end":
                     data = event.get("data") or {}

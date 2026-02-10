@@ -98,6 +98,11 @@ Phase 6 (Hotfix) — complete. Ожидает runtime-тестирования.
 - [x] Code review: `graph.py` (`create_agent`) поддерживает async tools нативно
 - **Status:** complete, ожидает runtime-тестирования
 
+### Phase 7: Fix — initial status gap
+- [x] Добавлен немедленный `"Анализирую вопрос..."` статус сразу после `start` event в `chat.py`
+- [x] Удалён дублирующий `scope_check` статус из `on_tool_start` handler (React батчил его с `planning`)
+- **Status:** complete, ожидает runtime-тестирования
+
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
