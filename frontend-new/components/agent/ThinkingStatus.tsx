@@ -118,7 +118,7 @@ export default function ThinkingStatus({ status }: ThinkingStatusProps) {
       }}
     >
       <span
-        className="inline-block h-2.5 w-2.5 rounded-full border border-accent-soft/50 border-t-transparent animate-spin"
+        className="inline-block h-2.5 w-2.5 rounded-full border border-accent-soft/50 border-t-accent-soft/15 animate-spin"
         style={{ animationDuration: "1.6s" }}
       />
       <span className="font-mono text-[11px] text-accent-soft/70 select-none">
