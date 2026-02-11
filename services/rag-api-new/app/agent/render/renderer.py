@@ -60,34 +60,80 @@ class RenderEngine:
         return self._render_bullets(limited_facts)
 
     def _render_bullets(self, facts: list[FactItem]) -> str:
-        """Render facts as bulleted list."""
+        """Render facts as bulleted list with URL metadata support."""
         lines = []
         for fact in facts:
-            # Специальная обработка для контактов с URL
+            # Phase 3: Contacts with URL
             if fact.type == "contact" and fact.metadata.get("url") and fact.metadata["url"].strip():
                 kind = fact.metadata.get("kind", "").capitalize()
                 label = fact.metadata.get("label") or fact.text
                 url = fact.metadata["url"]
-                # Формат: "Telegram: [@kargindmitriu](url)"
                 lines.append(f"- {kind}: [{label}]({url})")
+
+            # Phase 1: Projects with demo_url or repo_url
+            elif fact.type == "project" and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
+                # Main project description (first line only to keep it concise)
+                first_line = fact.text.split('\n')[0] if fact.text else fact.metadata.get("name", "")
+                text = self._clean_text(first_line)
+                if text:
+                    lines.append(f"- {text}")
+
+                # Add URLs as sub-bullets
+                demo_url = fact.metadata.get("demo_url")
+                repo_url = fact.metadata.get("repo_url")
+                if demo_url and demo_url.strip():
+                    lines.append(f"  - Демо: [ссылка]({demo_url})")
+                if repo_url and repo_url.strip():
+                    lines.append(f"  - Репозиторий: [GitHub]({repo_url})")
+
+            # Phase 2: Publications with url
+            elif fact.type == "publication" and fact.metadata.get("url") and fact.metadata["url"].strip():
+                title = fact.metadata.get("title") or fact.text.split('\n')[0]
+                year = fact.metadata.get("year", "")
+                source = fact.metadata.get("source", "")
+                url = fact.metadata["url"]
+
+                # Format: "Title (Year, Source): [ссылка](url)"
+                parts = [title]
+                if year or source:
+                    meta_parts = [str(year) if year else "", source if source else ""]
+                    meta_str = ", ".join(p for p in meta_parts if p)
+                    if meta_str:
+                        parts.append(f"({meta_str})")
+
+                text_with_meta = " ".join(parts)
+                lines.append(f"- {text_with_meta}: [ссылка]({url})")
+
+            # Phase 4: Technologies with category
+            elif fact.type == "technology" and fact.metadata.get("category"):
+                name = fact.metadata.get("name") or fact.text.split('\n')[0]
+                category = fact.metadata.get("category")
+                lines.append(f"- {name} (категория: {category})")
+
+            # Default: All other fact types
             else:
-                # Обычная обработка для других фактов
                 text = self._clean_text(fact.text)
                 if text:
                     lines.append(f"- {text}")
+
         return "\n".join(lines)
 
     def _render_grouped_bullets(self, facts: list[FactItem]) -> str:
-        """Render facts grouped by type."""
+        """Render facts grouped by type with URL metadata support."""
         # Group by type
         groups: dict[str, list[str]] = {}
         for fact in facts:
             key = self._get_group_title(fact.type)
             if key not in groups:
                 groups[key] = []
-            text = self._clean_text(fact.text)
-            if text:
-                groups[key].append(text)
+
+            # Phase 3: Format with URLs if available (same logic as _render_bullets)
+            formatted_item = self._format_fact_with_metadata(fact)
+            if formatted_item:
+                # Split multi-line items (like projects with sub-bullets)
+                for line in formatted_item.split('\n'):
+                    if line.strip():
+                        groups[key].append(line.strip())
 
         # Render groups
         lines = []
@@ -95,26 +141,32 @@ class RenderEngine:
             if items:
                 lines.append(f"\n**{group_name}:**")
                 for item in items:
-                    lines.append(f"- {item}")
+                    # Items may already have bullets from formatting
+                    if not item.startswith("- "):
+                        lines.append(f"- {item}")
+                    else:
+                        lines.append(item)
 
         return "\n".join(lines).strip()
 
     def _render_short(self, facts: list[FactItem]) -> str:
-        """Render first 2-3 facts as short paragraph."""
+        """Render first 2-3 facts as short paragraph with URL metadata support."""
         texts = []
         for fact in facts[:3]:
-            text = self._clean_text(fact.text)
-            if text:
-                texts.append(text)
+            # Phase 3: Include URLs for contacts, projects, publications
+            formatted = self._format_fact_inline(fact)
+            if formatted:
+                texts.append(formatted)
         return " ".join(texts)
 
     def _render_paragraph(self, facts: list[FactItem]) -> str:
-        """Render all facts as continuous paragraph with line breaks."""
+        """Render all facts as continuous paragraph with line breaks and URL metadata support."""
         texts = []
         for fact in facts:
-            text = self._clean_text(fact.text)
-            if text:
-                texts.append(text)
+            # Phase 3: Include URLs for contacts, projects, publications
+            formatted = self._format_fact_inline(fact)
+            if formatted:
+                texts.append(formatted)
         return "\n\n".join(texts)
 
     def _render_table(self, facts: list[FactItem], intents: list[IntentV2]) -> str:
@@ -158,6 +210,113 @@ class RenderEngine:
             category = fact.metadata.get("category", "-")
             lines.append(f"| {name} | {category} |")
         return "\n".join(lines)
+
+    def _format_fact_with_metadata(self, fact: FactItem) -> str:
+        """
+        Format fact with metadata (URLs, category, etc.) - multi-line allowed.
+
+        Used by _render_grouped_bullets() where sub-bullets are okay.
+
+        Returns:
+            Formatted text (may contain newlines for sub-items)
+        """
+        # Contacts with URL
+        if fact.type == "contact" and fact.metadata.get("url") and fact.metadata["url"].strip():
+            kind = fact.metadata.get("kind", "").capitalize()
+            label = fact.metadata.get("label") or fact.text
+            url = fact.metadata["url"]
+            return f"{kind}: [{label}]({url})"
+
+        # Projects with demo_url or repo_url
+        elif fact.type == "project" and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
+            first_line = fact.text.split('\n')[0] if fact.text else fact.metadata.get("name", "")
+            text = self._clean_text(first_line)
+            lines = [text] if text else []
+
+            demo_url = fact.metadata.get("demo_url")
+            repo_url = fact.metadata.get("repo_url")
+            if demo_url and demo_url.strip():
+                lines.append(f"  - Демо: [ссылка]({demo_url})")
+            if repo_url and repo_url.strip():
+                lines.append(f"  - Репозиторий: [GitHub]({repo_url})")
+
+            return "\n".join(lines)
+
+        # Publications with url
+        elif fact.type == "publication" and fact.metadata.get("url") and fact.metadata["url"].strip():
+            title = fact.metadata.get("title") or fact.text.split('\n')[0]
+            year = fact.metadata.get("year", "")
+            source = fact.metadata.get("source", "")
+            url = fact.metadata["url"]
+
+            parts = [title]
+            if year or source:
+                meta_parts = [str(year) if year else "", source if source else ""]
+                meta_str = ", ".join(p for p in meta_parts if p)
+                if meta_str:
+                    parts.append(f"({meta_str})")
+
+            text_with_meta = " ".join(parts)
+            return f"{text_with_meta}: [ссылка]({url})"
+
+        # Technologies with category
+        elif fact.type == "technology" and fact.metadata.get("category"):
+            name = fact.metadata.get("name") or fact.text.split('\n')[0]
+            category = fact.metadata.get("category")
+            return f"{name} (категория: {category})"
+
+        # Default: plain text
+        else:
+            return self._clean_text(fact.text)
+
+    def _format_fact_inline(self, fact: FactItem) -> str:
+        """
+        Format fact with metadata (URLs, category, etc.) - inline only.
+
+        Used by _render_short() and _render_paragraph() where multi-line not allowed.
+
+        Returns:
+            Formatted text (single line, URLs inline)
+        """
+        # Contacts with URL
+        if fact.type == "contact" and fact.metadata.get("url") and fact.metadata["url"].strip():
+            kind = fact.metadata.get("kind", "").capitalize()
+            label = fact.metadata.get("label") or fact.text
+            url = fact.metadata["url"]
+            return f"{kind}: [{label}]({url})"
+
+        # Projects with demo_url or repo_url - inline format
+        elif fact.type == "project" and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
+            first_line = fact.text.split('\n')[0] if fact.text else fact.metadata.get("name", "")
+            text = self._clean_text(first_line)
+
+            urls = []
+            demo_url = fact.metadata.get("demo_url")
+            repo_url = fact.metadata.get("repo_url")
+            if demo_url and demo_url.strip():
+                urls.append(f"[демо]({demo_url})")
+            if repo_url and repo_url.strip():
+                urls.append(f"[repo]({repo_url})")
+
+            if urls:
+                return f"{text} ({', '.join(urls)})"
+            return text
+
+        # Publications with url - inline format
+        elif fact.type == "publication" and fact.metadata.get("url") and fact.metadata["url"].strip():
+            title = fact.metadata.get("title") or fact.text.split('\n')[0]
+            url = fact.metadata["url"]
+            return f"{title}: [ссылка]({url})"
+
+        # Technologies with category
+        elif fact.type == "technology" and fact.metadata.get("category"):
+            name = fact.metadata.get("name") or fact.text.split('\n')[0]
+            category = fact.metadata.get("category")
+            return f"{name} (категория: {category})"
+
+        # Default: plain text
+        else:
+            return self._clean_text(fact.text)
 
     def _clean_text(self, text: str) -> str:
         """Clean text for rendering."""

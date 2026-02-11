@@ -222,6 +222,12 @@ class AnswerLLM:
         # Детерминированная генерация для контактов (сохраняет markdown links)
         if intents == ["contacts"]:
             return self._answer_contacts(facts=payload.items)
+        # Детерминированная генерация для деталей проекта (сохраняет markdown links)
+        if intents == ["project_details"] or set(intents) == {"project_details", "project_achievements"}:
+            return self._answer_project_details(facts=payload.items)
+        # Детерминированная генерация для публикаций (сохраняет markdown links)
+        if "publication" in str(intents).lower():
+            return self._answer_publications(facts=payload.items)
         return None
 
     def _recover_from_evidence(self, payload: FactsPayload, rendered_facts: str, evidence_text: str) -> str | None:
@@ -368,6 +374,51 @@ class AnswerLLM:
 
         # Добавляем преамбулу
         return f"С Дмитрием можно связаться несколькими способами:\n{rendered}"
+
+    def _answer_project_details(self, facts: list) -> str | None:
+        """
+        Детерминированная генерация ответа для деталей проекта.
+        Использует отрендеренные markdown links (demo_url, repo_url) из RenderEngine.
+        """
+        if not facts:
+            return None
+
+        # Рендерим факты напрямую через renderer (будет включать demo_url/repo_url)
+        rendered = self.renderer.render(
+            facts=facts,
+            style=RenderStyle.BULLETS,
+            intents=[],
+        )
+
+        if not rendered:
+            return None
+
+        # Для одного проекта - без преамбулы, для нескольких - с преамбулой
+        if len(facts) == 1:
+            return rendered
+        else:
+            return f"Проекты:\n{rendered}"
+
+    def _answer_publications(self, facts: list) -> str | None:
+        """
+        Детерминированная генерация ответа для публикаций.
+        Использует отрендеренные markdown links (url) из RenderEngine.
+        """
+        if not facts:
+            return None
+
+        # Рендерим факты напрямую через renderer (будет включать url)
+        rendered = self.renderer.render(
+            facts=facts,
+            style=RenderStyle.BULLETS,
+            intents=[],
+        )
+
+        if not rendered:
+            return None
+
+        # Добавляем преамбулу
+        return f"Публикации Дмитрия:\n{rendered}"
 
     @staticmethod
     def _extract_project_names_from_metadata(md: dict) -> list[str]:
