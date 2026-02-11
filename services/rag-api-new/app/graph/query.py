@@ -176,7 +176,7 @@ def _contacts_query() -> GraphQueryResult:
     items = [
         {
             "kind": c.data.get("kind"),
-            "label": c.name,
+            "label": c.data.get("value") or c.data.get("label") or c.name,
             "value": c.data.get("value"),
             "url": c.data.get("url"),
         }

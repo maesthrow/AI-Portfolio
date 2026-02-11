@@ -64,7 +64,7 @@ class RenderEngine:
         lines = []
         for fact in facts:
             # Специальная обработка для контактов с URL
-            if fact.type == "contact" and fact.metadata.get("url"):
+            if fact.type == "contact" and fact.metadata.get("url") and fact.metadata["url"].strip():
                 kind = fact.metadata.get("kind", "").capitalize()
                 label = fact.metadata.get("label") or fact.text
                 url = fact.metadata["url"]

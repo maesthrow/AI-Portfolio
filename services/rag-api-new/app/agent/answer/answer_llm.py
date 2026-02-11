@@ -219,6 +219,9 @@ class AnswerLLM:
         intents = [i.value for i in (payload.intents or [])]
         if intents == ["technology_usage"]:
             return self._answer_technology_usage(question=payload.query, facts=payload.items, evidence_text=evidence_text)
+        # Детерминированная генерация для контактов (сохраняет markdown links)
+        if intents == ["contacts"]:
+            return self._answer_contacts(facts=payload.items)
         return None
 
     def _recover_from_evidence(self, payload: FactsPayload, rendered_facts: str, evidence_text: str) -> str | None:
@@ -344,6 +347,27 @@ class AnswerLLM:
             lines.extend([f"- {p}" for p in projects])
 
         return "\n".join(lines).strip() if lines else None
+
+    def _answer_contacts(self, facts: list) -> str | None:
+        """
+        Детерминированная генерация ответа для контактов.
+        Использует отрендеренные markdown links из RenderEngine.
+        """
+        if not facts:
+            return None
+
+        # Рендерим факты напрямую через renderer
+        rendered = self.renderer.render(
+            facts=facts,
+            style=RenderStyle.BULLETS,
+            intents=[],
+        )
+
+        if not rendered:
+            return None
+
+        # Добавляем преамбулу
+        return f"С Дмитрием можно связаться несколькими способами:\n{rendered}"
 
     @staticmethod
     def _extract_project_names_from_metadata(md: dict) -> list[str]:

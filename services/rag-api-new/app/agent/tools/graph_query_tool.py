@@ -174,6 +174,11 @@ def _item_to_fact(item: Any, intent: Any) -> FactItem | None:
                 if role_md:
                     parts.append(str(role_md))
                 text = "\n".join([p for p in parts if p])
+            elif "kind" in item and ("url" in item or "value" in item):
+                # Контакты: формируем читаемый text из kind + label/value
+                kind = item.get("kind", "")
+                label = item.get("label") or item.get("value") or ""
+                text = f"{kind.capitalize()}: {label}"
             else:
                 text = item.get("achievement") or item.get("name") or item.get("description") or str(item)
 
