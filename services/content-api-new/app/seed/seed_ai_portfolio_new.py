@@ -84,7 +84,7 @@ CONTACTS_DATA = [
         "kind": "email",
         "label": "Email",
         "value": "dmitriy3kargin@gmail.com",
-        "url": "mailto:dmitriy3kargin@gmail.com",
+        "url": "",
         "order_index": 20,
         "is_primary": False,
     },
