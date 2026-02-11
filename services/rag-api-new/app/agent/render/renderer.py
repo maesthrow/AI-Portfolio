@@ -63,9 +63,18 @@ class RenderEngine:
         """Render facts as bulleted list."""
         lines = []
         for fact in facts:
-            text = self._clean_text(fact.text)
-            if text:
-                lines.append(f"- {text}")
+            # Специальная обработка для контактов с URL
+            if fact.type == "contact" and fact.metadata.get("url"):
+                kind = fact.metadata.get("kind", "").capitalize()
+                label = fact.metadata.get("label") or fact.text
+                url = fact.metadata["url"]
+                # Формат: "Telegram: [@kargindmitriu](url)"
+                lines.append(f"- {kind}: [{label}]({url})")
+            else:
+                # Обычная обработка для других фактов
+                text = self._clean_text(fact.text)
+                if text:
+                    lines.append(f"- {text}")
         return "\n".join(lines)
 
     def _render_grouped_bullets(self, facts: list[FactItem]) -> str:
