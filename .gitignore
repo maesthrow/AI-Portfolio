@@ -67,3 +67,8 @@ infra/models/
 
 # --- Alembic noise ---
 alembic/versions/__pycache__/
+
+# --- Planning files (temporary, not for version control) ---
+task_plan.md
+findings.md
+progress.md
