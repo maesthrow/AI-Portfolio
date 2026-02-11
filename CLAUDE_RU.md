@@ -74,7 +74,7 @@
   - `projects.py` - GET `/api/v1/projects`, GET `/api/v1/projects/{slug}`
   - `publications.py` - GET `/api/v1/publications`
   - `contacts.py` - GET `/api/v1/contacts`
-  - `rag.py` - GET `/api/v1/rag/export` (экспорт данных для RAG-индексации)
+  - `rag.py` - GET `/api/v1/rag/documents` (legacy плоский список), GET `/api/v1/rag/export` (структурированный ExportPayload для RAG-индексации)
   - `hero_tags.py` - GET `/api/v1/hero-tags`
   - `focus_areas.py` - GET `/api/v1/focus-areas`
   - `work_approaches.py` - GET `/api/v1/work-approaches`
@@ -91,7 +91,7 @@
 - Scope Guard для детекции off-topic вопросов
 - Детерминированная нормализация фактов и генерация ответов
 - Точка входа: `app/main.py`
-- Порт: 8004 (в compose сервис `rag-api` собирается из rag-api-new/)
+- Порт: 8004 (Docker compose через `RAG_NEW_PORT`), 8000 (default uvicorn)
 - Документация: `/api/swagger`
 
 **Архитектура многослойного пайплайна:**
@@ -156,7 +156,8 @@
 
 **Планировщик** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-планировщик запросов со structured output
-- `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCall, RenderStyleV3, AnswerStyleV3
+- `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCallV3, RenderStyleV3, AnswerStyleV3, InfoNeed, ScopeLevel, TechFilter, Scope, EntitiesV3, AnswerFormatV3, LimitsConfigV3, FallbackConfigV3, FactBundleItem, FactBundle, NormalizerOutput, GroundingResult
+- `schemas.py` - Legacy QueryPlan схема (совместимость с V2)
 - `prompts.py` - Системные промпты для планировщика (intents, tools, entity extraction)
 - `shortcuts.py` - Шорткаты планов для однозначных вопросов (контакты, текущая работа, кто разработчик)
   - `SAFE_SHORTCUTS` - Dict regex-паттернов к готовым QueryPlanV3
@@ -184,6 +185,7 @@
 - `TECHNOLOGY_OVERVIEW` - Описание технологии
 - `TECHNOLOGY_USAGE` - Где использовалась технология
 - `EXPERIENCE_SUMMARY` - Опыт работы
+- `PROFILE` - Информация о разработчике (PERSON node: имя, должность, описание, локация)
 - `CONTACTS` - Контактная информация
 - `GENERAL_UNSTRUCTURED` - Fallback для общих вопросов
 
@@ -207,7 +209,8 @@
 
 **Critic** (`app/agent/critic/`):
 - `critic_llm.py` - CriticLLM для оценки ответов
-- `prompts.py`, `schemas.py` - Промпты и схемы критика
+- `prompts.py` - Системные промпты критика
+- `schemas.py` - Схемы FactSufficiency
 
 **Grounding** (`app/agent/grounding/`):
 - `grounding_verifier.py` - Проверка, что ответ основан на evidence
@@ -395,7 +398,11 @@
   - `rag-api` (порт 8004) — **собирается из rag-api-new/** (не из rag-api/)
   - `rag-ingest` — одноразовый контейнер: экспорт из content-api → инжест в rag-api
 - Другие файлы:
-  - `.env.dev` — пример переменных окружения
+  - `.env.dev`, `.env.local`, `.env.prod`, `.env.example` — переменные окружения
+  - `DOCKER-LOCAL.md`, `DOCKER-PROD.md` — руководства по Docker
+  - `caddy/Caddyfile` — reverse proxy (продакшен)
+  - `init/postgres-init.sql` — инициализация БД (uuid-ossp)
+  - `scripts/ingest.py` — скрипт для RAG-индексации
   - `litellm/config.yaml` — алиасы моделей LiteLLM
   - `models/intfloat/multilingual-e5-base/` — модель для TEI
 
@@ -414,8 +421,9 @@ discource/
 │   ├── TZ_RATE_LIMIT.md            # Реализация rate limiting (v1.0)
 │   ├── TZ_RAG_OPTIMIZATION.md      # Оптимизация RAG (v1.1)
 │   └── TZ_AI-Portfolio_RAG_Agent_Hardening.md  # Hardening агента (v3)
-└── specs/                           # Спецификации реализации
-    └── agent-identity-vs-profile-detection.md  # Детекция Identity vs Profile вопросов
+├── specs/                           # Спецификации реализации
+│   └── agent-identity-vs-profile-detection.md  # Детекция Identity vs Profile вопросов
+└── planning-with-files-archive/     # Архив сессий планирования
 ```
 
 **Типы документов:**
@@ -472,7 +480,16 @@ npm run lint         # запуск ESLint
 Переменные окружения (`.env.local`):
 ```bash
 NEXT_PUBLIC_CONTENT_API_BASE=http://localhost:8003/api/v1
-NEXT_PUBLIC_AGENT_API_BASE=http://localhost:8004  # rag-api (собирается из rag-api-new)
+NEXT_PUBLIC_AGENT_API_BASE=http://localhost:8004  # rag-api в Docker compose (RAG_NEW_PORT)
+# Серверные варианты (переопределяют NEXT_PUBLIC_ при SSR):
+CONTENT_API_BASE=http://localhost:8003/api/v1
+AGENT_API_BASE=http://localhost:8004
+# Настройки анимации стриминга текста:
+NEXT_PUBLIC_CHARS_PER_SECOND=60
+NEXT_PUBLIC_MAX_CHARS_PER_TICK=4
+# Валидация пользовательского ввода:
+NEXT_PUBLIC_MAX_INPUT_TOKENS=100
+NEXT_PUBLIC_CHARS_PER_TOKEN=4
 ```
 
 ### Content API (content-api-new)
@@ -1046,9 +1063,9 @@ BM25 индекс хранится на диске:
 
 **Critic (ленивый критик):**
 - `critic_enabled` - включить/выключить CriticLLM (по умолчанию true)
-- `critic_confidence_threshold` - порог уверенности для пропуска критика (по умолчанию 0.8)
-- `critic_min_facts_threshold` - мин. количество фактов для пропуска критика (по умолчанию 3)
-- `critic_skip_intents` - интенты, для которых критик не нужен (по умолчанию: `["contacts"]`)
+- `critic_confidence_threshold` - порог уверенности для пропуска критика (по умолчанию 0.7)
+- `critic_min_facts_threshold` - мин. количество фактов для пропуска критика (по умолчанию 2)
+- `critic_skip_intents` - интенты, для которых критик не нужен (по умолчанию: `["contacts", "current_job"]`)
 
 **Redis Cache:**
 - `REDIS_URL` - URL подключения Redis (например, `redis://localhost:6379/0`)
@@ -1178,8 +1195,8 @@ AI-Portfolio/
 │   │   │   ├── models/             # Модели SQLAlchemy (см. выше)
 │   │   │   ├── routers/            # Эндпоинты (/api/v1/*)
 │   │   │   ├── schemas/            # Pydantic-схемы (включая rag_export.py)
-│   │   │   └── core/config.py      # Базовые настройки
-│   │   ├── seed/                   # Наполнение БД
+│   │   │   ├── core/config.py      # Базовые настройки
+│   │   │   └── seed/               # Наполнение БД (seed_ai_portfolio_new.py)
 │   │   ├── alembic/                # Миграции
 │   │   │   └── versions/
 │   │   ├── pyproject.toml
@@ -1195,13 +1212,13 @@ AI-Portfolio/
 │   │   │   │   ├── graph.py        # LangGraph агент
 │   │   │   │   ├── rag_tool.py     # RAG тулза
 │   │   │   │   ├── identity/       # Identity-вопросы (classifier.py, prompts.py)
-│   │   │   │   ├── planner/        # LLM планировщик (planner_llm.py, schemas_v3.py, prompts.py, shortcuts.py)
+│   │   │   │   ├── planner/        # LLM планировщик (planner_llm.py, schemas_v3.py, schemas.py, prompts.py, shortcuts.py)
 │   │   │   │   ├── scope_guard/    # Off-topic детекция (scope_guard.py, schemas.py)
 │   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
 │   │   │   │   ├── normalizer/     # Fact normalizer (normalizer.py, fact_bundle.py)
 │   │   │   │   ├── answer/         # Генерация ответов (answer_llm.py, prompts.py)
 │   │   │   │   ├── render/         # Рендеринг ответов (renderer.py)
-│   │   │   │   ├── critic/         # Оценка ответов (critic_llm.py)
+│   │   │   │   ├── critic/         # Оценка ответов (critic_llm.py, prompts.py, schemas.py)
 │   │   │   │   ├── grounding/      # Evidence grounding (grounding_verifier.py)
 │   │   │   │   └── tools/          # Тулзы агента (portfolio_search_tool.py, graph_query_tool.py)
 │   │   │   ├── rag/                # RAG пайплайн
@@ -1212,9 +1229,9 @@ AI-Portfolio/
 │   │   │   │   ├── entities.py     # Entity registry
 │   │   │   │   ├── nlp.py          # NLP утилиты
 │   │   │   │   ├── formatter.py    # Format rendering
-│   │   │   │   ├── search_types.py # Типы поиска
-│   │   │   │   ├── types.py        # Базовые типы
-│   │   │   │   └── utils.py        # Утилиты RAG
+│   │   │   │   ├── search_types.py # Типы поиска (SearchResult, Intent, EntityType)
+│   │   │   │   ├── types.py        # Базовые типы (Doc, ScoredDoc, SourceInfo)
+│   │   │   │   └── utils.py        # Утилиты RAG пайплайна
 │   │   │   ├── graph/              # Knowledge graph
 │   │   │   │   ├── schema.py       # NodeType, EdgeType
 │   │   │   │   ├── builder.py      # Построение графа
@@ -1250,8 +1267,15 @@ AI-Portfolio/
 │   │   │       ├── logging_utils.py
 │   │   │       └── metadata.py
 │   │   ├── tests/                  # Тесты
+│   │   │   ├── test_smoke.py       # Smoke-тесты
+│   │   │   ├── test_tz_v3_acceptance.py  # Приёмочные тесты QueryPlanV3
+│   │   │   ├── test_answer_llm_usage.py  # Отслеживание токенов Answer LLM
+│   │   │   ├── test_llm_factory.py       # Тесты LLM фабрики
+│   │   │   ├── test_usage_collector.py   # Тесты TokenUsageCollector
+│   │   │   └── llm/test_providers.py     # Тесты провайдеров
 │   │   ├── pyproject.toml
-│   │   └── Dockerfile
+│   │   ├── Dockerfile
+│   │   └── Dockerfile.prod         # Docker-образ для продакшена
 │   │
 │   └── rag-api/                    # ⚠️ LEGACY RAG API (упрощенная архитектура)
 │       └── app/
@@ -1272,7 +1296,15 @@ AI-Portfolio/
 ├── infra/
 │   ├── docker-compose.local.yaml   # ✅ Основной compose (локальная разработка)
 │   ├── docker-compose-prod.yaml    # Продакшен compose
-│   ├── .env.dev                    # Пример переменных окружения
+│   ├── .env.dev                    # Переменные окружения (dev)
+│   ├── .env.local                  # Переменные окружения (local)
+│   ├── .env.prod                   # Переменные окружения (prod)
+│   ├── .env.example                # Шаблон переменных окружения
+│   ├── DOCKER-LOCAL.md             # Руководство по локальному Docker
+│   ├── DOCKER-PROD.md              # Руководство по продакшен Docker
+│   ├── caddy/Caddyfile             # Reverse proxy (продакшен)
+│   ├── init/postgres-init.sql      # Инициализация БД (uuid-ossp)
+│   ├── scripts/ingest.py           # Скрипт RAG-индексации
 │   ├── litellm/
 │   │   └── config.yaml             # Алиасы моделей LiteLLM
 │   └── models/
@@ -1284,11 +1316,14 @@ AI-Portfolio/
 │   │   ├── TZ_RATE_LIMIT.md             # Спецификация rate limiting
 │   │   ├── TZ_RAG_OPTIMIZATION.md       # Оптимизация RAG
 │   │   └── TZ_AI-Portfolio_RAG_Agent_Hardening.md  # Hardening агента
-│   └── specs/                       # Спецификации реализации
-│       └── agent-identity-vs-profile-detection.md  # Identity vs Profile детекция
+│   ├── specs/                       # Спецификации реализации
+│   │   └── agent-identity-vs-profile-detection.md  # Identity vs Profile детекция
+│   └── planning-with-files-archive/ # Архив сессий планирования
 │
 ├── CLAUDE.md                       # Эта инструкция (EN)
-└── CLAUDE_RU.md                    # Эта инструкция (RU)
+├── CLAUDE_RU.md                    # Эта инструкция (RU)
+├── AGENTS.md                       # Документация по агентам
+└── tech-task-rag-api-new-develop.md  # Техническое задание на RAG API new
 ```
 
 **Ключевые пункты:**

@@ -74,7 +74,7 @@ Key modules:
   - `projects.py` - GET `/api/v1/projects`, GET `/api/v1/projects/{slug}`
   - `publications.py` - GET `/api/v1/publications`
   - `contacts.py` - GET `/api/v1/contacts`
-  - `rag.py` - GET `/api/v1/rag/documents` (exports data for RAG indexing)
+  - `rag.py` - GET `/api/v1/rag/documents` (legacy flat list for RAG), GET `/api/v1/rag/export` (structured ExportPayload for RAG ingestion)
   - `hero_tags.py` - GET `/api/v1/hero-tags`
   - `focus_areas.py` - GET `/api/v1/focus-areas`
   - `work_approaches.py` - GET `/api/v1/work-approaches`
@@ -91,7 +91,7 @@ Key modules:
 - Scope Guard for off-topic detection
 - Deterministic fact normalization and answer generation
 - Entry point: `app/main.py`
-- Port: 8014
+- Port: 8004 (Docker compose via `RAG_NEW_PORT`), 8000 (default uvicorn)
 - Docs: `/api/swagger`
 
 **Multi-Layer Pipeline Architecture:**
@@ -156,7 +156,8 @@ User Response (streaming or direct)
 
 **Planner** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-based query plan generator with structured output
-- `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCall, RenderStyleV3, AnswerStyleV3
+- `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCallV3, RenderStyleV3, AnswerStyleV3, InfoNeed, ScopeLevel, TechFilter, Scope, EntitiesV3, AnswerFormatV3, LimitsConfigV3, FallbackConfigV3, FactBundleItem, FactBundle, NormalizerOutput, GroundingResult
+- `schemas.py` - Legacy QueryPlan schema (V2 compatibility)
 - `prompts.py` - System prompts for planner (intents, tools, entity extraction)
 - `shortcuts.py` - Plan shortcuts for unambiguous questions (contacts, current job, who is developer)
   - `SAFE_SHORTCUTS` - Dict of regex patterns to pre-built QueryPlanV3
@@ -184,6 +185,7 @@ User Response (streaming or direct)
 - `TECHNOLOGY_OVERVIEW` - Technology description
 - `TECHNOLOGY_USAGE` - Where technology was used
 - `EXPERIENCE_SUMMARY` - Work experience
+- `PROFILE` - Developer profile information (PERSON node: name, title, summary, location)
 - `CONTACTS` - Contact information
 - `GENERAL_UNSTRUCTURED` - Fallback for general questions
 
@@ -207,7 +209,8 @@ User Response (streaming or direct)
 
 **Critic** (`app/agent/critic/`):
 - `critic_llm.py` - CriticLLM for answer evaluation
-- `prompts.py`, `schemas.py` - Critic prompts and schemas
+- `prompts.py` - Critic system prompts
+- `schemas.py` - FactSufficiency schemas
 
 **Grounding** (`app/agent/grounding/`):
 - `grounding_verifier.py` - Verifies answer is grounded in evidence
@@ -414,8 +417,9 @@ discource/
 │   ├── TZ_RATE_LIMIT.md            # Rate limiting implementation (v1.0)
 │   ├── TZ_RAG_OPTIMIZATION.md      # RAG optimization techniques (v1.1)
 │   └── TZ_AI-Portfolio_RAG_Agent_Hardening.md  # Agent hardening (v3)
-└── specs/                           # Implementation Specifications
-    └── agent-identity-vs-profile-detection.md  # Identity vs Profile question detection
+├── specs/                           # Implementation Specifications
+│   └── agent-identity-vs-profile-detection.md  # Identity vs Profile question detection
+└── planning-with-files-archive/     # Historical planning session archives
 ```
 
 **Document Types:**
@@ -472,7 +476,16 @@ npm run lint         # Run ESLint
 Environment variables (`.env.local`):
 ```bash
 NEXT_PUBLIC_CONTENT_API_BASE=http://localhost:8003/api/v1
-NEXT_PUBLIC_AGENT_API_BASE=http://localhost:8014  # Use rag-api-new
+NEXT_PUBLIC_AGENT_API_BASE=http://localhost:8004  # rag-api in Docker compose (RAG_NEW_PORT)
+# Server-side variants (override NEXT_PUBLIC_ in SSR context):
+CONTENT_API_BASE=http://localhost:8003/api/v1
+AGENT_API_BASE=http://localhost:8004
+# Streaming text animation settings:
+NEXT_PUBLIC_CHARS_PER_SECOND=60
+NEXT_PUBLIC_MAX_CHARS_PER_TICK=4
+# User input validation:
+NEXT_PUBLIC_MAX_INPUT_TOKENS=100
+NEXT_PUBLIC_CHARS_PER_TOKEN=4
 ```
 
 ### Content API (content-api-new)
@@ -1040,6 +1053,7 @@ Key variables (see `infra/.env.dev`):
 - `CRITIC_ENABLED` - Enable/disable Critic LLM (default: true)
 - `CRITIC_CONFIDENCE_THRESHOLD` - Skip critic if plan confidence >= threshold (default: 0.7)
 - `CRITIC_MIN_FACTS_THRESHOLD` - Skip critic if facts >= threshold (default: 2)
+- `CRITIC_SKIP_INTENTS` - Intents where critic is always skipped (default: `["contacts", "current_job"]`)
 
 **Rate Limiting:**
 - `RATE_LIMIT_ENABLED` - Enable/disable rate limiting (default: true)
@@ -1178,7 +1192,7 @@ AI-Portfolio/
 │   │   │   ├── routers/            # API endpoints (/api/v1/*)
 │   │   │   ├── schemas/            # Pydantic schemas
 │   │   │   ├── core/config.py      # Core settings
-│   │   │   └── seed/               # Database seeding
+│   │   │   └── seed/               # Database seeding (seed_ai_portfolio_new.py)
 │   │   ├── alembic/                # Database migrations
 │   │   │   └── versions/
 │   │   ├── pyproject.toml
@@ -1194,13 +1208,13 @@ AI-Portfolio/
 │   │   │   │   ├── graph.py        # LangGraph agent
 │   │   │   │   ├── rag_tool.py     # RAG tool
 │   │   │   │   ├── identity/       # Identity questions (classifier.py, prompts.py)
-│   │   │   │   ├── planner/        # LLM planner (planner_llm.py, schemas_v3.py, prompts.py, shortcuts.py)
+│   │   │   │   ├── planner/        # LLM planner (planner_llm.py, schemas_v3.py, schemas.py, prompts.py, shortcuts.py)
 │   │   │   │   ├── scope_guard/    # Off-topic detection (scope_guard.py, schemas.py)
 │   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
 │   │   │   │   ├── normalizer/     # Fact normalizer (normalizer.py, fact_bundle.py)
 │   │   │   │   ├── answer/         # Answer generation (answer_llm.py, prompts.py)
 │   │   │   │   ├── render/         # Response rendering (renderer.py)
-│   │   │   │   ├── critic/         # Answer evaluation (critic_llm.py)
+│   │   │   │   ├── critic/         # Answer evaluation (critic_llm.py, prompts.py, schemas.py)
 │   │   │   │   ├── grounding/      # Evidence grounding (grounding_verifier.py)
 │   │   │   │   └── tools/          # Agent tools (portfolio_search_tool.py, graph_query_tool.py)
 │   │   │   ├── rag/                # RAG pipeline
@@ -1212,7 +1226,8 @@ AI-Portfolio/
 │   │   │   │   ├── nlp.py          # NLP utilities
 │   │   │   │   ├── formatter.py    # Format rendering
 │   │   │   │   ├── search_types.py # Search types
-│   │   │   │   └── types.py        # Core types
+│   │   │   │   ├── types.py        # Core types
+│   │   │   │   └── utils.py        # RAG utility functions
 │   │   │   ├── graph/              # Knowledge graph
 │   │   │   │   ├── schema.py       # NodeType, EdgeType
 │   │   │   │   ├── builder.py      # Graph construction
@@ -1248,8 +1263,15 @@ AI-Portfolio/
 │   │   │       ├── logging_utils.py
 │   │   │       └── metadata.py
 │   │   ├── tests/                  # Tests
+│   │   │   ├── test_smoke.py       # Smoke tests
+│   │   │   ├── test_tz_v3_acceptance.py  # QueryPlanV3 acceptance
+│   │   │   ├── test_answer_llm_usage.py  # Answer LLM token tracking
+│   │   │   ├── test_llm_factory.py       # LLM factory tests
+│   │   │   ├── test_usage_collector.py   # TokenUsageCollector tests
+│   │   │   └── llm/test_providers.py     # Provider-specific tests
 │   │   ├── pyproject.toml
-│   │   └── Dockerfile
+│   │   ├── Dockerfile
+│   │   └── Dockerfile.prod         # Production Docker image
 │   │
 │   └── rag-api/                    # ⚠️ LEGACY RAG API (simpler architecture)
 │       └── app/
@@ -1290,11 +1312,14 @@ AI-Portfolio/
 │   │   ├── TZ_RATE_LIMIT.md             # Rate limiting implementation spec
 │   │   ├── TZ_RAG_OPTIMIZATION.md       # RAG optimization techniques spec
 │   │   └── TZ_AI-Portfolio_RAG_Agent_Hardening.md  # Agent hardening spec
-│   └── specs/                       # Implementation specifications
-│       └── agent-identity-vs-profile-detection.md  # Identity vs Profile detection
+│   ├── specs/                       # Implementation specifications
+│   │   └── agent-identity-vs-profile-detection.md  # Identity vs Profile detection
+│   └── planning-with-files-archive/ # Historical planning session archives
 │
 ├── CLAUDE.md                       # This file (EN)
-└── CLAUDE_RU.md                    # This file (RU)
+├── CLAUDE_RU.md                    # This file (RU)
+├── AGENTS.md                       # Agent-related documentation
+└── tech-task-rag-api-new-develop.md  # RAG API new technical task specification
 ```
 
 **Key Points:**
@@ -1302,6 +1327,7 @@ AI-Portfolio/
 - ⚠️ **Legacy**: `rag-api` (still available, simpler architecture)
 - 🐳 **Docker**: Use `infra/docker-compose.local.yaml` for local development
 - 📝 **Rules**: Follow encoding and architecture rules in Critical Rules section
+- 📋 In Docker compose, service `rag-api` builds from `rag-api-new/` — there is no separate `rag-api-new` service in compose
 
 ---
 
