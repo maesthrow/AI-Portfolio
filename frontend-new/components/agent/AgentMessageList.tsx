@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import clsx from "clsx";
 
 import { AgentMessage } from "@/lib/types";
@@ -154,11 +155,20 @@ export default function AgentMessageList({
                     <TypingDots />
                   ) : (
                     <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
                       components={{
                         p: ({ node, ...props }) => (
                           <p className="whitespace-pre-wrap leading-relaxed" {...props} />
                         ),
                         strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
+                        a: ({ node, ...props }) => (
+                          <a
+                            className="text-accent hover:text-accent-soft underline transition-colors"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            {...props}
+                          />
+                        ),
                         ul: ({ node, ...props }) => <ul className="ml-4 list-disc space-y-1" {...props} />,
                         ol: ({ node, ...props }) => <ol className="ml-4 list-decimal space-y-1" {...props} />,
                         li: ({ node, ...props }) => <li className="whitespace-pre-wrap" {...props} />,

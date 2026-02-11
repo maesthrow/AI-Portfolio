@@ -19,7 +19,9 @@
       "Bash(ls:*)",
       "Bash(docker restart:*)",
       "Bash(.venv/Scripts/python.exe:*)",
-      "Bash(pytest:*)"
+      "Bash(pytest:*)",
+      "Skill(planning-with-files)",
+      "Skill(planning-with-files:*)"
     ],
     "deny": [],
     "ask": []
