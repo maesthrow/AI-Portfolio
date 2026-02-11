@@ -72,9 +72,8 @@ class RenderEngine:
 
             # Phase 1: Projects with demo_url or repo_url
             elif fact.type == "project" and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
-                # Main project description (first line only to keep it concise)
-                first_line = fact.text.split('\n')[0] if fact.text else fact.metadata.get("name", "")
-                text = self._clean_text(first_line)
+                # Use full text to preserve context (company, period, description)
+                text = self._clean_text(fact.text) if fact.text else fact.metadata.get("name", "")
                 if text:
                     lines.append(f"- {text}")
 
@@ -229,8 +228,8 @@ class RenderEngine:
 
         # Projects with demo_url or repo_url
         elif fact.type == "project" and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
-            first_line = fact.text.split('\n')[0] if fact.text else fact.metadata.get("name", "")
-            text = self._clean_text(first_line)
+            # Use full text to preserve context (company, period, description)
+            text = self._clean_text(fact.text) if fact.text else fact.metadata.get("name", "")
             lines = [text] if text else []
 
             demo_url = fact.metadata.get("demo_url")
@@ -340,6 +339,7 @@ class RenderEngine:
         titles = {
             "achievement": "Достижения",
             "technology": "Технологии",
+            "technology_usage": "Проекты",
             "project": "Проекты",
             "experience": "Опыт",
             "contact": "Контакты",

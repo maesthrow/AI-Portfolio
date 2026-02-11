@@ -185,6 +185,9 @@ def _item_to_fact(item: Any, intent: Any) -> FactItem | None:
         # Determine fact type
         if "achievement" in item:
             fact_type = "achievement"
+        elif "project_slug" in item and "category" in item:
+            # Projects from _projects_by_tech_category_query (have both project_slug and category)
+            fact_type = "technology_usage"
         elif "name" in item and "category" in item:
             fact_type = "technology"
         elif item.get("technology") and item.get("project"):

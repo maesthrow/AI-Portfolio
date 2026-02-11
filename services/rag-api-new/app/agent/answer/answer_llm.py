@@ -222,9 +222,6 @@ class AnswerLLM:
         # Детерминированная генерация для контактов (сохраняет markdown links)
         if intents == ["contacts"]:
             return self._answer_contacts(facts=payload.items)
-        # Детерминированная генерация для деталей проекта (сохраняет markdown links)
-        if intents == ["project_details"] or set(intents) == {"project_details", "project_achievements"}:
-            return self._answer_project_details(facts=payload.items)
         # Детерминированная генерация для публикаций (сохраняет markdown links)
         if "publication" in str(intents).lower():
             return self._answer_publications(facts=payload.items)
