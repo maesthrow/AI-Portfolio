@@ -225,6 +225,9 @@ class AnswerLLM:
         # Детерминированная генерация для публикаций (сохраняет markdown links)
         if "publication" in str(intents).lower():
             return self._answer_publications(facts=payload.items)
+        # Детерминированная генерация для деталей проекта (сохраняет markdown links + полный контекст)
+        if intents == ["project_details"] or set(intents) == {"project_details", "project_achievements"}:
+            return self._answer_project_details(facts=payload.items)
         return None
 
     def _recover_from_evidence(self, payload: FactsPayload, rendered_facts: str, evidence_text: str) -> str | None:

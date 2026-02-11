@@ -71,7 +71,7 @@ class RenderEngine:
                 lines.append(f"- {kind}: [{label}]({url})")
 
             # Phase 1: Projects with demo_url or repo_url
-            elif fact.type == "project" and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
+            elif fact.type in ("project", "project_details") and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
                 # Use full text to preserve context (company, period, description)
                 text = self._clean_text(fact.text) if fact.text else fact.metadata.get("name", "")
                 if text:
@@ -227,7 +227,7 @@ class RenderEngine:
             return f"{kind}: [{label}]({url})"
 
         # Projects with demo_url or repo_url
-        elif fact.type == "project" and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
+        elif fact.type in ("project", "project_details") and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
             # Use full text to preserve context (company, period, description)
             text = self._clean_text(fact.text) if fact.text else fact.metadata.get("name", "")
             lines = [text] if text else []
@@ -285,7 +285,7 @@ class RenderEngine:
             return f"{kind}: [{label}]({url})"
 
         # Projects with demo_url or repo_url - inline format
-        elif fact.type == "project" and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
+        elif fact.type in ("project", "project_details") and (fact.metadata.get("demo_url") or fact.metadata.get("repo_url")):
             first_line = fact.text.split('\n')[0] if fact.text else fact.metadata.get("name", "")
             text = self._clean_text(first_line)
 
