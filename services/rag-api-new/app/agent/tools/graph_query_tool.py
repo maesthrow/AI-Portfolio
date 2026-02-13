@@ -182,11 +182,13 @@ def _item_to_fact(item: Any, intent: Any) -> FactItem | None:
             else:
                 text = item.get("achievement") or item.get("name") or item.get("description") or str(item)
 
-        # Determine fact type
+        # Determine fact type by duck-typing graph query results.
+        # ORDER MATTERS: more specific checks must come before general ones.
+        # E.g. "project_slug" + "category" (technology_usage) before "name" + "category" (technology),
+        # because technology items also have "name" + "category".
         if "achievement" in item:
             fact_type = "achievement"
         elif "project_slug" in item and "category" in item:
-            # Projects from _projects_by_tech_category_query (have both project_slug and category)
             fact_type = "technology_usage"
         elif "name" in item and "category" in item:
             fact_type = "technology"
@@ -197,7 +199,6 @@ def _item_to_fact(item: Any, intent: Any) -> FactItem | None:
         elif "kind" in item and ("url" in item or "value" in item):
             fact_type = "contact"
         elif "title" in item and "summary_md" in item:
-            # Profile item from _profile_query()
             fact_type = "profile"
         else:
             fact_type = intent.value if hasattr(intent, "value") else str(intent)

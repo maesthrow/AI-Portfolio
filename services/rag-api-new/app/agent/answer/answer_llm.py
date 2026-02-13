@@ -223,7 +223,7 @@ class AnswerLLM:
         if intents == ["contacts"]:
             return self._answer_contacts(facts=payload.items)
         # Детерминированная генерация для публикаций (сохраняет markdown links)
-        if "publication" in str(intents).lower():
+        if any("publication" in i for i in intents):
             return self._answer_publications(facts=payload.items)
         # Детерминированная генерация для деталей проекта (сохраняет markdown links + полный контекст)
         if intents == ["project_details"] or set(intents) == {"project_details", "project_achievements"}:
@@ -354,71 +354,40 @@ class AnswerLLM:
 
         return "\n".join(lines).strip() if lines else None
 
-    def _answer_contacts(self, facts: list) -> str | None:
+    def _deterministic_render(self, facts: list, preamble: str = "") -> str | None:
         """
-        Детерминированная генерация ответа для контактов.
-        Использует отрендеренные markdown links из RenderEngine.
+        Детерминированный рендеринг фактов с опциональной преамбулой.
+        Общий метод для contacts, publications и подобных интентов.
         """
         if not facts:
             return None
-
-        # Рендерим факты напрямую через renderer
         rendered = self.renderer.render(
             facts=facts,
             style=RenderStyle.BULLETS,
             intents=[],
         )
-
         if not rendered:
             return None
+        return f"{preamble}\n{rendered}" if preamble else rendered
 
-        # Добавляем преамбулу
-        return f"С Дмитрием можно связаться несколькими способами:\n{rendered}"
+    def _answer_contacts(self, facts: list) -> str | None:
+        """Детерминированная генерация ответа для контактов."""
+        if len(facts or []) == 1:
+            preamble = "Контакт Дмитрия:"
+        else:
+            preamble = "С Дмитрием можно связаться несколькими способами:"
+        return self._deterministic_render(facts, preamble=preamble)
 
     def _answer_project_details(self, facts: list) -> str | None:
-        """
-        Детерминированная генерация ответа для деталей проекта.
-        Использует отрендеренные markdown links (demo_url, repo_url) из RenderEngine.
-        """
+        """Детерминированная генерация ответа для деталей проекта."""
         if not facts:
             return None
-
-        # Рендерим факты напрямую через renderer (будет включать demo_url/repo_url)
-        rendered = self.renderer.render(
-            facts=facts,
-            style=RenderStyle.BULLETS,
-            intents=[],
-        )
-
-        if not rendered:
-            return None
-
-        # Для одного проекта - без преамбулы, для нескольких - с преамбулой
-        if len(facts) == 1:
-            return rendered
-        else:
-            return f"Проекты:\n{rendered}"
+        preamble = "Проекты:" if len(facts) > 1 else ""
+        return self._deterministic_render(facts, preamble=preamble)
 
     def _answer_publications(self, facts: list) -> str | None:
-        """
-        Детерминированная генерация ответа для публикаций.
-        Использует отрендеренные markdown links (url) из RenderEngine.
-        """
-        if not facts:
-            return None
-
-        # Рендерим факты напрямую через renderer (будет включать url)
-        rendered = self.renderer.render(
-            facts=facts,
-            style=RenderStyle.BULLETS,
-            intents=[],
-        )
-
-        if not rendered:
-            return None
-
-        # Добавляем преамбулу
-        return f"Публикации Дмитрия:\n{rendered}"
+        """Детерминированная генерация ответа для публикаций."""
+        return self._deterministic_render(facts, preamble="Публикации Дмитрия:")
 
     @staticmethod
     def _extract_project_names_from_metadata(md: dict) -> list[str]:
