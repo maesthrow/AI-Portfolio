@@ -15,7 +15,7 @@ class NodeType(str, Enum):
     """Типы узлов в графе знаний."""
     PERSON = "person"           # Профиль (владелец портфолио)
     COMPANY = "company"         # Компания/организация
-    PROJECT = "project"         # Проект (standalone или experience)
+    PROJECT = "project"         # Проект (личный или experience)
     ACHIEVEMENT = "achievement" # Достижение
     TECHNOLOGY = "technology"   # Технология/навык
     CONTACT = "contact"         # Контакт (email, github, etc.)
