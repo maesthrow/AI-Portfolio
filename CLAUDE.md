@@ -29,7 +29,7 @@ If you accidentally work with deprecated directories, **STOP** and switch to the
 **AI-Portfolio** is a microservices-based cyberpunk-themed portfolio application with RAG (Retrieval-Augmented Generation) capabilities. The system consists of a Next.js frontend, PostgreSQL database, FastAPI backend services, and ChromaDB vector database for semantic search with LangGraph-powered agent.
 
 **Tech Stack:**
-- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown
+- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown, remark-gfm
 - Backend: Python 3.12+, FastAPI, SQLAlchemy 2.0, Alembic
 - RAG: LangChain, LangGraph, ChromaDB, sentence-transformers, rank-bm25
 - LLM Infrastructure: LiteLLM proxy, vLLM (Qwen2.5-7B-Instruct-AWQ), TEI (multilingual-e5-base embeddings)
@@ -308,12 +308,12 @@ See legacy documentation in previous CLAUDE.md versions.
 - Next.js 14 with App Router
 - Server-side rendering (SSR)
 - Cyberpunk-themed UI with Framer Motion animations
-- react-markdown for rendering markdown content
+- react-markdown + remark-gfm for rendering markdown content with clickable links
 - Entry point: `app/page.tsx`
 - Port: 3000
 
 **Pages:**
-- `app/page.tsx` - Main landing page (fetches all data via API, includes ParticlesBackground)
+- `app/page.tsx` - Main landing page (fetches all data via API, includes neural network background)
 - `app/layout.tsx` - Root layout with AgentDock and CustomCursor
 - `app/projects/[slug]/page.tsx` - Project detail page with long_description_md
 - `app/experience/[company_slug]/page.tsx` - Experience detail page with projects and achievements
@@ -324,14 +324,14 @@ See legacy documentation in previous CLAUDE.md versions.
   - `AgentDock.tsx` - Global floating chat with RAG agent (manages `thinkingStatus` state)
   - `AgentChatWindow.tsx` - Chat window UI (passes thinkingStatus to message list)
   - `AgentInput.tsx` - Message input
-  - `AgentMessageList.tsx` - Message display with streaming and auto-scroll on thinking status
+  - `AgentMessageList.tsx` - Message display with streaming, auto-scroll on thinking status, clickable markdown links (remark-gfm)
   - `ThinkingStatus.tsx` - Pipeline stage indicator with min-duration queue (800ms) and crossfade animation (200ms)
   - `RateLimitWarning.tsx` - Warning banner when approaching rate limit (Framer Motion animated)
   - `RateLimitBlocked.tsx` - Block UI when rate limit exceeded or service unavailable
 - `components/hero/` - Hero section:
   - `HeroIntro.tsx` - Hero content with Framer Motion animations
   - `HeroScrollHint.tsx` - Scroll down button with animation
-  - `ParticlesBackground.tsx` - Canvas-based animated cyberpunk particles
+  - `ParticlesBackground.tsx` - Canvas-based neural network visualization (neurons, synapses, signal pulses)
 - `components/about/` - About section:
   - `AboutMeSection.tsx` - About section container
   - `StatsGrid.tsx` - Statistics grid with CountUp animation and IntersectionObserver
@@ -883,15 +883,19 @@ The BM25 index is persisted to disk:
 
 The hero section includes sophisticated animations:
 
-**Particles Background** (`frontend-new/components/hero/ParticlesBackground.tsx`):
-- Canvas-based rendering with performance optimizations
-- Desktop: 60fps, 35-80 particles with glow effects
-- Mobile: 30fps, 25-50 particles, no glow (for performance)
-- 8 cyberpunk-themed particle shapes: pulseRing, dataNode, scanLine, hexagon, crosshair, diamond, circuit, orb
-- Mouse interaction: particles are repelled by cursor movement (vortex effect)
+**Neural Network Background** (`frontend-new/components/hero/ParticlesBackground.tsx`):
+- Canvas-based neural network visualization with neurons, synapses, and signal pulses
+- **Neurons**: Glowing circular nodes with concentric layers (glow halo, membrane ring, filled core, bright center dot). 3 depth layers (far/mid/near) for parallax. 15% are larger "hub" neurons
+- **Synapses**: Thin lines connecting nearby neurons (max 180px desktop, 120px mobile). Opacity scales with distance and neuron activation. Topology rebuilt every ~1 second
+- **Signal pulses**: Bright dots (80% green, 20% purple) traveling along connections. On arrival activate target neuron with 50% cascade chance, creating chain reactions
+- **Activation system**: Neurons have activation level (0-1) controlling brightness/glow. Decays toward base level, boosted by mouse proximity and signal arrival
+- Desktop: 60fps, 88-200 neurons with glow effects, max 31 signals, 5 connections per neuron
+- Mobile: 30fps, 50-100 neurons, no glow, max 15 signals, 3 connections per neuron
+- Mouse interaction: cursor activates nearby neurons (glow brighter) and triggers signal cascades; gentle push/repulsion physics
+- `CONFIG` object with all tunable parameters (neuron count, connection distance, signal spawn rate, etc.)
 - IntersectionObserver for visibility detection (pauses when scrolled away)
-- Gradual particle spawn on page load
-- Particles wrap around screen edges
+- Gradual neuron spawn on page load
+- Edge wrapping for neurons
 
 **Hero Intro Animations** (`frontend-new/components/hero/HeroIntro.tsx`):
 - Sequential entrance animations using Framer Motion:
@@ -1176,7 +1180,7 @@ AI-Portfolio/
 │   │   └── experience/[company_slug]/ # Experience detail page
 │   ├── components/
 │   │   ├── agent/                  # RAG agent chat (AgentDock, AgentChatWindow, ThinkingStatus, etc.)
-│   │   ├── hero/                   # Hero section (HeroIntro, HeroScrollHint, ParticlesBackground)
+│   │   ├── hero/                   # Hero section (HeroIntro, HeroScrollHint, neural network background)
 │   │   ├── about/                  # About section (AboutMeSection, StatsGrid)
 │   │   ├── experience/             # Experience section (ExperienceSection, ExperienceCard)
 │   │   ├── tech/                   # Tech focus (TechFocusSection)

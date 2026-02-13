@@ -29,7 +29,7 @@
 **AI-Portfolio** — микросервисное киберпанк-портфолио с возможностями RAG (Retrieval-Augmented Generation). Система состоит из фронтенда на Next.js, базы данных PostgreSQL, бэкенд-сервисов на FastAPI и векторной БД ChromaDB для семантического поиска с агентом на LangGraph.
 
 **Технологический стек:**
-- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown
+- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown, remark-gfm
 - Backend: Python 3.12+, FastAPI, SQLAlchemy 2.0, Alembic
 - RAG: LangChain, LangGraph, ChromaDB, sentence-transformers, rank-bm25
 - LLM-инфраструктура: LiteLLM proxy, vLLM (Qwen2.5-7B-Instruct-AWQ), TEI (multilingual-e5-base embeddings)
@@ -308,12 +308,12 @@
 - Next.js 14 с App Router
 - Server-side rendering (SSR)
 - Киберпанк UI с анимациями на Framer Motion
-- react-markdown для рендера markdown
+- react-markdown + remark-gfm для рендера markdown с кликабельными ссылками
 - Точка входа: `app/page.tsx`
 - Порт: 3000
 
 **Страницы:**
-- `app/page.tsx` - главная страница (фетчит все данные, включает ParticlesBackground)
+- `app/page.tsx` - главная страница (фетчит все данные, включает фон нейросети)
 - `app/layout.tsx` - корневой layout с AgentDock и CustomCursor
 - `app/projects/[slug]/page.tsx` - страница проекта (long_description_md)
 - `app/experience/[company_slug]/page.tsx` - страница опыта с проектами и достижениями
@@ -324,14 +324,14 @@
   - `AgentDock.tsx` - глобальный плавающий чат (управляет состоянием `thinkingStatus`)
   - `AgentChatWindow.tsx` - UI окна чата (прокидывает thinkingStatus в список сообщений)
   - `AgentInput.tsx` - инпут сообщений
-  - `AgentMessageList.tsx` - вывод сообщений со стримингом и авто-скроллом при thinking status
+  - `AgentMessageList.tsx` - вывод сообщений со стримингом, авто-скроллом при thinking status, кликабельные markdown-ссылки (remark-gfm)
   - `ThinkingStatus.tsx` - индикатор этапа пайплайна с очередью min-duration (800мс) и crossfade-анимацией (200мс)
   - `RateLimitWarning.tsx` - предупреждение при приближении к лимиту (анимация Framer Motion)
   - `RateLimitBlocked.tsx` - блокировка UI при превышении лимита или недоступности сервиса
 - `components/hero/` - Hero-секция:
   - `HeroIntro.tsx` - контент hero с анимациями Framer Motion
   - `HeroScrollHint.tsx` - кнопка скролла вниз с анимацией
-  - `ParticlesBackground.tsx` - канвас-анимация киберпанк-частиц
+  - `ParticlesBackground.tsx` - канвас-визуализация нейросети (нейроны, синапсы, сигнальные импульсы)
 - `components/about/` - секция About:
   - `AboutMeSection.tsx` - контейнер секции
   - `StatsGrid.tsx` - сетка статистики с CountUp и IntersectionObserver
@@ -893,15 +893,19 @@ BM25 индекс хранится на диске:
 
 ### Анимации Hero
 
-**Particles Background** (`frontend-new/components/hero/ParticlesBackground.tsx`):
-- Рендер на canvas с оптимизациями
-- Desktop: 60fps, 35-80 частиц с glow
-- Mobile: 30fps, 25-50 частиц, без glow
-- 8 форм частиц: pulseRing, dataNode, scanLine, hexagon, crosshair, diamond, circuit, orb
-- Реакция на мышь (вихревой отталкивающий эффект)
+**Нейросетевой фон** (`frontend-new/components/hero/ParticlesBackground.tsx`):
+- Канвас-визуализация нейронной сети с нейронами, синапсами и сигнальными импульсами
+- **Нейроны**: Светящиеся круглые узлы с концентрическими слоями (ореол свечения, мембранное кольцо, ядро, яркая центральная точка). 3 слоя глубины (далёкий/средний/ближний) для параллакса. 15% — крупные "хаб"-нейроны
+- **Синапсы**: Тонкие линии между ближайшими нейронами (макс 180px desktop, 120px mobile). Прозрачность зависит от расстояния и активации нейрона. Топология пересчитывается ~раз в секунду
+- **Сигнальные импульсы**: Яркие точки (80% зелёные, 20% фиолетовые), движущиеся по связям. При прибытии активируют целевой нейрон с 50% шансом каскада
+- **Система активации**: У нейронов уровень активации (0-1), управляющий яркостью/свечением. Затухает к базовому уровню, усиливается мышью и сигналами
+- Desktop: 60fps, 88-200 нейронов с glow, макс 31 сигнал, 5 связей на нейрон
+- Mobile: 30fps, 50-100 нейронов, без glow, макс 15 сигналов, 3 связи на нейрон
+- Реакция на мышь: курсор активирует ближайшие нейроны (ярче свечение) и запускает каскады сигналов; мягкая физика отталкивания
+- Объект `CONFIG` со всеми настраиваемыми параметрами (количество нейронов, дистанция связей, частота спауна сигналов и т.д.)
 - IntersectionObserver для паузы вне экрана
-- Постепенный спаун на загрузке
-- Зацикленное движение с оберткой по краям
+- Постепенный спаун нейронов на загрузке
+- Обёртка по краям экрана
 
 **Hero Intro** (`frontend-new/components/hero/HeroIntro.tsx`):
 - Последовательные анимации Framer Motion:
@@ -1180,7 +1184,7 @@ AI-Portfolio/
 │   │   └── experience/[company_slug]/ # Страница опыта
 │   ├── components/
 │   │   ├── agent/                  # Чат с RAG-агентом (AgentDock, AgentChatWindow, ThinkingStatus и др.)
-│   │   ├── hero/                   # Hero (HeroIntro, HeroScrollHint, ParticlesBackground)
+│   │   ├── hero/                   # Hero (HeroIntro, HeroScrollHint, нейросетевой фон)
 │   │   ├── about/                  # About (AboutMeSection, StatsGrid)
 │   │   ├── experience/             # Опыт (ExperienceSection, ExperienceCard)
 │   │   ├── tech/                   # TechFocusSection
