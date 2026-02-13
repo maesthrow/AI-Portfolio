@@ -120,45 +120,6 @@ def select_evidence(scored: list[ScoredDoc], question: str, k: int, min_k: int |
 
 def pack_context(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
     """
-    Формируем компактный контекст: заголовок [type] title и 1–2 предложения текста.
-    """
-    import re
-
-    def _sents(text: str) -> list[str]:
-        sents = re.split(r"(?<=[\.\!\?])\s+", text or "")
-        sents = [s.strip() for s in sents if s and s.strip()]
-        return sents or ([text.strip()] if text else [])
-
-    def _title(md: dict) -> str:
-        title = md.get("name") or md.get("title") or md.get("label") or md.get("kind") or md.get("type")
-        ttype = md.get("type")
-        if title and ttype:
-            return f"[{ttype}] {title}"
-        if title:
-            return str(title)
-        return f"[{ttype}]" if ttype else ""
-
-    char_budget = token_budget * 4
-    out_parts: list[str] = []
-    used = 0
-    for sd in evidence:
-        md = sd.doc.metadata or {}
-        sents = _sents(sd.doc.page_content)
-        chunk = " ".join(sents[:2]).strip()
-        if not chunk:
-            continue
-        header = _title(md)
-        block = f"{header}: {chunk}" if header else chunk
-        add = len(block) + 2
-        if used + add > char_budget:
-            break
-        out_parts.append(block)
-        used += add
-    return "\n\n".join(out_parts)
-
-
-def pack_context(evidence: list[ScoredDoc], token_budget: int = 900) -> str:
-    """
     Pack context without technical metadata.
 
     Key features:

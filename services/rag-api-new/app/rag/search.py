@@ -366,7 +366,7 @@ def portfolio_search(
         query=question,
         intent=plan.intent,
         entities=plan.entities,
-        items=[],  # При гибридном поиске items пустой
+        items=evidence_docs,
         evidence=context,
         sources=sources,
         confidence=confidence,
