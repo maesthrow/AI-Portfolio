@@ -56,7 +56,7 @@
   - `profile.py` - Profile (full_name, title, subtitle, summary_md, hero_headline, hero_description, current_position)
   - `experience.py` - CompanyExperience (role, company_name, company_slug, start_date, end_date, is_current, kind, company_summary_md, company_role_md, description_md)
   - `experience_project.py` - ExperienceProject (проекты внутри опыта с achievements_md)
-  - `project.py` - Project (slug, technologies, featured, domain, repo_url, demo_url, long_description_md)
+  - `project.py` - Project (личные/featured проекты; slug, technologies, featured, domain, repo_url, demo_url, long_description_md)
   - `publication.py` - Publication (статьи/посты)
   - `contact.py` - Contact (email, telegram, github, linkedin, hh, leetcode)
   - `stats.py` - Stat (ключевые метрики)
@@ -144,14 +144,15 @@
   - Тяжёлые sync-операции обёрнуты в `asyncio.to_thread()` (planner, executor, critic, search, answer)
 
 **Identity** (`app/agent/identity/`):
-- `classifier.py` - Semantic matching для identity-вопросов ("кто ты", "что умеешь")
-  - Использует embedding similarity вместо regex для устойчивости к опечаткам и перефразировкам
-  - `SIMILARITY_THRESHOLD = 0.92` для консервативного matching
+- `classifier.py` - Двухуровневая детекция identity-вопросов:
+  1. **Лингвистическая проверка** (детерминированная): Обнаруживает местоимения 2-го лица (ты, себя, твой и т.д.) → confidence=1.0
+  2. **Семантическое сравнение** (embedding similarity): Сравнение с референсными вопросами → confidence=similarity score
+  - `SIMILARITY_THRESHOLD = 0.92` для консервативного matching (избежание false positive)
   - `is_identity_question(question)` возвращает `(is_identity, max_similarity)`
   - `generate_identity_response(question)` генерирует LLM-ответ о возможностях агента
 - `prompts.py` - Промпты и список возможностей
   - `CAPABILITIES` - Список возможностей агента (легко расширяемый)
-  - `IDENTITY_REFERENCE_QUESTIONS` - Референсные вопросы для semantic matching
+  - `IDENTITY_REFERENCE_QUESTIONS` - Референсные вопросы для semantic matching (курированы для избежания false positive с вопросами о проектах)
   - `get_identity_system_prompt()` - Генерирует системный промпт с актуальными возможностями
 
 **Планировщик** (`app/agent/planner/`):
@@ -202,10 +203,15 @@
 
 **Генерация ответов** (`app/agent/answer/`):
 - `answer_llm.py` - AnswerLLM со строгим промптингом для предотвращения галлюцинаций
+  - Детерминированная (без LLM) генерация для: `contacts`, `publications`, `project_details`, `technology_usage`
+  - `_deterministic_render()` - Общий метод для детерминированного рендеринга фактов с преамбулой
+  - Fallback на LLM только когда детерминированный путь недоступен для интента
 - `prompts.py` - Системные промпты и инструкции по стилю
 
 **Render** (`app/agent/render/`):
 - `renderer.py` - RenderEngine (BULLETS, GROUPED_BULLETS, SHORT, TABLE, PARAGRAPH)
+  - `_format_fact_with_metadata()` - Централизованное форматирование с поддержкой URL/метаданных (контакты, проекты, публикации, технологии)
+  - `_format_fact_inline()` - Инлайн-форматирование для стилей SHORT и PARAGRAPH
 
 **Critic** (`app/agent/critic/`):
 - `critic_llm.py` - CriticLLM для оценки ответов
@@ -223,7 +229,7 @@
 - `search.py` - Оркестрация `portfolio_search()`
 - `retrieval.py` - `HybridRetriever` (dense + BM25 + RRF merge + MMR dedup)
 - `rank.py` - Cross-encoder реранкинг
-- `evidence.py` - Отбор evidence и упаковка контекста
+- `evidence.py` - Отбор evidence и упаковка контекста (без технических метаданных для естественного чтения)
 - `entities.py` - EntityRegistry для matching сущностей
 - `nlp.py` - NLP утилиты (ключевые слова, поддержка RU)
 - `formatter.py` - FormatRenderer для пост-обработки
@@ -233,8 +239,9 @@
 
 **Knowledge Graph** (`app/graph/`):
 - `schema.py` - NodeType (PERSON, COMPANY, PROJECT, ACHIEVEMENT, TECHNOLOGY, CONTACT), EdgeType
-- `builder.py` - Построение графа из ExportPayload
-- `query.py` - Выполнение запросов к графу
+  - PROJECT = личный или experience-based (не "standalone")
+- `builder.py` - Построение графа из ExportPayload (включает поле `kind` для проектов из опыта)
+- `query.py` - Выполнение запросов к графу (классифицирует проекты как "коммерческий" или "личный проект" по наличию company_name)
 - `store.py` - In-memory GraphStore singleton
 
 **Indexing** (`app/indexing/`):
@@ -732,8 +739,9 @@ pytest tests/
    - См. `app/agent/normalizer/normalizer.py:FactNormalizer.normalize()`
 
 5. **Answer LLM**: Генерирует ответ со строгим промптингом
-   - Предотвращает "вероятно", "возможно" галлюцинации
-   - Использует только предоставленные факты
+   - Детерминированные (без LLM) ответы для: contacts, publications, project_details, technology_usage
+   - LLM-генерация для остальных интентов со строгим промптингом (без галлюцинаций)
+   - Механизм восстановления: fallback на детерминированную генерацию, если LLM выдал "не найдено", но evidence есть
    - См. `app/agent/answer/answer_llm.py:AnswerLLM.generate()`
 
 6. **Render Engine**: Форматирует ответ в целевой стиль
@@ -845,8 +853,10 @@ INFO: TokenUsage summary: message_id=abc123 total=3847 breakdown=[planner=1200, 
 ### Knowledge Graph (rag-api-new)
 
 Система строит граф знаний из данных портфолио:
-- **Node Types**: PERSON, COMPANY, PROJECT, ACHIEVEMENT, TECHNOLOGY, CONTACT
+- **Node Types**: PERSON, COMPANY, PROJECT (личный или experience-based), ACHIEVEMENT, TECHNOLOGY, CONTACT
 - **Edge Types**: WORKS_AT, WORKED_AT, CREATED, ACHIEVED, USES, KNOWS, BELONGS_TO, HAS_CONTACT
+- Проекты с `company_name` классифицируются как "коммерческий", без — "личный проект"
+- Узлы проектов из опыта включают поле `kind` из CompanyExperience
 - Используется для структурированных запросов (project_details, technologies, experience)
 - См. `app/graph/builder.py:build_graph()`
 
@@ -865,7 +875,7 @@ INFO: TokenUsage summary: message_id=abc123 total=3847 breakdown=[planner=1200, 
 RAG система создает несколько типов документов:
 - `profile` - информация профиля разработчика
 - `experience`, `experience_project` - опыт работы
-- `project` - отдельные проекты (featured)
+- `project` - личные/featured проекты
 - `technology` - элементы tech стека
 - `publication` - статьи/блог-посты
 - `contact` - контактная информация
@@ -959,7 +969,7 @@ BM25 индекс хранится на диске:
 - Many-to-one к CompanyExperience (CASCADE delete)
 
 **Project** (`project.py`):
-- Отдельные избранные проекты
+- Личные избранные проекты (не привязаны к опыту работы в компании)
 - Поля: name, slug, featured, period, company_name, company_website
 - Новые поля: domain ("cv" | "rag" | "backend" | "mlops" | "other"), repo_url, demo_url
 - Markdown: `description_md`, `long_description_md`

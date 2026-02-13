@@ -56,7 +56,7 @@ Key modules:
   - `profile.py` - Profile (full_name, title, subtitle, summary_md, hero_headline, hero_description, current_position)
   - `experience.py` - CompanyExperience (role, company, dates, kind, company_summary_md, company_role_md)
   - `experience_project.py` - ExperienceProject (projects within company experience with achievements_md)
-  - `project.py` - Project (standalone projects with slug, technologies, featured, domain, repo_url, demo_url, long_description_md)
+  - `project.py` - Project (personal/featured projects with slug, technologies, featured, domain, repo_url, demo_url, long_description_md)
   - `publication.py` - Publication (articles, blog posts)
   - `contact.py` - Contact (email, telegram, github, linkedin, hh, leetcode)
   - `stats.py` - Stat (key metrics for display)
@@ -144,14 +144,15 @@ User Response (streaming or direct)
   - Heavy sync operations wrapped in `asyncio.to_thread()` (planner, executor, critic, search, answer)
 
 **Identity** (`app/agent/identity/`):
-- `classifier.py` - Semantic matching for identity questions ("who are you", "what can you do")
-  - Uses embedding similarity instead of regex for robustness to typos and paraphrases
-  - `SIMILARITY_THRESHOLD = 0.92` for conservative matching
+- `classifier.py` - Two-level identity question detection:
+  1. **Linguistic check** (deterministic): Detects 2nd person pronouns (ты, себя, твой, etc.) → confidence=1.0
+  2. **Semantic matching** (embedding similarity): Compares with reference questions → confidence=similarity score
+  - `SIMILARITY_THRESHOLD = 0.92` for conservative matching (avoids false positives)
   - `is_identity_question(question)` returns `(is_identity, max_similarity)`
   - `generate_identity_response(question)` generates LLM response about agent capabilities
 - `prompts.py` - Identity prompts and capabilities list
   - `CAPABILITIES` - List of agent capabilities (easily extensible)
-  - `IDENTITY_REFERENCE_QUESTIONS` - Reference questions for semantic matching
+  - `IDENTITY_REFERENCE_QUESTIONS` - Reference questions for semantic matching (curated to avoid false positives with project questions)
   - `get_identity_system_prompt()` - Generates system prompt with current capabilities
 
 **Planner** (`app/agent/planner/`):
@@ -202,10 +203,15 @@ User Response (streaming or direct)
 
 **Answer Generation** (`app/agent/answer/`):
 - `answer_llm.py` - AnswerLLM with strict prompting to prevent hallucinations
+  - Deterministic (non-LLM) answering for: `contacts`, `publications`, `project_details`, `technology_usage`
+  - `_deterministic_render()` - Shared method for deterministic fact rendering with optional preamble
+  - Falls back to LLM only when deterministic path is not available for the intent
 - `prompts.py` - Answer system prompts and style instructions
 
 **Render** (`app/agent/render/`):
 - `renderer.py` - RenderEngine (BULLETS, GROUPED_BULLETS, SHORT, TABLE, PARAGRAPH)
+  - `_format_fact_with_metadata()` - Centralized formatting with URL/metadata support (contacts, projects, publications, technologies)
+  - `_format_fact_inline()` - Inline formatting for SHORT and PARAGRAPH styles
 
 **Critic** (`app/agent/critic/`):
 - `critic_llm.py` - CriticLLM for answer evaluation
@@ -223,7 +229,7 @@ User Response (streaming or direct)
 - `search.py` - `portfolio_search()` orchestration
 - `retrieval.py` - `HybridRetriever` (dense + BM25 + RRF merge + MMR dedup)
 - `rank.py` - Cross-encoder reranking
-- `evidence.py` - Evidence selection and context packing
+- `evidence.py` - Evidence selection and context packing (strips technical metadata for natural reading)
 - `entities.py` - EntityRegistry for entity matching
 - `nlp.py` - NLP utilities (keywords, Russian support)
 - `formatter.py` - FormatRenderer for post-processing
@@ -233,8 +239,9 @@ User Response (streaming or direct)
 
 **Knowledge Graph** (`app/graph/`):
 - `schema.py` - NodeType (PERSON, COMPANY, PROJECT, ACHIEVEMENT, TECHNOLOGY, CONTACT), EdgeType
-- `builder.py` - Build graph from ExportPayload
-- `query.py` - Graph query execution
+  - PROJECT = personal or experience-based (not "standalone")
+- `builder.py` - Build graph from ExportPayload (includes `kind` field for experience projects)
+- `query.py` - Graph query execution (classifies projects as "коммерческий" or "личный проект" based on company_name)
 - `store.py` - In-memory GraphStore singleton
 
 **Indexing** (`app/indexing/`):
@@ -724,8 +731,9 @@ The new RAG system uses a sophisticated multi-layer architecture:
    - See `app/agent/normalizer/normalizer.py:FactNormalizer.normalize()`
 
 5. **Answer LLM**: Generates response with strict prompting
-   - Prevents "probably", "possibly" hallucinations
-   - Only uses provided facts
+   - Deterministic (non-LLM) answers for: contacts, publications, project_details, technology_usage
+   - LLM-based answers for remaining intents with strict prompting (no hallucinations)
+   - Recovery mechanism: falls back to deterministic generation if LLM produces "not found" but evidence exists
    - See `app/agent/answer/answer_llm.py:AnswerLLM.generate()`
 
 6. **Render Engine**: Formats answer to target style
@@ -833,8 +841,10 @@ INFO: TokenUsage summary: message_id=abc123 total=3847 breakdown=[planner=1200, 
 ### Knowledge Graph (rag-api-new)
 
 The system builds a knowledge graph from portfolio data:
-- **Node Types**: PERSON, COMPANY, PROJECT, ACHIEVEMENT, TECHNOLOGY, CONTACT
+- **Node Types**: PERSON, COMPANY, PROJECT (personal or experience-based), ACHIEVEMENT, TECHNOLOGY, CONTACT
 - **Edge Types**: WORKS_AT, WORKED_AT, CREATED, ACHIEVED, USES, KNOWS, BELONGS_TO, HAS_CONTACT
+- Projects with `company_name` are classified as "коммерческий" (commercial), without — "личный проект" (personal)
+- Experience project nodes include `kind` field from CompanyExperience
 - Used for structured queries (project_details, technologies, experience)
 - See `app/graph/builder.py:build_graph()`
 
@@ -853,7 +863,7 @@ Both RAG services use hybrid retrieval:
 The RAG system creates multiple document types:
 - `profile` - Developer profile information
 - `experience`, `experience_project` - Work experience
-- `project` - Standalone projects (featured)
+- `project` - Personal/featured projects
 - `technology` - Tech stack items
 - `publication` - Articles/blog posts
 - `contact` - Contact information
@@ -953,7 +963,7 @@ Key models and relationships (`services/content-api-new/app/models/`):
 - Many-to-one with CompanyExperience (CASCADE delete)
 
 **Project** (`project.py`):
-- Standalone featured projects (not tied to experience)
+- Personal featured projects (not tied to company experience)
 - Fields: name, slug, featured, period, company_name, company_website
 - New fields: domain ("cv" | "rag" | "backend" | "mlops" | "other"), repo_url, demo_url
 - Markdown fields: description_md, long_description_md
