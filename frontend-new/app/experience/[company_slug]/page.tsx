@@ -149,7 +149,7 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
         <div className="flex justify-start">
           <Link
             href="/#experience"
-            className="group/cta inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 bg-black/50 px-4 py-2 text-sm font-medium text-accent transition-all duration-200 hover:border-[#00ffc3]/80 hover:text-accent hover:shadow-[0_0_14px_rgba(0,255,200,0.25)]"
+            className="group/cta inline-flex items-center gap-2 rounded-full border border-[#00ffc3]/50 bg-black/50 px-4 py-2 text-sm font-medium text-accent transition-all duration-200 hover:-translate-y-0.5 hover:border-[#00ffc3]/80 hover:text-accent hover:shadow-[0_0_14px_rgba(0,255,200,0.25)]"
           >
             <span
               aria-hidden="true"

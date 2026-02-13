@@ -86,7 +86,7 @@ function ProjectCard({ project }: ProjectCardProps) {
         <div className="mt-2.5 flex justify-end border-t border-[#00ffc3]/20 pt-4">
           <Link
             href={`/projects/${project.slug}`}
-            className="group/cta inline-flex items-center gap-1.5 rounded-full border border-[#00ffc3]/50 bg-black/50 px-4 py-1.5 text-xs font-semibold text-slate-200 transition-all duration-200 hover:border-[#00ffc3]/80 hover:text-accent hover:shadow-[0_0_14px_rgba(0,255,200,0.25)]"
+            className="group/cta inline-flex items-center gap-1.5 rounded-full border border-[#00ffc3]/50 bg-black/50 px-4 py-1.5 text-xs font-semibold text-slate-200 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#00ffc3]/80 hover:text-accent hover:shadow-[0_0_14px_rgba(0,255,200,0.25)]"
           >
             Подробнее
             <span
