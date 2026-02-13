@@ -879,7 +879,12 @@ def _projects_by_tech_category_query(
         techs_used = entry["technologies"]
 
         # Build text field with project info and technologies
-        company_str = project.data.get("company_name") or "личный проект"
+        # Проекты с company_name — коммерческие (личные не привязаны к компании)
+        company_name = project.data.get("company_name")
+        if company_name:
+            company_str = f"коммерческий, {company_name}"
+        else:
+            company_str = "личный проект"
         tech_list = ", ".join(techs_used[:3])
         if len(techs_used) > 3:
             tech_list += f" и ещё {len(techs_used) - 3}"

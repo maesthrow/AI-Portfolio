@@ -201,6 +201,7 @@ def build_graph_from_export(payload: ExportPayload) -> GraphStore:
                     "experience_id": exp.id,
                     "company_slug": exp.company_slug,
                     "company_name": company_name,
+                    "kind": exp.kind,
                 }
             ))
 
