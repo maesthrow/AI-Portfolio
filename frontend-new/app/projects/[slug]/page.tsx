@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import { Github } from "lucide-react";
 
 import Shell from "@/components/layout/Shell";
+import TechTag from "@/components/ui/TechTag";
 import { getProjectBySlug } from "@/lib/api";
 import { ProjectDetail } from "@/lib/types";
 
@@ -164,12 +165,9 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             <h2 className="mb-4 text-xl font-semibold text-slate-50">Технологии</h2>
             <div className="flex flex-wrap gap-3">
               {techTags.map((tech) => (
-                <span
-                  key={tech}
-                  className="rounded-full border border-[#00ffc3]/40 bg-accent/10 px-4 py-1.5 text-sm font-medium text-slate-100 shadow-[0_0_10px_rgba(0,255,200,0.2)]"
-                >
+                <TechTag key={tech} variant="stack">
                   {tech}
-                </span>
+                </TechTag>
               ))}
             </div>
           </div>
