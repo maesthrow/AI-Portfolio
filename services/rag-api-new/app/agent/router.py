@@ -138,6 +138,12 @@ async def router_node(state: dict[str, Any], config: RunnableConfig) -> dict:
         if _is_cv_related(text):
             logger.info("router: cv_process (CV-related, still awaiting email)")
             return {"_route_intent": "cv_process"}
+        # LLM fallback: is user still talking about CV?
+        from .router_llm import is_cv_continuation
+        from ..deps import router_llm
+        if await is_cv_continuation(text, router_llm()):
+            logger.info("router: cv_process (LLM confirmed CV continuation)")
+            return {"_route_intent": "cv_process"}
         logger.info("router: rag (topic change from cv_awaiting_email)")
         return {"_route_intent": "rag"}
 
