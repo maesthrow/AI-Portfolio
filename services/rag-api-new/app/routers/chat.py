@@ -166,7 +166,7 @@ async def chat_stream(req: ChatRequest, request: Request):
     created_at = datetime.now(timezone.utc).isoformat()
 
     thread_id = session_id
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": thread_id, "_client_ip": client_ip}}
 
     # === Input Length Validation (approximate tokens: ~4 chars per token) ===
     s = settings()
@@ -268,7 +268,6 @@ async def chat_stream(req: ChatRequest, request: Request):
 
     state = {
         "messages": [HumanMessage(content=question)],
-        "user_id": req.session_id,
     }
 
     async def event_generator():

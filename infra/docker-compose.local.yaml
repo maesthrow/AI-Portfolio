@@ -201,8 +201,26 @@ services:
       RATE_LIMIT_LOG_IP_MODE: ${RATE_LIMIT_LOG_IP_MODE:-masked}
       # === User Input Validation ===
       MAX_USER_INPUT_TOKENS: ${MAX_USER_INPUT_TOKENS:-250}
+      # === SMTP Email (CV sending) ===
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-AI-Portfolio | Dmitry}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      # === CV File & Rate Limits ===
+      CV_FILE_PATH: ${CV_FILE_PATH:-/app/data/cv.pdf}
+      CV_SEND_LIMIT_PER_IP: ${CV_SEND_LIMIT_PER_IP:-3}
+      CV_SEND_LIMIT_PER_EMAIL: ${CV_SEND_LIMIT_PER_EMAIL:-2}
+      CV_SEND_LIMIT_WINDOW_SECONDS: ${CV_SEND_LIMIT_WINDOW_SECONDS:-3600}
     ports:
       - "${RAG_NEW_PORT:-8004}:8000"
+    volumes:
+      - ../data/cv.pdf:/app/data/cv.pdf:ro
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     depends_on:
       - chroma
       - litellm

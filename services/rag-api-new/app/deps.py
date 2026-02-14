@@ -181,6 +181,16 @@ def graph_store():
 
 
 @lru_cache()
+def email_service():
+    """Email service singleton for CV sending."""
+    from .email import EmailService
+    svc = EmailService(settings())
+    if not svc.available:
+        logger.warning("EmailService: SMTP not configured, CV sending will be unavailable")
+    return svc
+
+
+@lru_cache()
 def rate_limiter():
     """
     Rate limiter singleton.

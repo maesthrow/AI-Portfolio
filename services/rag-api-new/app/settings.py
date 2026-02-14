@@ -146,6 +146,42 @@ class Settings(BaseSettings):
     max_user_input_tokens: int = 250
     """Approximate token limit for user input (~4 chars per token)"""
 
+    # === SMTP Email (CV sending) ===
+    smtp_host: str = ""
+    """SMTP server host (e.g. smtp.gmail.com)."""
+
+    smtp_port: int = 587
+    """SMTP server port (587 for STARTTLS)."""
+
+    smtp_user: str = ""
+    """SMTP login username."""
+
+    smtp_password: str = ""
+    """SMTP login password (app-password for Gmail)."""
+
+    smtp_from_email: str = ""
+    """Sender email address."""
+
+    smtp_from_name: str = "AI-Portfolio | Dmitry"
+    """Sender display name."""
+
+    smtp_use_tls: bool = True
+    """Use STARTTLS for SMTP connection."""
+
+    # === CV File ===
+    cv_file_path: str = "/app/data/cv.pdf"
+    """Path to the CV PDF file (container path in Docker)."""
+
+    # === CV Send Rate Limit (separate from token rate limit) ===
+    cv_send_limit_per_ip: int = 3
+    """Max CV sends per IP per window."""
+
+    cv_send_limit_per_email: int = 2
+    """Max CV sends per email address per window."""
+
+    cv_send_limit_window_seconds: int = 3600
+    """CV send rate limit window in seconds (1 hour)."""
+
     # === Rerank settings ===
     max_rerank_candidates: int = 80
     """Максимум документов для reranker (ограничение CPU-времени).

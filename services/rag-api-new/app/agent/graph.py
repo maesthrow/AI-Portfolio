@@ -1,15 +1,28 @@
+"""Hybrid StateGraph agent.
+
+Top-level StateGraph with deterministic routing:
+- RAG branch  → ``create_agent`` ReAct subgraph (portfolio_rag_tool)
+- CV branch   → explicit graph nodes (cv_start / cv_process)
+
+The ReAct subgraph handles: RAG queries, greetings, off-topic, smalltalk.
+CV nodes handle: resume sending, email collection (multi-turn via pending_action).
+"""
 from __future__ import annotations
 
 import logging
-from typing import List
+from typing import Any
 
-from langchain_core.messages import SystemMessage, BaseMessage, HumanMessage
 from langchain.agents import create_agent
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import StateGraph, END, START
+
+from .graph_state import AgentState
 
 logger = logging.getLogger(__name__)
 
-# === v3: Natural Language Agent Prompt ===
+# ---------------------------------------------------------------------------
+# System prompt for the ReAct RAG subgraph
+# ---------------------------------------------------------------------------
 
 AGENT_SYSTEM_PROMPT = """РОЛЬ: Встроенный AI-агент сайта AI-Portfolio, портфолио разработчика Дмитрия.
 
@@ -55,7 +68,7 @@ AGENT_SYSTEM_PROMPT = """РОЛЬ: Встроенный AI-агент сайта
    - НЕ придумывай факты - используй только данные от инструментов
    - Если инструмент вернул "found": false - сообщи что информации нет
    - КРИТИЧЕСКИ ВАЖНО: Извлекай поле "answer" из JSON результата инструмента и возвращай его БЕЗ ИЗМЕНЕНИЙ
-   - НЕ экранируй переводы строк (\n), НЕ заменяй markdown-ссылки [...](url) на plain text
+   - НЕ экранируй переводы строк (\\n), НЕ заменяй markdown-ссылки [...](url) на plain text
    - Передавай текст от инструмента пользователю точно как есть, сохраняя форматирование и специальные символы
 
 3. БЕЗОПАСНОСТЬ:
@@ -79,32 +92,72 @@ AGENT_SYSTEM_PROMPT = """РОЛЬ: Встроенный AI-агент сайта
 """
 
 
-def build_agent_graph():
-    """
-    ReAct-агент с памятью по thread_id (session_id).
+# ---------------------------------------------------------------------------
+# Helper nodes
+# ---------------------------------------------------------------------------
 
-    Использует полный LLM-пайплайн:
-    - Единственный инструмент: portfolio_rag_tool
-    - Полный пайплайн: Planner → Executor → Critic → Render → Answer
-    - Промпт: AGENT_SYSTEM_PROMPT
+
+def _clear_pending(state: dict[str, Any]) -> dict:
+    """Reset ``pending_action`` after the RAG subgraph completes."""
+    return {"pending_action": ""}
+
+
+# ---------------------------------------------------------------------------
+# Graph builder
+# ---------------------------------------------------------------------------
+
+
+def build_agent_graph():
+    """Build the hybrid StateGraph agent.
+
+    Architecture::
+
+        START → route (deterministic)
+          ├─ "rag"        → rag_agent (ReAct subgraph) → clear_pending → END
+          ├─ "cv_start"   → cv_start_node → END
+          └─ "cv_process" → cv_process_node → END
+
+    The ``MemorySaver`` checkpointer on the *parent* graph persists
+    ``AgentState`` (including ``pending_action``) across HTTP requests.
     """
     from .rag_tool import portfolio_rag_tool
+    from .router import route
+    from .cv_nodes import cv_start_node, cv_process_node
     from ..deps import agent_llm
 
-    llm = agent_llm()
-    checkpointer = MemorySaver()
-
-    # Single tool with full LLM pipeline
-    tools = [portfolio_rag_tool]
-    system_prompt = AGENT_SYSTEM_PROMPT
-
-    logger.info("Agent using portfolio_rag_tool with unified prompt")
-
-    agent = create_agent(
-        model=llm,
-        tools=tools,
-        system_prompt=system_prompt,
-        checkpointer=checkpointer
+    # --- Inner ReAct agent for RAG (subgraph, NO own checkpointer) ---
+    rag_subgraph = create_agent(
+        model=agent_llm(),
+        tools=[portfolio_rag_tool],
+        system_prompt=AGENT_SYSTEM_PROMPT,
     )
 
-    return agent
+    # --- Top-level StateGraph ---
+    graph = StateGraph(AgentState)
+
+    graph.add_node("rag_agent", rag_subgraph)
+    graph.add_node("clear_pending", _clear_pending)
+    graph.add_node("cv_start", cv_start_node)
+    graph.add_node("cv_process", cv_process_node)
+
+    # Routing
+    graph.add_conditional_edges(START, route, {
+        "rag": "rag_agent",
+        "cv_start": "cv_start",
+        "cv_process": "cv_process",
+    })
+
+    # Edges to END
+    graph.add_edge("rag_agent", "clear_pending")
+    graph.add_edge("clear_pending", END)
+    graph.add_edge("cv_start", END)
+    graph.add_edge("cv_process", END)
+
+    checkpointer = MemorySaver()
+    compiled = graph.compile(checkpointer=checkpointer)
+
+    logger.info(
+        "Agent graph built: StateGraph with ReAct subgraph (RAG) + CV nodes"
+    )
+
+    return compiled
