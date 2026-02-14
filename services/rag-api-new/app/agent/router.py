@@ -16,6 +16,46 @@ from ..email.validation import extract_email
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Smalltalk detection (greetings, thanks, farewells)
+# ---------------------------------------------------------------------------
+
+_GREETING_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"^(?:привет|здравствуй|здорово|хай|хей|hello|hi|hey)\b", re.IGNORECASE),
+    re.compile(r"^добр(?:ый|ое|ого)\s+(?:день|утро|вечер|времени)", re.IGNORECASE),
+]
+
+_THANKS_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"^(?:спасибо|благодарю|thanks?|thank\s+you)\b", re.IGNORECASE),
+]
+
+_FAREWELL_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"^(?:пока|до свидания|до встречи|прощай|bye|goodbye)\b", re.IGNORECASE),
+]
+
+# Max length for standalone smalltalk (longer messages likely contain a question)
+_SMALLTALK_MAX_LEN = 60
+
+
+def _classify_smalltalk(text: str) -> str | None:
+    """Return smalltalk category or ``None``.
+
+    Only triggers for short standalone messages (greetings, thanks,
+    farewells) — not for "привет, расскажи о проектах".
+    """
+    if len(text) > _SMALLTALK_MAX_LEN:
+        return None
+
+    if any(p.search(text) for p in _THANKS_PATTERNS):
+        return "thanks"
+    if any(p.search(text) for p in _FAREWELL_PATTERNS):
+        return "farewell"
+    if any(p.search(text) for p in _GREETING_PATTERNS):
+        return "greeting"
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # CV request detection
 # ---------------------------------------------------------------------------
 
@@ -74,7 +114,7 @@ def _is_cv_related(text: str) -> bool:
 def route(state: dict[str, Any]) -> str:
     """Deterministic router for the top-level StateGraph.
 
-    Returns one of: ``"rag"``, ``"cv_start"``, ``"cv_process"``.
+    Returns one of: ``"rag"``, ``"cv_start"``, ``"cv_process"``, ``"smalltalk"``.
     """
     messages = state.get("messages") or []
     if not messages:
@@ -99,10 +139,16 @@ def route(state: dict[str, Any]) -> str:
         logger.info("router: rag (topic change from cv_awaiting_email)")
         return "rag"
 
-    # 2. New CV request
+    # 2. Smalltalk (greetings, thanks, farewells) — deterministic, no LLM
+    smalltalk = _classify_smalltalk(text)
+    if smalltalk:
+        logger.info("router: smalltalk (%s)", smalltalk)
+        return "smalltalk"
+
+    # 3. New CV request
     if _is_cv_request(text):
         logger.info("router: cv_start (new CV request)")
         return "cv_start"
 
-    # 3. Everything else → existing ReAct agent
+    # 4. Everything else → existing ReAct agent
     return "rag"

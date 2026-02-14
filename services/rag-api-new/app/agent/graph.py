@@ -1,11 +1,13 @@
 """Hybrid StateGraph agent.
 
 Top-level StateGraph with deterministic routing:
-- RAG branch  → ``create_agent`` ReAct subgraph (portfolio_rag_tool)
-- CV branch   → explicit graph nodes (cv_start / cv_process)
+- RAG branch      → ``create_agent`` ReAct subgraph (portfolio_rag_tool)
+- CV branch       → explicit graph nodes (cv_start / cv_process)
+- Smalltalk branch → deterministic responses (greetings, thanks, farewells)
 
-The ReAct subgraph handles: RAG queries, greetings, off-topic, smalltalk.
+The ReAct subgraph handles: RAG queries, off-topic.
 CV nodes handle: resume sending, email collection (multi-turn via pending_action).
+Smalltalk node handles: greetings, thanks, farewells (no LLM).
 """
 from __future__ import annotations
 
@@ -115,7 +117,8 @@ def build_agent_graph():
         START → route (deterministic)
           ├─ "rag"        → rag_agent (ReAct subgraph) → clear_pending → END
           ├─ "cv_start"   → cv_start_node → END
-          └─ "cv_process" → cv_process_node → END
+          ├─ "cv_process" → cv_process_node → END
+          └─ "smalltalk"  → smalltalk_node → END
 
     The ``MemorySaver`` checkpointer on the *parent* graph persists
     ``AgentState`` (including ``pending_action``) across HTTP requests.
@@ -123,6 +126,7 @@ def build_agent_graph():
     from .rag_tool import portfolio_rag_tool
     from .router import route
     from .cv_nodes import cv_start_node, cv_process_node
+    from .smalltalk_node import smalltalk_node
     from ..deps import agent_llm
 
     # --- Inner ReAct agent for RAG (subgraph, NO own checkpointer) ---
@@ -139,12 +143,14 @@ def build_agent_graph():
     graph.add_node("clear_pending", _clear_pending)
     graph.add_node("cv_start", cv_start_node)
     graph.add_node("cv_process", cv_process_node)
+    graph.add_node("smalltalk", smalltalk_node)
 
     # Routing
     graph.add_conditional_edges(START, route, {
         "rag": "rag_agent",
         "cv_start": "cv_start",
         "cv_process": "cv_process",
+        "smalltalk": "smalltalk",
     })
 
     # Edges to END
@@ -152,6 +158,7 @@ def build_agent_graph():
     graph.add_edge("clear_pending", END)
     graph.add_edge("cv_start", END)
     graph.add_edge("cv_process", END)
+    graph.add_edge("smalltalk", END)
 
     checkpointer = MemorySaver()
     compiled = graph.compile(checkpointer=checkpointer)

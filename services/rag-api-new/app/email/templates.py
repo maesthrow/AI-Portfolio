@@ -19,9 +19,9 @@ def cv_email_body_html(site_url: str) -> str:
 <!DOCTYPE html>
 <html>
 <body style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
-    <p>Здравствуйте!</p>
-    <p>На связи ИИ-ассистент AI-Portfolio!</p>
-    <p>Вы запросили резюме Дмитрия на сайте {link}.</p>
+    <p>Здравствуйте!<br>
+    На связи ИИ-ассистент Дмитрия!</p>
+    <p>Вы запросили резюме на сайте {link}.</p>
     <p>Резюме прикреплено к этому письму в формате PDF.</p>
     <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
     <p style="color: #888; font-size: 12px;">
@@ -38,9 +38,9 @@ def cv_email_body_plain(site_url: str) -> str:
     label = f"AI-Portfolio ({site_url})" if site_url else "AI-Portfolio"
     return f"""\
 Здравствуйте!
-На связи ИИ-ассистент AI-Portfolio!
+На связи ИИ-ассистент Дмитрия!
 
-Вы запросили резюме Дмитрия на сайте {label}.
+Вы запросили резюме на сайте {label}.
 Резюме прикреплено к этому письму в формате PDF.
 
 ---
