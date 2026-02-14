@@ -11,7 +11,7 @@ from email.mime.text import MIMEText
 from email.utils import formataddr
 from pathlib import Path
 
-from .templates import CV_EMAIL_BODY_HTML, CV_EMAIL_BODY_PLAIN, CV_EMAIL_SUBJECT
+from .templates import CV_EMAIL_SUBJECT, cv_email_body_html, cv_email_body_plain
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +106,13 @@ class EmailService:
         msg["From"] = formataddr((str(Header(s.smtp_from_name, "utf-8")), s.smtp_from_email))
         msg["To"] = to_email
 
+        # Build site URL from domain setting
+        site_url = f"https://{s.domain}" if s.domain else ""
+
         # Body: HTML with plain-text fallback
         body = MIMEMultipart("alternative")
-        body.attach(MIMEText(CV_EMAIL_BODY_PLAIN, "plain", "utf-8"))
-        body.attach(MIMEText(CV_EMAIL_BODY_HTML, "html", "utf-8"))
+        body.attach(MIMEText(cv_email_body_plain(site_url), "plain", "utf-8"))
+        body.attach(MIMEText(cv_email_body_html(site_url), "html", "utf-8"))
         msg.attach(body)
 
         # Attachment: CV PDF

@@ -214,6 +214,8 @@ services:
       CV_SEND_LIMIT_PER_IP: ${CV_SEND_LIMIT_PER_IP:-3}
       CV_SEND_LIMIT_PER_EMAIL: ${CV_SEND_LIMIT_PER_EMAIL:-2}
       CV_SEND_LIMIT_WINDOW_SECONDS: ${CV_SEND_LIMIT_WINDOW_SECONDS:-3600}
+      # === Site Domain (for email links) ===
+      DOMAIN: ${DOMAIN:-}
     ports:
       - "${RAG_NEW_PORT:-8004}:8000"
     volumes:

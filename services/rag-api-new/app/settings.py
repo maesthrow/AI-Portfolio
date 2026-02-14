@@ -168,6 +168,9 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     """Use STARTTLS for SMTP connection."""
 
+    domain: str = ""
+    """Site domain (e.g. ai-portfolio.dev). Used in email templates."""
+
     # === CV File ===
     cv_file_path: str = "/app/data/cv.pdf"
     """Path to the CV PDF file (container path in Docker)."""
