@@ -157,6 +157,24 @@ def agent_llm() -> BaseChatModel:
     )
 
 
+@lru_cache()
+def router_llm() -> BaseChatModel:
+    """LLM для Router (intent classification fallback).
+
+    Дешёвая модель (DeepSeek-chat) с temperature=0 для
+    детерминированной классификации. Вызывается только когда
+    regex fast-path не сработал (~30% сообщений).
+    """
+    s = settings()
+    factory = get_llm_factory()
+    logger.info("Creating router LLM: %s (temp=%.2f)", s.router_llm, s.router_temperature)
+    return factory.create(
+        llm_id=s.router_llm,
+        temperature=s.router_temperature,
+        max_tokens=32,
+    )
+
+
 # =============================================================================
 # Application Components
 # =============================================================================

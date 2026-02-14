@@ -1,14 +1,13 @@
 """Deterministic smalltalk node for greetings, thanks and farewells.
 
 No LLM calls — returns canned responses instantly.
+Reads ``_route_intent`` from state (set by ``router_node``).
 """
 from __future__ import annotations
 
 from typing import Any
 
 from langchain_core.messages import AIMessage
-
-from .router import _classify_smalltalk
 
 _RESPONSES: dict[str, str] = {
     "greeting": (
@@ -23,15 +22,7 @@ _DEFAULT = "Чем могу помочь? Спросите о проектах, 
 
 
 def smalltalk_node(state: dict[str, Any]) -> dict:
-    """Return a canned response based on smalltalk category."""
-    messages = state.get("messages") or []
-    text = ""
-    if messages:
-        last = messages[-1]
-        text = getattr(last, "content", "") if hasattr(last, "content") else str(last)
-        text = text.strip()
-
-    category = _classify_smalltalk(text)
-    reply = _RESPONSES.get(category or "", _DEFAULT)
-
+    """Return a canned response based on ``_route_intent``."""
+    intent = state.get("_route_intent") or ""
+    reply = _RESPONSES.get(intent, _DEFAULT)
     return {"messages": [AIMessage(content=reply)]}

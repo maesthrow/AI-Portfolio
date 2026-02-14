@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     agent_llm: str = "gigachat:GigaChat-2"
     """LLM для ReAct-агента (orchestration)."""
 
+    router_llm: str = "deepseek:deepseek-chat"
+    """LLM для классификации интентов в роутере (дешёвая модель, ~300ms)."""
+
     # === Embedding ===
     embedding_model: str = "text-embedding-3-large"
     embedding_batch_size: int = 4  # Small batch to avoid TEI 413 Payload Too Large
@@ -99,6 +102,9 @@ class Settings(BaseSettings):
 
     agent_temperature: float = 0.2
     """Температура для Agent."""
+
+    router_temperature: float = 0.0
+    """Температура для Router (0.0 = детерминированный)."""
 
     # === Critic settings ===
     critic_enabled: bool = True

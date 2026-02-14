@@ -330,6 +330,12 @@ async def chat_stream(req: ChatRequest, request: Request):
                 event = q_data
                 kind = event.get("event")
 
+                # Skip events from internal nodes (router LLM classification
+                # should never be streamed to the user)
+                _node = (event.get("metadata") or {}).get("langgraph_node")
+                if _node == "router":
+                    continue
+
                 if kind == "on_chat_model_stream":
                     chunk = (event.get("data") or {}).get("chunk")
                     content = _extract_text(chunk)

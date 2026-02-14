@@ -163,12 +163,14 @@ services:
       ANSWER_LLM: ${ANSWER_LLM:-deepseek:deepseek-chat}
       CRITIC_LLM: ${CRITIC_LLM:-deepseek:deepseek-reasoner}
       AGENT_LLM: ${AGENT_LLM:-gigachat:GigaChat-2}
+      ROUTER_LLM: ${ROUTER_LLM:-deepseek:deepseek-chat}
       # === LLM Temperatures ===
       IDENTITY_TEMPERATURE: ${IDENTITY_TEMPERATURE:-0.3}
       PLANNER_TEMPERATURE: ${PLANNER_TEMPERATURE:-0.0}
       ANSWER_TEMPERATURE: ${ANSWER_TEMPERATURE:-0.2}
       CRITIC_TEMPERATURE: ${CRITIC_TEMPERATURE:-0.2}
       AGENT_TEMPERATURE: ${AGENT_TEMPERATURE:-0.2}
+      ROUTER_TEMPERATURE: ${ROUTER_TEMPERATURE:-0.0}
       # === TEI (embeddings direct access) ===
       TEI_BASE_URL: http://tei:80/v1
       EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-4}

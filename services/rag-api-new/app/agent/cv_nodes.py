@@ -84,21 +84,23 @@ def _do_send_cv(email: str, config: RunnableConfig) -> _SendResult:
     return _SendResult(success=False, message=result.message)
 
 
+def _get_cv_redis():
+    """Get Redis client for CV rate limiting (graceful degradation)."""
+    from ..deps import rate_limiter
+    try:
+        return rate_limiter()._get_redis()
+    except Exception:
+        return None
+
+
 def _check_cv_rate_limit(ip: str, email: str) -> bool:
     """Check Redis-based rate limit for CV sends.
 
     Returns True when the send is allowed.
     """
-    from ..deps import rate_limiter, settings
+    from ..deps import settings
 
-    limiter = rate_limiter()
-    redis_client = getattr(limiter, "_redis", None)
-    # Try to get the internal Redis client (graceful if unavailable)
-    if redis_client is None:
-        try:
-            redis_client = limiter._get_redis()
-        except Exception:
-            pass
+    redis_client = _get_cv_redis()
     if redis_client is None:
         return True  # Redis unavailable → graceful degradation
 
@@ -125,15 +127,9 @@ def _check_cv_rate_limit(ip: str, email: str) -> bool:
 
 def _record_cv_send(ip: str, email: str) -> None:
     """Record successful CV send in Redis for rate limiting."""
-    from ..deps import rate_limiter, settings
+    from ..deps import settings
 
-    limiter = rate_limiter()
-    redis_client = getattr(limiter, "_redis", None)
-    if redis_client is None:
-        try:
-            redis_client = limiter._get_redis()
-        except Exception:
-            pass
+    redis_client = _get_cv_redis()
     if redis_client is None:
         return
 

@@ -1,13 +1,19 @@
 """Hybrid StateGraph agent.
 
-Top-level StateGraph with deterministic routing:
+Top-level StateGraph with hybrid routing (regex fast-path → LLM fallback):
 - RAG branch      → ``create_agent`` ReAct subgraph (portfolio_rag_tool)
 - CV branch       → explicit graph nodes (cv_start / cv_process)
 - Smalltalk branch → deterministic responses (greetings, thanks, farewells)
 
-The ReAct subgraph handles: RAG queries, off-topic.
-CV nodes handle: resume sending, email collection (multi-turn via pending_action).
-Smalltalk node handles: greetings, thanks, farewells (no LLM).
+Router architecture:
+    START → router_node (async, writes ``_route_intent``)
+      → route_edge (sync, reads ``_route_intent``)
+        ├─ "rag"        → rag_agent → clear_pending → END
+        ├─ "cv_start"   → cv_start_node → END
+        ├─ "cv_process" → cv_process_node → END
+        ├─ "greeting"   → smalltalk → END
+        ├─ "thanks"     → smalltalk → END
+        └─ "farewell"   → smalltalk → END
 """
 from __future__ import annotations
 
@@ -114,17 +120,20 @@ def build_agent_graph():
 
     Architecture::
 
-        START → route (deterministic)
-          ├─ "rag"        → rag_agent (ReAct subgraph) → clear_pending → END
-          ├─ "cv_start"   → cv_start_node → END
-          ├─ "cv_process" → cv_process_node → END
-          └─ "smalltalk"  → smalltalk_node → END
+        START → router_node (hybrid: regex → LLM)
+          → route_edge reads _route_intent
+            ├─ "rag"        → rag_agent (ReAct subgraph) → clear_pending → END
+            ├─ "cv_start"   → cv_start_node → END
+            ├─ "cv_process" → cv_process_node → END
+            ├─ "greeting"   → smalltalk_node → END
+            ├─ "thanks"     → smalltalk_node → END
+            └─ "farewell"   → smalltalk_node → END
 
     The ``MemorySaver`` checkpointer on the *parent* graph persists
     ``AgentState`` (including ``pending_action``) across HTTP requests.
     """
     from .rag_tool import portfolio_rag_tool
-    from .router import route
+    from .router import router_node, route_edge
     from .cv_nodes import cv_start_node, cv_process_node
     from .smalltalk_node import smalltalk_node
     from ..deps import agent_llm
@@ -139,18 +148,24 @@ def build_agent_graph():
     # --- Top-level StateGraph ---
     graph = StateGraph(AgentState)
 
+    graph.add_node("router", router_node)
     graph.add_node("rag_agent", rag_subgraph)
     graph.add_node("clear_pending", _clear_pending)
     graph.add_node("cv_start", cv_start_node)
     graph.add_node("cv_process", cv_process_node)
     graph.add_node("smalltalk", smalltalk_node)
 
-    # Routing
-    graph.add_conditional_edges(START, route, {
+    # START → router_node (writes _route_intent to state)
+    graph.add_edge(START, "router")
+
+    # router → conditional edge (reads _route_intent from state)
+    graph.add_conditional_edges("router", route_edge, {
         "rag": "rag_agent",
         "cv_start": "cv_start",
         "cv_process": "cv_process",
-        "smalltalk": "smalltalk",
+        "greeting": "smalltalk",
+        "thanks": "smalltalk",
+        "farewell": "smalltalk",
     })
 
     # Edges to END
@@ -164,7 +179,7 @@ def build_agent_graph():
     compiled = graph.compile(checkpointer=checkpointer)
 
     logger.info(
-        "Agent graph built: StateGraph with ReAct subgraph (RAG) + CV nodes"
+        "Agent graph built: StateGraph with hybrid router + ReAct subgraph (RAG) + CV nodes"
     )
 
     return compiled

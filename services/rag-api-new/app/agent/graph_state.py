@@ -17,7 +17,10 @@ class AgentState(TypedDict):
         messages: Conversation history (append-only via ``add_messages``).
         pending_action: Active multi-turn flow (``""`` = none,
             ``"cv_awaiting_email"`` = waiting for email address).
+        _route_intent: Intent written by ``router_node``, read by
+            ``route_edge`` conditional.  Internal, not persisted.
     """
 
     messages: Annotated[list, add_messages]
     pending_action: str
+    _route_intent: str
