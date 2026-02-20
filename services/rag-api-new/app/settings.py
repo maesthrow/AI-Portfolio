@@ -126,11 +126,11 @@ class Settings(BaseSettings):
     cache_enabled: bool = True
     """Глобальное включение/выключение кэширования"""
 
-    plan_cache_ttl: int = 3600 * 24 * 7
-    """TTL для кэша планов в секундах (7 дней)"""
+    plan_cache_ttl: int = 0
+    """TTL для кэша планов в секундах (0 = бессрочно, только ручная очистка)"""
 
-    embedding_cache_ttl: int = 3600 * 24 * 7
-    """TTL для кэша embeddings в секундах (7 дней)"""
+    embedding_cache_ttl: int = 0
+    """TTL для кэша embeddings в секундах (0 = бессрочно, только ручная очистка)"""
 
     # === Rate Limiting ===
     rate_limit_enabled: bool = True
