@@ -12,12 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ `services/rag-api-new/` - **NEW** Active RAG & Agent API (multi-layer pipeline, LLM planner)
 - ✅ `infra/docker-compose.local.yaml` - Active Docker Compose configuration (local dev)
 
-**Legacy service (still available, but use rag-api-new for new development):**
-- ⚠️ `services/rag-api/` - Legacy RAG API (simpler architecture, port 8004)
-
 **NEVER use these directories (removed from codebase):**
 - ❌ `frontend/` - Old frontend (deleted)
 - ❌ `services/content-api/` - Old Content API (deleted)
+- ❌ `services/rag-api/` - Legacy RAG API (deleted from disk)
 - ❌ `infra/docker-compose.yaml` - Old Docker Compose (deprecated)
 
 If you accidentally work with deprecated directories, **STOP** and switch to the correct active directories immediately.
@@ -29,9 +27,9 @@ If you accidentally work with deprecated directories, **STOP** and switch to the
 **AI-Portfolio** is a microservices-based cyberpunk-themed portfolio application with RAG (Retrieval-Augmented Generation) capabilities. The system consists of a Next.js frontend, PostgreSQL database, FastAPI backend services, and ChromaDB vector database for semantic search with LangGraph-powered agent.
 
 **Tech Stack:**
-- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown, remark-gfm
+- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown, remark-gfm, lucide-react
 - Backend: Python 3.12+, FastAPI, SQLAlchemy 2.0, Alembic
-- RAG: LangChain, LangGraph, ChromaDB, sentence-transformers, rank-bm25
+- RAG: LangChain 1.x, LangGraph 1.x, ChromaDB, sentence-transformers, rank-bm25
 - LLM Infrastructure: LiteLLM proxy, vLLM (Qwen2.5-7B-Instruct-AWQ), TEI (multilingual-e5-base embeddings)
 - Database: PostgreSQL 16
 - Infrastructure: Docker Compose
@@ -68,7 +66,7 @@ Key modules:
   - `section_meta.py` - SectionMeta (metadata for sections like titles, subtitles)
 - `app/routers/` - API endpoints:
   - `profile.py` - GET `/api/v1/profile`
-  - `experience.py` - GET `/api/v1/experience`, GET `/api/v1/experience/{slug}`
+  - `experience.py` - GET `/api/v1/experience` (optional `kind` filter, default: `"commercial"`), GET `/api/v1/experience/{slug}`
   - `stats.py` - GET `/api/v1/stats`
   - `tech_focus.py` - GET `/api/v1/tech-focus`
   - `projects.py` - GET `/api/v1/projects`, GET `/api/v1/projects/{slug}`
@@ -91,28 +89,30 @@ Key modules:
 - Scope Guard for off-topic detection
 - Deterministic fact normalization and answer generation
 - Entry point: `app/main.py`
-- Port: 8004 (Docker compose via `RAG_NEW_PORT`), 8000 (default uvicorn)
+- Port: 8014 (Docker compose local via `RAG_NEW_PORT`), 8000 (default uvicorn)
 - Docs: `/api/swagger`
 
-**Multi-Layer Pipeline Architecture:**
+**Agent Graph Architecture (StateGraph with hybrid routing):**
 ```
-User Question
+User Message
     ↓
-[ScopeGuard] - Off-topic detection (fairy tales, code generation, etc.)
-    ↓
-[PlannerLLM] - QueryPlanV3 generation (intents, entities, tool_calls)
-    ↓
-[PlanExecutor] - Tool execution orchestration
-    ├─ [graph_query_tool] - Knowledge graph queries
-    └─ [portfolio_search_tool] - Hybrid retrieval (dense + BM25 + rerank)
-    ↓
-[FactNormalizer] - Deterministic fact filtering by intent
-    ↓
-[AnswerLLM] - Answer generation with strict prompting (no hallucinations)
-    ↓
-[RenderEngine] - Format to target style (BULLETS, TABLE, GROUPED_BULLETS, etc.)
-    ↓
-User Response (streaming or direct)
+[RouterNode] - Hybrid regex fast-path → LLM fallback intent classification
+    ├─ "greeting"/"thanks"/"farewell" → [SmallTalkNode] → END (deterministic, no LLM)
+    ├─ "cv_start"  → [CvStartNode]   → END (start CV send flow)
+    ├─ "cv_process"→ [CvProcessNode] → END (process email in CV flow)
+    └─ "rag"       → [RAG ReAct Subgraph]
+                         ↓
+                    [ScopeGuard] - Off-topic detection
+                         ↓
+                    [PlannerLLM] - QueryPlanV3 generation
+                         ↓
+                    [PlanExecutor]
+                         ├─ [graph_query_tool]
+                         └─ [portfolio_search_tool]
+                         ↓
+                    [FactNormalizer] → [AnswerLLM] → [RenderEngine]
+                         ↓
+                    User Response (streaming NDJSON)
 ```
 
 **Core Modules:**
@@ -137,8 +137,17 @@ User Response (streaming or direct)
   - GET `/api/v1/rate-limit/status` - Rate limit status for current IP
 
 **Agent System** (`app/agent/`):
-- `graph.py` - LangGraph agent with ReAct pattern and memory
-- `rag_tool.py` - Async RAG tool for agent with pipeline status emission
+- `graph.py` - Top-level `StateGraph` with hybrid router dispatching to branches (RAG subgraph, CV, smalltalk)
+- `graph_state.py` - `AgentState` TypedDict: `messages`, `pending_action` (`""` | `"cv_awaiting_email"`), `_route_intent`
+- `router.py` - `router_node(state, config)`: regex fast-path → LLM fallback; `route_edge(state)` conditional edge
+- `router_llm.py` - `classify_intent(text, llm)` → `greeting/thanks/farewell/cv_request/rag`; `is_cv_continuation(text, llm)` for multi-turn flow
+- `cv_nodes.py` - CV send graph nodes:
+  - `cv_start_node(state, config)` - starts CV send: extracts email or asks for it, sets `pending_action="cv_awaiting_email"`
+  - `cv_process_node(state, config)` - processes email input in multi-turn flow
+  - `_check_cv_rate_limit(ip, email)` / `_record_cv_send(ip, email)` - per-IP and per-email Redis rate limiting
+  - `_emit_status("sending_cv", "Отправляю резюме...", config)`
+- `smalltalk_node.py` - Deterministic canned responses for `greeting`, `thanks`, `farewell` (no LLM calls)
+- `rag_tool.py` - Async RAG tool for ReAct subgraph with pipeline status emission
   - `_emit_status(stage, text, config)` - Sends status events to frontend via `asyncio.Queue` from `config["configurable"]["_status_queue"]`
   - Stages emitted: `planning`, `searching`, `verifying`, `answering`
   - Heavy sync operations wrapped in `asyncio.to_thread()` (planner, executor, critic, search, answer)
@@ -160,7 +169,11 @@ User Response (streaming or direct)
 - `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCallV3, RenderStyleV3, AnswerStyleV3, InfoNeed, ScopeLevel, TechFilter, Scope, EntitiesV3, AnswerFormatV3, LimitsConfigV3, FallbackConfigV3, FactBundleItem, FactBundle, NormalizerOutput, GroundingResult
 - `schemas.py` - Legacy QueryPlan schema (V2 compatibility)
 - `prompts.py` - System prompts for planner (intents, tools, entity extraction)
-- `shortcuts.py` - Plan shortcuts for unambiguous questions (contacts, current job, who is developer)
+- `shortcuts.py` - Plan shortcuts for unambiguous questions (4 patterns):
+  1. Contacts (`контакты|связаться|...`) → `CONTACTS` intent
+  2. Current job (`где работает|текущая работа|...`) → `CURRENT_JOB` intent
+  3. Who is developer (`кто такой|кто это|о разработчике|...`) → `PROFILE` intent
+  4. Location (`где живет|в каком городе|местоположение|...`) → `PROFILE` intent
   - `SAFE_SHORTCUTS` - Dict of regex patterns to pre-built QueryPlanV3
   - `try_shortcut(question)` - Returns plan if shortcut matches, else None (falls back to LLM)
 
@@ -225,6 +238,11 @@ User Response (streaming or direct)
 - `portfolio_search_tool.py` - Hybrid search with full RAG pipeline
 - `graph_query_tool.py` - Structured graph queries (project_details, technologies, experience)
 
+**Email Module** (`app/email/`):
+- `service.py` - `EmailService` class: `send_cv(to_email)` via `smtplib` (STARTTLS), multipart MIME with HTML body + PDF attachment
+- `templates.py` - `CV_EMAIL_SUBJECT`, `cv_email_body_html(site_url)`, `cv_email_body_plain(site_url)`
+- `validation.py` - `validate_email(email)` (with blocklist of 16 disposable domains), `extract_email(text)` for parsing email from free text
+
 **RAG Pipeline** (`app/rag/`):
 - `search.py` - `portfolio_search()` orchestration
 - `retrieval.py` - `HybridRetriever` (dense + BM25 + RRF merge + MMR dedup)
@@ -255,7 +273,7 @@ User Response (streaming or direct)
 - `plan_cache.py` - Plan caching with shortcuts and LLM fallback
 - `embedding_cache.py` - Embedding caching for query vectors
 - Features:
-  - Redis-based caching with configurable TTL
+  - Redis-based caching with configurable TTL (default: `0` = **infinite**, manual clear only)
   - Automatic plan cache invalidation on content hash change
   - Question normalization for cache key consistency
   - Graceful degradation when Redis is unavailable
@@ -289,21 +307,8 @@ User Response (streaming or direct)
 - `logging_utils.py` - Compact JSON, text truncation
 - `metadata.py` - Document ID generation, content hashing
 
-### 3. **RAG API Legacy** (`services/rag-api/`) ⚠️ LEGACY
-**Simpler RAG architecture - still available but use rag-api-new for new features**
-
-- Basic semantic search and question answering
-- LangGraph agent with memory (ReAct pattern)
-- Hybrid retrieval: dense embeddings + BM25
-- Cross-encoder reranking
-- Streaming chat interface
-- Entry point: `app/main.py`
-- Port: 8004
-
-See legacy documentation in previous CLAUDE.md versions.
-
-### 4. **Frontend** (`frontend-new/`)
-**IMPORTANT: Use `frontend-new`, NOT `frontend` (old version)**
+### 3. **Frontend** (`frontend-new/`)
+**IMPORTANT: Use `frontend-new`, NOT `frontend` (deleted)**
 
 - Next.js 14 with App Router
 - Server-side rendering (SSR)
@@ -389,7 +394,7 @@ See legacy documentation in previous CLAUDE.md versions.
   - `WorkApproach`, `WorkApproachBullet`, `SectionMeta`
   - `RateLimitBucket`, `RateLimitInfo`, `RateLimitStatus`, `RateLimitError`
 
-### 5. **Infrastructure** (`infra/`)
+### 4. **Infrastructure** (`infra/`)
 - Docker Compose orchestration
 - Compose files:
   - `docker-compose.local.yaml` - **Primary** local development compose (all services)
@@ -402,7 +407,7 @@ See legacy documentation in previous CLAUDE.md versions.
   - tei (port 8006) - Text Embeddings Inference for multilingual-e5-base
   - litellm (port 8005 external / 4000 internal) - unified proxy for LLM/embeddings
   - redis (port 6379) - Redis for caching and rate limiting
-  - rag-api (port 8004) - builds from rag-api-new/ (service name kept, builds new codebase)
+  - rag-api (port 8014) - builds from rag-api-new/ (service name kept, builds new codebase; volume mounts `../data/cv.pdf:/app/data/cv.pdf:ro`)
   - rag-ingest - one-shot service: exports from content-api → ingests into rag-api
 - Additional:
   - `caddy/Caddyfile` - Reverse proxy configuration (production)
@@ -411,7 +416,7 @@ See legacy documentation in previous CLAUDE.md versions.
   - `.env.dev`, `.env.local`, `.env.prod`, `.env.example` - Environment variable templates
   - `DOCKER-LOCAL.md`, `DOCKER-PROD.md` - Docker setup guides
 
-### 6. **Technical Documentation** (`discource/`)
+### 5. **Technical Documentation** (`discource/`)
 **Project specifications and technical requirements storage**
 
 The `discource/` folder contains all technical documentation for feature implementation:
@@ -437,7 +442,7 @@ discource/
 
 1. **Multi-LLM Providers** (`TZ_MULTI_LLM_PROVIDERS.md`):
    - GigaChat, DeepSeek, Qwen provider architecture
-   - 5 LLM roles (identity, planner, answer, critic, agent)
+   - 5 LLM roles documented (identity, planner, answer, critic, agent); 6th role `router` added later
    - LLMFactory with caching and validation
 
 2. **Rate Limiting** (`TZ_RATE_LIMIT.md`):
@@ -483,10 +488,10 @@ npm run lint         # Run ESLint
 Environment variables (`.env.local`):
 ```bash
 NEXT_PUBLIC_CONTENT_API_BASE=http://localhost:8003/api/v1
-NEXT_PUBLIC_AGENT_API_BASE=http://localhost:8004  # rag-api in Docker compose (RAG_NEW_PORT)
+NEXT_PUBLIC_AGENT_API_BASE=http://localhost:8014  # rag-api in Docker compose (RAG_NEW_PORT=8014)
 # Server-side variants (override NEXT_PUBLIC_ in SSR context):
 CONTENT_API_BASE=http://localhost:8003/api/v1
-AGENT_API_BASE=http://localhost:8004
+AGENT_API_BASE=http://localhost:8014
 # Streaming text animation settings:
 NEXT_PUBLIC_CHARS_PER_SECOND=60
 NEXT_PUBLIC_MAX_CHARS_PER_TICK=4
@@ -537,7 +542,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # Ingest documents into ChromaDB (after content-api is populated)
 # 1. Export from content-api: GET http://localhost:8003/api/v1/rag/export
-# 2. Import to rag-api: POST http://localhost:8004/api/v1/ingest/batch
+# 2. Import to rag-api: POST http://localhost:8014/api/v1/ingest/batch
 # Or use the rag-ingest service: docker compose -f docker-compose.local.yaml up rag-ingest
 ```
 
@@ -560,26 +565,26 @@ PLANNER_LLM=gigachat:GigaChat-2
 ANSWER_LLM=deepseek:deepseek-chat
 CRITIC_LLM=deepseek:deepseek-reasoner
 AGENT_LLM=gigachat:GigaChat-2
+ROUTER_LLM=deepseek:deepseek-chat
 giga_auth_data=  # Base64 GigaChat credentials (optional)
 DEEPSEEK_API_KEY=  # DeepSeek API key (optional)
-# Cache & Rate Limiting
+# Cache (TTL=0 means infinite, manual clear only)
 REDIS_URL=redis://localhost:6379/0
-PLAN_CACHE_TTL=604800                 # 7 days
+PLAN_CACHE_TTL=0
+EMBEDDING_CACHE_TTL=0
+# Rate Limiting (production values — compose overrides)
 RATE_LIMIT_IP_TOKENS=50000
 RATE_LIMIT_WINDOW_SECONDS=3600        # 1 hour
 MAX_USER_INPUT_TOKENS=250             # ~1000 chars
+# CV sending via email
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=noreply@example.com
+SMTP_PASSWORD=secret
+SMTP_FROM_EMAIL=noreply@example.com
+DOMAIN=https://ai-folio.ru
+CV_FILE_PATH=/app/data/cv.pdf
 ```
-
-### RAG API Legacy (rag-api)
-
-```bash
-cd services/rag-api
-
-# Run the API (development)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Environment variables (same as rag-api-new but with `chroma_collection=portfolio`).
 
 ### Docker Infrastructure
 
@@ -671,12 +676,14 @@ pytest tests/
 1. **Content Management**: Admin/scripts → PostgreSQL (via content-api-new)
 2. **RAG Ingestion**: content-api-new `/api/v1/rag/export` → rag-api-new `/api/v1/ingest/batch` → ChromaDB + BM25 + Knowledge Graph (automated via `rag-ingest` service in compose)
 3. **Frontend SSR**: Next.js → content-api-new `/api/v1/*` → PostgreSQL → JSON response
-4. **Agent Chat**: User → frontend-new AgentDock → rag-api-new `/api/v1/agent/chat/stream` → Multi-layer pipeline
+4. **Agent Chat**: User → frontend-new AgentDock → rag-api-new `/api/v1/agent/chat/stream` → `RouterNode` → branch dispatch
 5. **RAG Query Flow (rag-api-new)**:
-   - ScopeGuard → PlannerLLM → PlanExecutor
+   - RouterNode (regex/LLM) → "rag" branch → ScopeGuard → PlannerLLM → PlanExecutor
    - → HybridRetriever (dense + BM25) → Rerank → Evidence
    - → FactNormalizer → AnswerLLM → RenderEngine → Response
-6. **Thinking Status Events**: rag_tool.py `_emit_status()` → `asyncio.Queue` via config → chat.py unified queue → NDJSON `status` event → frontend ThinkingStatus component
+6. **CV Sending Flow**: User asks for CV → RouterNode → "cv_start" → CvStartNode (ask for email) → User sends email → "cv_process" → CvProcessNode → EmailService (SMTP) → PDF attachment sent
+7. **Smalltalk Flow**: User says greeting/thanks/farewell → RouterNode → SmallTalkNode → canned response (no LLM)
+8. **Thinking Status Events**: rag_tool.py / cv_nodes.py `_emit_status()` → `asyncio.Queue` via config → chat.py unified queue → NDJSON `status` event → frontend ThinkingStatus component
 
 ### NDJSON Streaming Events (`/api/v1/agent/chat/stream`)
 
@@ -702,16 +709,44 @@ The streaming endpoint emits NDJSON events with the following types:
 | `verifying` | Проверяю полноту данных... | rag_tool.py (conditional, critic) |
 | `answering` | Формирую ответ... | rag_tool.py |
 | `identity` | Формирую ответ... | chat.py (identity fast-path) |
+| `sending_cv` | Отправляю резюме... | cv_nodes.py (CV send flow) |
 
-**Status delivery mechanism:** `rag_tool.py` uses `_emit_status()` which puts events into an `asyncio.Queue` stored in `config["configurable"]["_status_queue"]`. `chat.py` runs two concurrent tasks — `_run_agent` (LangGraph events) and `_relay_status` (queue consumer) — merged into a unified queue for ordered NDJSON emission.
+**Status delivery mechanism:** `rag_tool.py` and `cv_nodes.py` use `_emit_status()` which puts events into an `asyncio.Queue` stored in `config["configurable"]["_status_queue"]`. `chat.py` runs two concurrent tasks — `_run_agent` (LangGraph events) and `_relay_status` (queue consumer) — merged into a unified queue for ordered NDJSON emission. Events from the internal `router` node are filtered out and never streamed to the user.
 
 ---
 
 ## Key Architectural Patterns
 
+### Hybrid Router (rag-api-new)
+
+Before any RAG processing, the agent graph runs a hybrid router (`app/agent/router.py`) that dispatches messages to different branches:
+
+1. **Regex fast-path**: Checks for greeting (`привет`, `hello`), thanks (`спасибо`), farewell (`пока`), CV request (`пришли резюме`, `send cv`) patterns — instant dispatch without LLM
+2. **Multi-turn state**: If `pending_action == "cv_awaiting_email"`, checks if user sent an email address
+3. **LLM fallback**: For ambiguous inputs, calls `router_llm` (`classify_intent()`) to classify as `greeting/thanks/farewell/cv_request/rag`
+
+**Branches:**
+- `greeting/thanks/farewell` → `smalltalk_node` (deterministic canned responses, 0 LLM calls)
+- `cv_start` → `cv_start_node` (extract/ask for email, trigger CV send)
+- `cv_process` → `cv_process_node` (process email in ongoing CV flow)
+- `rag` → full ReAct subgraph with RAG pipeline
+
+Router events are filtered from NDJSON stream and never shown to users.
+
+### CV Sending Feature (rag-api-new)
+
+Multi-turn flow for sending CV via email:
+1. User asks for CV → `cv_start_node`: extracts email from text or sets `pending_action="cv_awaiting_email"` and asks user
+2. User sends email → `cv_process_node`: validates email, checks rate limits, calls `EmailService.send_cv()`
+3. `EmailService` (stdlib `smtplib`): builds multipart MIME message (HTML body + PDF attachment), sends via STARTTLS
+4. Rate limiting: 3 sends per IP per hour, 2 sends per email address per hour (Redis keys `cv:ip:{ip}` and `cv:email:{email}`)
+5. Email validation: regex + disposable domain blocklist (16 providers blocked), `extract_email()` parses free text
+
+CV PDF must exist at `CV_FILE_PATH` (default `/app/data/cv.pdf`). Configure SMTP via env vars.
+
 ### Multi-Layer RAG Pipeline (rag-api-new)
 
-The new RAG system uses a sophisticated multi-layer architecture:
+The RAG system (triggered via "rag" routing branch) uses a sophisticated multi-layer architecture:
 
 1. **Scope Guard**: Detects off-topic questions (fairy tales, code generation, general knowledge)
    - Returns polite refusal with 5 suggested portfolio questions
@@ -749,7 +784,7 @@ The system supports multiple LLM providers with role-based model selection:
 - `deepseek` - DeepSeek API via `ChatOpenAI` - excels at reasoning (R1 model)
 - `qwen` - Qwen via LiteLLM → vLLM (local) - cost-effective for simple tasks
 
-**LLM Roles (5 independent configurations):**
+**LLM Roles (6 independent configurations):**
 
 | Role | Purpose | Compose Default | Code Default | Temperature |
 |------|---------|-----------------|--------------|-------------|
@@ -758,6 +793,7 @@ The system supports multiple LLM providers with role-based model selection:
 | `answer` | User-facing responses | `deepseek:deepseek-chat` | `gigachat:GigaChat-2` | 0.2 |
 | `critic` | Fact sufficiency evaluation | `deepseek:deepseek-reasoner` | `gigachat:GigaChat-2` | 0.2 |
 | `agent` | ReAct orchestration | `gigachat:GigaChat-2` | `gigachat:GigaChat-2` | 0.2 |
+| `router` | Intent classification (greeting/cv/rag) | `deepseek:deepseek-chat` | `deepseek:deepseek-chat` | 0.0 |
 
 **LLM ID Format:** `provider:model` (e.g., `gigachat:GigaChat-2`, `deepseek:deepseek-reasoner`)
 
@@ -771,6 +807,7 @@ The system supports multiple LLM providers with role-based model selection:
 | `ANSWER_LLM` | ⚠️ Overkill | ✅ | Text generation |
 | `CRITIC_LLM` | ✅ | ✅ | No tool calls |
 | `AGENT_LLM` | ❌ **CANNOT USE** | ✅ | Requires tool calling |
+| `ROUTER_LLM` | ⚠️ Overkill | ✅ | Fast classification (max_tokens=32) |
 
 **Architecture:**
 ```
@@ -791,7 +828,7 @@ The system supports multiple LLM providers with role-based model selection:
 - `app/llm/providers.py` - `LLMProvider` enum, `ProviderConfig`
 - `app/llm/exceptions.py` - `LLMConfigError`, `LLMProviderError`
 - `app/llm/validation.py` - `validate_llm_config()` for startup validation
-- `app/deps.py` - Role-specific LLM getters: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`
+- `app/deps.py` - Role-specific LLM getters: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`, `router_llm()`, `email_service()`
 
 **Configuration (environment variables):**
 ```bash
@@ -806,6 +843,7 @@ PLANNER_LLM=gigachat:GigaChat-2
 ANSWER_LLM=deepseek:deepseek-chat
 CRITIC_LLM=deepseek:deepseek-reasoner
 AGENT_LLM=gigachat:GigaChat-2
+ROUTER_LLM=deepseek:deepseek-chat
 
 # Temperatures
 IDENTITY_TEMPERATURE=0.3
@@ -813,6 +851,7 @@ PLANNER_TEMPERATURE=0.0
 ANSWER_TEMPERATURE=0.2
 CRITIC_TEMPERATURE=0.2
 AGENT_TEMPERATURE=0.2
+ROUTER_TEMPERATURE=0.0
 ```
 
 **TokenUsageCollector (Rate Limiting Integration):**
@@ -821,7 +860,8 @@ The system aggregates token usage from ALL LLM roles for accurate rate limiting:
 
 ```
 Request Flow:
-Identity LLM ─────┐
+Router LLM ───────┐
+Identity LLM ─────┤
 Planner LLM ──────┤
 Critic LLM ───────┼──► TokenUsageCollector ──► rate_limiter.record_usage()
 Answer LLM ───────┤
@@ -849,8 +889,6 @@ The system builds a knowledge graph from portfolio data:
 - See `app/graph/builder.py:build_graph()`
 
 ### Hybrid Retrieval
-
-Both RAG services use hybrid retrieval:
 1. **Dense Search**: ChromaDB similarity search with embeddings
 2. **BM25 Search**: Lexical keyword matching
 3. **RRF Merge**: Reciprocal Rank Fusion to combine results
@@ -968,8 +1006,8 @@ Key models and relationships (`services/content-api-new/app/models/`):
 
 **Project** (`project.py`):
 - Personal featured projects (not tied to company experience)
-- Fields: name, slug, featured, period, company_name, company_website
-- New fields: domain ("cv" | "rag" | "backend" | "mlops" | "other"), repo_url, demo_url
+- Fields: name, slug, short_title, featured, is_active, period, company_name, company_website, order_index
+- Fields: domain ("cv" | "rag" | "backend" | "mlops" | "other"), repo_url, demo_url
 - Markdown fields: description_md, long_description_md
 - Many-to-many with Technology via `project_technology` junction table
 
@@ -1046,6 +1084,7 @@ Key variables (see `infra/.env.dev`):
 - `ANSWER_LLM` - LLM for answer generation (compose default: `deepseek:deepseek-chat`)
 - `CRITIC_LLM` - LLM for fact evaluation (compose default: `deepseek:deepseek-reasoner`)
 - `AGENT_LLM` - LLM for ReAct agent (compose default: `gigachat:GigaChat-2`)
+- `ROUTER_LLM` - LLM for intent classification in router (default: `deepseek:deepseek-chat`, max_tokens=32)
 
 **LLM Temperatures:**
 - `IDENTITY_TEMPERATURE` - Identity LLM temperature (default: 0.3)
@@ -1053,6 +1092,7 @@ Key variables (see `infra/.env.dev`):
 - `ANSWER_TEMPERATURE` - Answer LLM temperature (default: 0.2)
 - `CRITIC_TEMPERATURE` - Critic LLM temperature (default: 0.2)
 - `AGENT_TEMPERATURE` - Agent LLM temperature (default: 0.2)
+- `ROUTER_TEMPERATURE` - Router LLM temperature (default: 0.0)
 
 **RAG API Specific:**
 - `TEI_BASE_URL` - Direct TEI access URL (default: `http://tei:80/v1`)
@@ -1079,8 +1119,23 @@ Key variables (see `infra/.env.dev`):
 **Redis Cache:**
 - `REDIS_URL` - Redis connection URL (e.g., `redis://localhost:6379/0`)
 - `CACHE_ENABLED` - Enable/disable caching (default: true)
-- `PLAN_CACHE_TTL` - Plan cache TTL in seconds (default: 604800 = 7 days)
-- `EMBEDDING_CACHE_TTL` - Embedding cache TTL in seconds (default: 604800 = 7 days)
+- `PLAN_CACHE_TTL` - Plan cache TTL in seconds (default: `0` = **infinite**, manual clear only)
+- `EMBEDDING_CACHE_TTL` - Embedding cache TTL in seconds (default: `0` = **infinite**, manual clear only)
+
+**CV Sending (Email):**
+- `SMTP_HOST` - SMTP server host
+- `SMTP_PORT` - SMTP port (default: 587, STARTTLS)
+- `SMTP_USER` - SMTP username
+- `SMTP_PASSWORD` - SMTP password
+- `SMTP_FROM_EMAIL` - Sender email address
+- `SMTP_FROM_NAME` - Sender display name (default: `"AI-Portfolio | Dmitry"`)
+- `SMTP_USE_TLS` - Use STARTTLS (default: true)
+- `DOMAIN` - Site domain for email templates (e.g., `https://ai-folio.ru`)
+- `CV_FILE_PATH` - Path to CV PDF in container (default: `/app/data/cv.pdf`)
+- `CV_ATTACHMENT_NAME` - Attachment filename in email
+- `CV_SEND_LIMIT_PER_IP` - Max CV sends per IP per window (default: 3)
+- `CV_SEND_LIMIT_PER_EMAIL` - Max CV sends per email per window (default: 2)
+- `CV_SEND_LIMIT_WINDOW_SECONDS` - CV rate limit window (default: 3600 = 1 hour)
 
 **Vector Database:**
 - `CHROMA_HOST` - ChromaDB host
@@ -1094,7 +1149,7 @@ Key variables (see `infra/.env.dev`):
 - `TEI_PORT` - 8006 (Text Embeddings Inference)
 - `LITELLM_PORT` - 8005 (LiteLLM proxy)
 - `REDIS_PORT` - 6379 (Redis)
-- `RAG_NEW_PORT` - 8004 (rag-api, builds from rag-api-new/)
+- `RAG_NEW_PORT` - 8014 (rag-api, builds from rag-api-new/; compose YAML fallback is `:-8004` but `.env.dev`/`.env.example` set it to `8014`)
 
 ---
 
@@ -1102,8 +1157,7 @@ Key variables (see `infra/.env.dev`):
 
 1. **Wrong Service Directories**:
    - ✅ Use `content-api-new`, `frontend-new`, `rag-api-new`
-   - ⚠️ `rag-api` is legacy - use only for maintenance
-   - ❌ `content-api`, `frontend` directories were deleted
+   - ❌ `content-api`, `frontend`, `rag-api` directories were deleted (do not reference them)
 
 2. **API Versioning**:
    - content-api-new endpoints are prefixed with `/api/v1/`
@@ -1141,23 +1195,29 @@ Key variables (see `infra/.env.dev`):
     - BM25 index is stored in pickle files (`~/.bm25.{collection}.pkl`)
     - Clear both ChromaDB and BM25 when resetting collection via `/api/v1/admin/collection`
 
-12. **Different Collections**:
-    - `rag-api` uses `chroma_collection=portfolio`
+12. **ChromaDB Collection**:
     - `rag-api-new` uses `chroma_collection=portfolio_new`
-    - Data must be ingested separately to each
+    - The old `portfolio` collection (from deleted rag-api) is no longer used
 
 13. **Cache Invalidation**:
     - Plan cache auto-invalidates when content hash changes (after ingest)
     - Embedding cache does NOT auto-invalidate (depends only on query text)
     - After changing `prompts.py` or planner logic: clear plan cache via `/api/v1/admin/cache/plans`
     - After changing embedding model: clear embedding cache via `/api/v1/admin/cache/embeddings`
+    - Default TTL is `0` (infinite) — caches persist until manually cleared
 
 14. **Rate Limit Token Consumption**:
-    - Each agent request consumes ~6000-9000 tokens due to multi-stage pipeline
-    - Pipeline stages: Agent system prompt (~2000), Planner LLM (~1500), RAG Tool (~1500), Answer LLM (~2000), Response (~1500)
-    - With default limit of 50000 tokens/hour, users can make ~5-8 requests per hour
-    - For testing, use lower limit (e.g., 4500) but be aware even one request may exceed it
+    - Each agent request consumes ~6000-9000 tokens due to multi-stage pipeline (6 LLM roles)
+    - Pipeline stages: Router LLM (~50), Agent system prompt (~2000), Planner LLM (~1500), RAG Tool (~1500), Answer LLM (~2000), Response (~1500)
+    - With production limit of 50000 tokens/hour, users can make ~5-8 requests per hour
     - Rate limit is per IP, not per session - all users from same IP share the limit
+    - CV send has a separate Redis-based rate limit: 3/IP and 2/email per hour
+
+16. **CV Sending Setup**:
+    - CV PDF must be placed at path defined by `CV_FILE_PATH` (default `/app/data/cv.pdf` in container)
+    - `data/` directory at project root is volume-mounted into the container
+    - SMTP credentials must be configured via env vars for CV sending to work
+    - If SMTP not configured, `EmailService` logs a warning and CV send will fail gracefully
 
 15. **Technical Specs in `discource/`**:
     - Always check `discource/docs/` for existing ТЗ before implementing new features
@@ -1219,8 +1279,13 @@ AI-Portfolio/
 │   │   │   ├── deps.py             # Shared dependencies (LLMs, vectorstore)
 │   │   │   ├── prefetch.py         # Cache warmup for popular questions
 │   │   │   ├── agent/              # Agent system
-│   │   │   │   ├── graph.py        # LangGraph agent
-│   │   │   │   ├── rag_tool.py     # RAG tool
+│   │   │   │   ├── graph.py        # StateGraph: hybrid router + ReAct subgraph + CV + smalltalk
+│   │   │   │   ├── graph_state.py  # AgentState TypedDict (messages, pending_action, _route_intent)
+│   │   │   │   ├── router.py       # router_node (regex→LLM), route_edge conditional
+│   │   │   │   ├── router_llm.py   # classify_intent(), is_cv_continuation()
+│   │   │   │   ├── cv_nodes.py     # cv_start_node, cv_process_node, CV rate limiting
+│   │   │   │   ├── smalltalk_node.py # Deterministic responses for greeting/thanks/farewell
+│   │   │   │   ├── rag_tool.py     # RAG tool (ReAct subgraph)
 │   │   │   │   ├── identity/       # Identity questions (classifier.py, prompts.py)
 │   │   │   │   ├── planner/        # LLM planner (planner_llm.py, schemas_v3.py, schemas.py, prompts.py, shortcuts.py)
 │   │   │   │   ├── scope_guard/    # Off-topic detection (scope_guard.py, schemas.py)
@@ -1252,6 +1317,10 @@ AI-Portfolio/
 │   │   │   │   ├── chunker.py      # Text chunking
 │   │   │   │   ├── bm25.py         # BM25 index
 │   │   │   │   └── persistence.py  # BM25 persistence
+│   │   │   ├── email/              # CV sending via SMTP (NEW)
+│   │   │   │   ├── service.py      # EmailService (smtplib, multipart MIME + PDF)
+│   │   │   │   ├── templates.py    # CV email HTML/plain body templates
+│   │   │   │   └── validation.py   # validate_email, extract_email (disposable domain blocklist)
 │   │   │   ├── cache/              # Redis caching
 │   │   │   │   ├── cache_service.py # CacheService with graceful degradation
 │   │   │   │   ├── plan_cache.py   # Plan caching (shortcut → cache → LLM)
@@ -1287,17 +1356,9 @@ AI-Portfolio/
 │   │   ├── Dockerfile
 │   │   └── Dockerfile.prod         # Production Docker image
 │   │
-│   └── rag-api/                    # ⚠️ LEGACY RAG API (simpler architecture)
-│       └── app/
-│           ├── main.py
-│           ├── settings.py
-│           ├── deps.py
-│           ├── api_ask.py, api_ingest.py, api_ingest_batch.py, api_admin.py
-│           ├── rag/                # Legacy RAG pipeline
-│           ├── agent/              # Legacy agent (graph.py, tools.py)
-│           ├── llm/
-│           ├── utils/
-│           └── schemas/
+│
+├── data/                            # Static files volume-mounted into containers
+│   └── cv.pdf                       # CV PDF for email sending (CV_FILE_PATH=/app/data/cv.pdf)
 │
 ├── scripts/
 │   ├── ingest.py                   # RAG document ingestion (legacy)
@@ -1338,10 +1399,11 @@ AI-Portfolio/
 
 **Key Points:**
 - ✅ **Active services**: `frontend-new`, `content-api-new`, `rag-api-new`
-- ⚠️ **Legacy**: `rag-api` (still available, simpler architecture)
+- ❌ **Deleted**: `rag-api`, `content-api`, `frontend` — do not reference
 - 🐳 **Docker**: Use `infra/docker-compose.local.yaml` for local development
 - 📝 **Rules**: Follow encoding and architecture rules in Critical Rules section
 - 📋 In Docker compose, service `rag-api` builds from `rag-api-new/` — there is no separate `rag-api-new` service in compose
+- 📁 `data/cv.pdf` at project root is volume-mounted into rag-api container for CV sending
 
 ---
 
@@ -1359,7 +1421,7 @@ AI-Portfolio/
 9. **Check `discource/` for specs** before implementing new features - specs may already exist
 
 **Never:**
-1. Use deleted directories (`content-api`, `frontend`)
+1. Use deleted directories (`content-api`, `frontend`, `rag-api`)
 2. Change file encoding from UTF-8
 3. Modify old Alembic migrations
 4. Create circular imports
