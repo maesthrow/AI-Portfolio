@@ -33,7 +33,7 @@ export default function ContactsSection({ contacts, sectionMeta }: ContactsSecti
         </div>
         <div className="relative space-y-3 font-mono text-sm text-accent-soft">
           <p>
-            root@portfolio ~ $ contact --list <span className="animate-pulse opacity-80">_</span>
+            root@ai-portfolio ~ $ contact --list
           </p>
           <p className="text-xs text-gray-300">инициализирую модуль связи...</p>
           <p className="text-xs text-accent">✓ Загружены контакты</p>
@@ -43,8 +43,8 @@ export default function ContactsSection({ contacts, sectionMeta }: ContactsSecti
             <ContactCard key={`${contact.kind}-${contact.value}`} contact={contact} />
           ))}
         </div>
-        <div className="relative mt-6 flex items-center gap-2 font-mono text-sm text-accent-soft">
-          &gt; status: <span className="animate-pulse opacity-80">ready_to_connect_</span>
+        <div className="relative mt-6 font-mono text-sm text-accent-soft">
+          &gt; status: ready_to_connect<span className="animate-pulse">_</span>
         </div>
       </div>
     </Section>
