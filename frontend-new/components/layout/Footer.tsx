@@ -18,7 +18,7 @@ export default function Footer() {
 
         {/* Text with hover */}
         <p className="max-w-2xl px-4 text-center text-[#00ffc3]/80 text-sm transition-all duration-500 hover:text-[#00ffc3]/95 hover:drop-shadow-[0_0_12px_rgba(0,255,200,0.35)] cursor-default">
-          <span className="text-[#00ffc3]/90">&gt;</span> Создано с использованием AI и киберпанк-эстетики | 2025
+          <span className="text-[#00ffc3]/90">&gt;</span> Создано с использованием AI и киберпанк-эстетики | 2026
         </p>
 
         {/* Right decorative line — sweep goes inward (right → left, toward text) */}
