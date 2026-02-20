@@ -140,6 +140,97 @@
   will-change: background-position;
 }
 
+/* Footer: top line — dual sweep from center outward */
+@keyframes footer-top-sweep-right {
+  0%, 100% {
+    background-position: 50% 0;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  48% {
+    background-position: calc(100% + 60px) 0;
+    opacity: 0;
+  }
+}
+
+@keyframes footer-top-sweep-left {
+  0%, 100% {
+    background-position: 50% 0;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  48% {
+    background-position: -60px 0;
+    opacity: 0;
+  }
+}
+
+.footer-top-sweep-right {
+  background-image: linear-gradient(
+    to right,
+    transparent,
+    rgba(0, 255, 195, 0.75),
+    transparent
+  );
+  background-size: 60px 1px;
+  background-repeat: no-repeat;
+  animation: footer-top-sweep-right 7s ease-out infinite;
+  will-change: background-position, opacity;
+}
+
+.footer-top-sweep-left {
+  background-image: linear-gradient(
+    to right,
+    transparent,
+    rgba(0, 255, 195, 0.75),
+    transparent
+  );
+  background-size: 60px 1px;
+  background-repeat: no-repeat;
+  animation: footer-top-sweep-left 7s ease-out infinite;
+  will-change: background-position, opacity;
+}
+
+/* Footer: side lines — sweep inward toward text */
+@keyframes footer-side-sweep {
+  0% {
+    background-position: -30px 0;
+  }
+  100% {
+    background-position: calc(100% + 30px) 0;
+  }
+}
+
+.footer-side-sweep-inward {
+  background-image: linear-gradient(
+    to right,
+    transparent,
+    rgba(0, 255, 195, 0.6),
+    transparent
+  );
+  background-size: 30px 1px;
+  background-repeat: no-repeat;
+  animation: footer-side-sweep 3s linear infinite;
+  will-change: background-position;
+}
+
+.footer-side-sweep-inward-reverse {
+  background-image: linear-gradient(
+    to right,
+    transparent,
+    rgba(0, 255, 195, 0.6),
+    transparent
+  );
+  background-size: 30px 1px;
+  background-repeat: no-repeat;
+  animation: footer-side-sweep 3s linear infinite reverse;
+  will-change: background-position;
+}
+
 @keyframes glowDrift {
   0% {
     transform: translate3d(0, 0, 0) scale(1);
