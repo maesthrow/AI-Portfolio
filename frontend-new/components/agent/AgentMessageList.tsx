@@ -10,6 +10,7 @@ type AgentMessageListProps = {
   messages: AgentMessage[];
   typing?: boolean;
   thinkingStatus?: StatusEntry | null;
+  scrollKick?: number;
   canRetry?: boolean;
   onRetry?: (question: string) => void;
 };
@@ -49,25 +50,25 @@ export default function AgentMessageList({
   messages,
   typing = false,
   thinkingStatus = null,
+  scrollKick = 0,
   canRetry = false,
   onRetry
 }: AgentMessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevThinkingRef = useRef<StatusEntry | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, typing]);
+  }, [messages, typing, thinkingStatus]);
 
-  // Auto-scroll only on the first thinking status per request (null → non-null).
-  // setTimeout defers scroll until after ThinkingStatus updates its internal
-  // `visible` state and renders (it returns null on first render cycle).
+  // Scroll when a status event arrives. Uses a monotonic counter (scrollKick)
+  // instead of thinkingStatus transitions because React 18 automatic batching
+  // can collapse null→{x}→null into no-change when events arrive in the same
+  // TCP chunk (fast CV flow). The counter always increments, so the useEffect
+  // fires even when batched with a subsequent thinkingStatus(null).
   useEffect(() => {
-    const wasNull = prevThinkingRef.current === null;
-    prevThinkingRef.current = thinkingStatus ?? null;
-    if (wasNull && thinkingStatus && scrollRef.current) {
+    if (scrollKick > 0 && scrollRef.current) {
       const timer = setTimeout(() => {
         if (scrollRef.current) {
           scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -75,7 +76,7 @@ export default function AgentMessageList({
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [thinkingStatus]);
+  }, [scrollKick]);
 
   // Найти последнее сообщение пользователя без ответа
   const findUnansweredUserMessage = (): string | null => {

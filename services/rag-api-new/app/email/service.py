@@ -118,10 +118,11 @@ class EmailService:
         # Attachment: CV PDF
         pdf_data = cv_path.read_bytes()
         attachment = MIMEApplication(pdf_data, _subtype="pdf")
+        attach_name = s.cv_attachment_name or cv_path.name
         attachment.add_header(
             "Content-Disposition",
             "attachment",
-            filename=cv_path.name,
+            filename=attach_name,
         )
         msg.attach(attachment)
 

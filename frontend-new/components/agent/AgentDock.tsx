@@ -76,6 +76,9 @@ export default function AgentDock() {
   const releasePendingRef = useRef<boolean>(false);
   const [streamingStarted, setStreamingStarted] = useState(false);
   const [thinkingStatus, setThinkingStatus] = useState<StatusEntry | null>(null);
+  // Counter incremented on every status event — immune to React batching
+  // (unlike thinkingStatus which can go null→{x}→null in one batch).
+  const [scrollKick, setScrollKick] = useState(0);
   const hintTimerRef = useRef<number | null>(null);
   const hintHideTimerRef = useRef<number | null>(null);
 
@@ -305,10 +308,16 @@ export default function AgentDock() {
           updateAgentMessage(tempId, (m) => ({ ...m, id: event.message_id }));
         } else if (event.type === "status") {
           setThinkingStatus({ stage: event.stage, text: event.text });
+          setScrollKick(c => c + 1);
         } else if (event.type === "delta") {
           if (!streamingStarted) {
             setStreamingStarted(true);
             setThinkingStatus(null);
+            // Smooth-scroll when response starts (ThinkingStatus → text).
+            // Critical for short responses (CV flow) where the instant
+            // scrollTop assignment from [messages,typing] useEffect is
+            // barely visible.
+            setScrollKick(c => c + 1);
           }
           enqueueChars(tempId, event.content);
           updateAgentMessage(tempId, (m) => ({
@@ -345,6 +354,9 @@ export default function AgentDock() {
         ...m,
         status: m.status === "error" ? m.status : "done"
       }));
+      // Ensure scroll after stream completes (especially for short CV responses
+      // where the entire answer arrives as a single delta).
+      setScrollKick(c => c + 1);
       releasePendingRef.current = true;
       tryReleaseLoading();
     } catch (err: any) {
@@ -512,10 +524,16 @@ export default function AgentDock() {
           updateAgentMessage(tempId, (m) => ({ ...m, id: event.message_id }));
         } else if (event.type === "status") {
           setThinkingStatus({ stage: event.stage, text: event.text });
+          setScrollKick(c => c + 1);
         } else if (event.type === "delta") {
           if (!streamingStarted) {
             setStreamingStarted(true);
             setThinkingStatus(null);
+            // Smooth-scroll when response starts (ThinkingStatus → text).
+            // Critical for short responses (CV flow) where the instant
+            // scrollTop assignment from [messages,typing] useEffect is
+            // barely visible.
+            setScrollKick(c => c + 1);
           }
           enqueueChars(tempId, event.content);
           updateAgentMessage(tempId, (m) => ({
@@ -554,6 +572,9 @@ export default function AgentDock() {
         ...m,
         status: m.status === "error" ? m.status : "done"
       }));
+      // Ensure scroll after stream completes (especially for short CV responses
+      // where the entire answer arrives as a single delta).
+      setScrollKick(c => c + 1);
       releasePendingRef.current = true;
       tryReleaseLoading();
     } catch (err: any) {
@@ -623,6 +644,7 @@ export default function AgentDock() {
             streaming={loading}
             onStop={handleStop}
             thinkingStatus={thinkingStatus}
+            scrollKick={scrollKick}
             rateLimitInfo={rateLimitInfo}
             rateLimitError={rateLimitError}
             onRateLimitRetry={handleRateLimitRetry}

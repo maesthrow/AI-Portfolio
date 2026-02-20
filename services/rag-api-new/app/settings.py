@@ -181,6 +181,9 @@ class Settings(BaseSettings):
     cv_file_path: str = "/app/data/cv.pdf"
     """Path to the CV PDF file (container path in Docker)."""
 
+    cv_attachment_name: str = ""
+    """Filename shown in email attachment. Falls back to cv_file_path basename if empty."""
+
     # === CV Send Rate Limit (separate from token rate limit) ===
     cv_send_limit_per_ip: int = 3
     """Max CV sends per IP per window."""

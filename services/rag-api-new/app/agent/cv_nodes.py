@@ -73,7 +73,10 @@ def _do_send_cv(email: str, config: RunnableConfig) -> _SendResult:
         )
 
     # 4. Send
-    _emit_status("sending_cv", "Отправляю резюме...", config)
+    # NOTE: _emit_status is called by the async caller (cv_start_node /
+    # cv_process_node) BEFORE asyncio.to_thread(), not here.  asyncio.Queue
+    # is not thread-safe, so put_nowait() from a worker thread can silently
+    # lose the wakeup notification for the _relay_status coroutine.
     result = svc.send_cv(email)
 
     if result.success:
@@ -168,6 +171,10 @@ async def cv_start_node(state: dict[str, Any], config: RunnableConfig) -> dict:
     email = extract_email(text)
 
     if email:
+        # Emit status from async context (event loop thread) — asyncio.Queue
+        # is NOT thread-safe, so put_nowait from a worker thread can lose the
+        # wakeup.  This matches the pattern used in rag_tool.py.
+        _emit_status("sending_cv", "Отправляю резюме...", config)
         result = await asyncio.to_thread(_do_send_cv, email, config)
         return {
             "messages": [AIMessage(content=result.message)],
@@ -193,6 +200,7 @@ async def cv_process_node(state: dict[str, Any], config: RunnableConfig) -> dict
     email = extract_email(text)
 
     if email:
+        _emit_status("sending_cv", "Отправляю резюме...", config)
         result = await asyncio.to_thread(_do_send_cv, email, config)
         return {
             "messages": [AIMessage(content=result.message)],

@@ -17,6 +17,7 @@ type AgentChatWindowProps = {
   streamingStarted?: boolean;
   onStop?: () => void;
   thinkingStatus?: StatusEntry | null;
+  scrollKick?: number;
   rateLimitInfo?: RateLimitInfo | null;
   rateLimitError?: RateLimitError | null;
   onRateLimitRetry?: () => void;
@@ -35,6 +36,7 @@ export default function AgentChatWindow({
   streamingStarted = false,
   onStop,
   thinkingStatus,
+  scrollKick = 0,
   rateLimitInfo,
   rateLimitError,
   onRateLimitRetry,
@@ -68,6 +70,7 @@ export default function AgentChatWindow({
         messages={messages}
         typing={typing}
         thinkingStatus={thinkingStatus ?? null}
+        scrollKick={scrollKick}
         canRetry={canRetry}
         onRetry={onMessageRetry}
       />
