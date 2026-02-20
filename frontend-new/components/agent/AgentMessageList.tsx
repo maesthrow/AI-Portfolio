@@ -69,12 +69,18 @@ export default function AgentMessageList({
   // fires even when batched with a subsequent thinkingStatus(null).
   useEffect(() => {
     if (scrollKick > 0 && scrollRef.current) {
-      const timer = setTimeout(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-        }
-      }, 50);
-      return () => clearTimeout(timer);
+      // Double rAF: first rAF waits for ThinkingStatus's internal setVisible()
+      // re-render to complete; second rAF ensures the new DOM height is measured
+      // before scrolling. ~2 frames (≈32ms) vs the old setTimeout(50).
+      let raf1: number, raf2: number;
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+          }
+        });
+      });
+      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
     }
   }, [scrollKick]);
 
