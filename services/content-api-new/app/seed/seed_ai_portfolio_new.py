@@ -63,7 +63,7 @@ PROFILE_DATA = {
     "status": "ready_to_connect_",
     "avatar_url": "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
     "summary_md": (
-        "AI-инженер с продуктовым подходом и опытом backend-разработки.\n"
+        "AI-инженер с продуктовым подходом и опытом backend-разработки более пяти лет.\n"
         "Внедрял AI-решения в коммерческих проектах; фокус — архитектура агентных систем, качество продукта и бизнес-эффект."
     ),
     "hero_headline": "AI Engineer • LLM Specialist • Python Developer",
