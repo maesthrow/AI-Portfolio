@@ -55,8 +55,8 @@ Key modules:
   - `experience.py` - CompanyExperience (role, company, dates, kind, company_summary_md, company_role_md)
   - `experience_project.py` - ExperienceProject (projects within company experience with achievements_md)
   - `project.py` - Project (personal/featured projects with slug, technologies, featured, domain, repo_url, demo_url, long_description_md)
-  - `publication.py` - Publication (articles, blog posts)
-  - `contact.py` - Contact (email, telegram, github, linkedin, hh, leetcode)
+  - `publication.py` - Publication (articles, blog posts; title, year, source, url, badge, description_md, order_index)
+  - `contact.py` - Contact (email, telegram, github, linkedin, hh, leetcode; label, value, url, order_index, is_primary)
   - `stats.py` - Stat (key metrics for display)
   - `tech_focus.py` - TechFocus (technology focus areas)
   - `technology.py` - Technology (tech stack items)
@@ -102,7 +102,7 @@ User Message
     ├─ "cv_process"→ [CvProcessNode] → END (process email in CV flow)
     └─ "rag"       → [RAG ReAct Subgraph]
                          ↓
-                    [ScopeGuard] - Off-topic detection
+                    [AGENT_SYSTEM_PROMPT] - Off-topic handled via system prompt (ScopeGuard module exists but is NOT active)
                          ↓
                     [PlannerLLM] - QueryPlanV3 generation
                          ↓
@@ -111,6 +111,8 @@ User Message
                          └─ [portfolio_search_tool]
                          ↓
                     [FactNormalizer] → [AnswerLLM] → [RenderEngine]
+                         ↓
+                    [ClearPending] - Resets pending_action state
                          ↓
                     User Response (streaming NDJSON)
 ```
@@ -203,9 +205,10 @@ User Message
 - `CONTACTS` - Contact information
 - `GENERAL_UNSTRUCTURED` - Fallback for general questions
 
-**Scope Guard** (`app/agent/scope_guard/`):
-- `scope_guard.py` - Off-topic detection (fairy tales, jokes, code generation, etc.)
+**Scope Guard** (`app/agent/scope_guard/`) — **NOT active in pipeline**:
+- `scope_guard.py` - Off-topic detection module (fairy tales, jokes, code generation, etc.)
 - `schemas.py` - ScopeDecision with suggested_prompts for redirecting user
+- **Note**: ScopeGuard is NOT called from the main RAG pipeline (`rag_tool.py`). Off-topic rejection is handled by `AGENT_SYSTEM_PROMPT` in `graph.py` — the agent decides whether to call `portfolio_rag_tool` or respond directly
 
 **Executor** (`app/agent/executor/`):
 - `execute_plan.py` - PlanExecutor for tool orchestration with fallback handling
@@ -264,9 +267,9 @@ User Message
 
 **Indexing** (`app/indexing/`):
 - `normalizer.py` - Document normalization from ExportPayload
-- `chunker.py` - Text chunking (~900 chars, Russian-aware)
+- `chunker.py` - Text chunking (~1800 chars max, Russian-aware)
 - `bm25.py` - BM25Index implementation
-- `persistence.py` - BM25 persistence (`~/.bm25.{collection}.pkl`)
+- `persistence.py` - BM25 persistence (`.bm25.{collection}.pkl` (CWD-relative))
 
 **Cache** (`app/cache/`):
 - `cache_service.py` - CacheService with Redis graceful degradation
@@ -285,7 +288,7 @@ User Message
   - Token-based rate limiting per IP address (not per session)
   - Configurable token limit and time window
   - Warning threshold for approaching limit (default 80%)
-  - Redis-based storage with graceful degradation
+  - Redis-based storage — **fail-closed** (unlike CacheService which is fail-open): if Redis unavailable, returns 503 blocking ALL requests
   - Rate limit info returned in streaming response `end` event
   - Frontend displays warning when approaching limit, blocks when exceeded
 
@@ -293,8 +296,8 @@ User Message
 - `factory.py` - `LLMFactory` class, `parse_llm_id()`, `get_llm_factory()`, `get_provider_info()`
 - `providers.py` - `LLMProvider` enum (GIGACHAT, DEEPSEEK, QWEN), `ProviderConfig`
 - `exceptions.py` - `LLMConfigError`, `LLMProviderError`
-- `validation.py` - `validate_llm_config()` for startup validation
-- `gigachat_adapter.py` - GigaChat adapter for LangChain (legacy)
+- `validation.py` - `validate_llm_config()` for startup validation (validates 5 roles: identity, planner, answer, critic, agent; excludes router_llm)
+- `gigachat_adapter.py` - GigaChat adapter for LangChain (legacy, not used by LLMFactory)
 
 **Schemas** (`app/schemas/`):
 - `chat.py` - ChatRequest, ChatMessage (streaming types)
@@ -678,7 +681,7 @@ pytest tests/
 3. **Frontend SSR**: Next.js → content-api-new `/api/v1/*` → PostgreSQL → JSON response
 4. **Agent Chat**: User → frontend-new AgentDock → rag-api-new `/api/v1/agent/chat/stream` → `RouterNode` → branch dispatch
 5. **RAG Query Flow (rag-api-new)**:
-   - RouterNode (regex/LLM) → "rag" branch → ScopeGuard → PlannerLLM → PlanExecutor
+   - RouterNode (regex/LLM) → "rag" branch → ReAct Agent → PlannerLLM → PlanExecutor
    - → HybridRetriever (dense + BM25) → Rerank → Evidence
    - → FactNormalizer → AnswerLLM → RenderEngine → Response
 6. **CV Sending Flow**: User asks for CV → RouterNode → "cv_start" → CvStartNode (ask for email) → User sends email → "cv_process" → CvProcessNode → EmailService (SMTP) → PDF attachment sent
@@ -748,9 +751,9 @@ CV PDF must exist at `CV_FILE_PATH` (default `/app/data/cv.pdf`). Configure SMTP
 
 The RAG system (triggered via "rag" routing branch) uses a sophisticated multi-layer architecture:
 
-1. **Scope Guard**: Detects off-topic questions (fairy tales, code generation, general knowledge)
-   - Returns polite refusal with 5 suggested portfolio questions
-   - See `app/agent/scope_guard/scope_guard.py`
+1. **Off-topic handling**: Handled by `AGENT_SYSTEM_PROMPT` in `graph.py` — the agent decides whether to call the RAG tool or respond directly
+   - The `ScopeGuard` module exists in `app/agent/scope_guard/` but is **NOT called** from the main pipeline
+   - Agent's system prompt instructs it to only use the portfolio tool for relevant questions
 
 2. **LLM Planner**: Generates structured query plan with intents, entities, tool calls
    - Uses `with_structured_output()` for reliable JSON parsing
@@ -907,12 +910,13 @@ The RAG system creates multiple document types:
 - `contact` - Contact information
 - `stat` - Key metrics
 - `focus_area`, `work_approach` - Career information
+- `catalog` - Summary documents (technologies_all, technologies_by_company)
 - `item` - Atomic documents (achievements, bullets, stats, contacts)
 
 ### BM25 Index Persistence
 
 The BM25 index is persisted to disk:
-- Location: `~/.bm25.{collection}.pkl`
+- Location: `.bm25.{collection}.pkl` (CWD-relative)
 - Loaded on startup via `bm25_try_load()`
 - Saved after ingestion via `bm25_try_save()`
 - Reset when collection is cleared
@@ -1016,19 +1020,21 @@ Key models and relationships (`services/content-api-new/app/models/`):
 - Many-to-many with Project
 
 **Publication** (`publication.py`):
-- Articles, blog posts (title, year, source, url, badge)
+- Articles, blog posts
+- Fields: title, year, source, url, badge, description_md, order_index
 - Source types: "Habr" | "GitHub" | "Blog" | "Other"
 
 **Contact** (`contact.py`):
 - Contact methods
 - Kind types: email, telegram, github, linkedin, hh, leetcode, other
-- Fields: label, value, url
+- Fields: label, value, url, order_index, is_primary
 
 **Stat** (`stats.py`):
-- Key metrics for display (key, label, value, hint, group_name)
+- Key metrics for display (key, label, value, hint, group_name, order_index)
 
 **TechFocus** (`tech_focus.py`):
-- Technology focus areas grouping
+- Technology focus areas grouping (label, description, order_index)
+- One-to-many with `TechFocusTag` (name, order_index)
 
 **HeroTag** (`hero_tag.py`):
 - Tags displayed in hero section
@@ -1179,8 +1185,8 @@ Key variables (see `infra/.env.dev`):
    - All APIs check CORS strictly
 
 8. **Docker Networking**:
-   - PostgreSQL accessed via `host.docker.internal` (external database)
-   - Internal service communication uses service names (e.g., `chroma:8000`, `litellm:4000`)
+   - PostgreSQL accessed via `postgres:5432` (internal Docker service)
+   - Internal service communication uses service names (e.g., `chroma:8000`, `litellm:4000`, `tei:80`)
 
 9. **LiteLLM Model Aliases**:
    - Model names must match aliases in `infra/litellm/config.yaml`
@@ -1192,7 +1198,7 @@ Key variables (see `infra/.env.dev`):
     - Frontend renders with `react-markdown`
 
 11. **BM25 Index State**:
-    - BM25 index is stored in pickle files (`~/.bm25.{collection}.pkl`)
+    - BM25 index is stored in pickle files (`.bm25.{collection}.pkl` (CWD-relative))
     - Clear both ChromaDB and BM25 when resetting collection via `/api/v1/admin/collection`
 
 12. **ChromaDB Collection**:
@@ -1213,13 +1219,18 @@ Key variables (see `infra/.env.dev`):
     - Rate limit is per IP, not per session - all users from same IP share the limit
     - CV send has a separate Redis-based rate limit: 3/IP and 2/email per hour
 
-16. **CV Sending Setup**:
+15. **CV Sending Setup**:
     - CV PDF must be placed at path defined by `CV_FILE_PATH` (default `/app/data/cv.pdf` in container)
     - `data/` directory at project root is volume-mounted into the container
     - SMTP credentials must be configured via env vars for CV sending to work
     - If SMTP not configured, `EmailService` logs a warning and CV send will fail gracefully
 
-15. **Technical Specs in `discource/`**:
+16. **ScopeGuard Module**:
+    - The `app/agent/scope_guard/` module exists but is **NOT called** from the main pipeline
+    - Off-topic detection is handled by `AGENT_SYSTEM_PROMPT` in `graph.py`
+    - Do not add ScopeGuard calls to the RAG pipeline
+
+17. **Technical Specs in `discource/`**:
     - Always check `discource/docs/` for existing ТЗ before implementing new features
     - Check `discource/specs/` for detailed implementation specifications
     - Create a new spec before starting complex implementations
@@ -1288,7 +1299,7 @@ AI-Portfolio/
 │   │   │   │   ├── rag_tool.py     # RAG tool (ReAct subgraph)
 │   │   │   │   ├── identity/       # Identity questions (classifier.py, prompts.py)
 │   │   │   │   ├── planner/        # LLM planner (planner_llm.py, schemas_v3.py, schemas.py, prompts.py, shortcuts.py)
-│   │   │   │   ├── scope_guard/    # Off-topic detection (scope_guard.py, schemas.py)
+│   │   │   │   ├── scope_guard/    # Off-topic detection — NOT active in pipeline (scope_guard.py, schemas.py)
 │   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
 │   │   │   │   ├── normalizer/     # Fact normalizer (normalizer.py, fact_bundle.py)
 │   │   │   │   ├── answer/         # Answer generation (answer_llm.py, prompts.py)
@@ -1357,12 +1368,8 @@ AI-Portfolio/
 │   │   └── Dockerfile.prod         # Production Docker image
 │   │
 │
-├── data/                            # Static files volume-mounted into containers
+├── data/                            # Static files volume-mounted into containers (gitignored)
 │   └── cv.pdf                       # CV PDF for email sending (CV_FILE_PATH=/app/data/cv.pdf)
-│
-├── scripts/
-│   ├── ingest.py                   # RAG document ingestion (legacy)
-│   └── settings.py
 │
 ├── infra/
 │   ├── docker-compose.local.yaml   # ✅ Primary local dev compose

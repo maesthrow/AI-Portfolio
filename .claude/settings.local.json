@@ -23,7 +23,8 @@
       "Skill(planning-with-files)",
       "Skill(planning-with-files:*)",
       "Bash(git -C \"d:\\\\dev\\\\PycharmProjects\\\\ai\\\\AI-Portfolio\" diff HEAD~3..HEAD --name-only -- \"services/rag-api-new/\")",
-      "Bash(git -C \"d:\\\\dev\\\\PycharmProjects\\\\ai\\\\AI-Portfolio\" log --oneline -20 -- \"services/rag-api-new/\")"
+      "Bash(git -C \"d:\\\\dev\\\\PycharmProjects\\\\ai\\\\AI-Portfolio\" log --oneline -20 -- \"services/rag-api-new/\")",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": []

@@ -55,8 +55,8 @@
   - `experience.py` - CompanyExperience (role, company_name, company_slug, start_date, end_date, is_current, kind, company_summary_md, company_role_md, description_md)
   - `experience_project.py` - ExperienceProject (проекты внутри опыта с achievements_md)
   - `project.py` - Project (личные/featured проекты; slug, technologies, featured, domain, repo_url, demo_url, long_description_md)
-  - `publication.py` - Publication (статьи/посты)
-  - `contact.py` - Contact (email, telegram, github, linkedin, hh, leetcode)
+  - `publication.py` - Publication (статьи/посты; title, year, source, url, badge, description_md, order_index)
+  - `contact.py` - Contact (email, telegram, github, linkedin, hh, leetcode; label, value, url, order_index, is_primary)
   - `stats.py` - Stat (ключевые метрики)
   - `tech_focus.py` - TechFocus (технологические направления)
   - `technology.py` - Technology (элементы стека)
@@ -102,7 +102,7 @@
     ├─ "cv_process" → [CvProcessNode] → END (обработка email в CV-флоу)
     └─ "rag"        → [RAG ReAct подграф]
                           ↓
-                     [ScopeGuard] - Детекция off-topic
+                     [AGENT_SYSTEM_PROMPT] - Off-topic через системный промпт (модуль ScopeGuard есть, но НЕ активен)
                           ↓
                      [PlannerLLM] - Генерация QueryPlanV3
                           ↓
@@ -111,6 +111,8 @@
                           └─ [portfolio_search_tool]
                           ↓
                      [FactNormalizer] → [AnswerLLM] → [RenderEngine]
+                          ↓
+                     [ClearPending] - Сброс pending_action
                           ↓
                      Ответ пользователю (стриминг NDJSON)
 ```
@@ -203,9 +205,10 @@
 - `CONTACTS` - Контактная информация
 - `GENERAL_UNSTRUCTURED` - Fallback для общих вопросов
 
-**Scope Guard** (`app/agent/scope_guard/`):
-- `scope_guard.py` - Детекция off-topic (сказки, шутки, генерация кода и т.д.)
+**Scope Guard** (`app/agent/scope_guard/`) — **НЕ активен в пайплайне**:
+- `scope_guard.py` - Модуль детекции off-topic (сказки, шутки, генерация кода и т.д.)
 - `schemas.py` - ScopeDecision с suggested_prompts для перенаправления пользователя
+- **Важно**: ScopeGuard НЕ вызывается из основного RAG пайплайна (`rag_tool.py`). Off-topic отклонение обрабатывается через `AGENT_SYSTEM_PROMPT` в `graph.py` — агент сам решает, вызывать `portfolio_rag_tool` или ответить напрямую
 
 **Executor** (`app/agent/executor/`):
 - `execute_plan.py` - PlanExecutor для оркестрации тулзов с fallback handling
@@ -264,9 +267,9 @@
 
 **Indexing** (`app/indexing/`):
 - `normalizer.py` - Нормализация документов из ExportPayload
-- `chunker.py` - Чанкинг текста (~900 chars, поддержка RU)
+- `chunker.py` - Чанкинг текста (~1800 chars макс, поддержка RU)
 - `bm25.py` - BM25Index реализация
-- `persistence.py` - Персистентность BM25 (`~/.bm25.{collection}.pkl`)
+- `persistence.py` - Персистентность BM25 (`.bm25.{collection}.pkl` (относительно CWD))
 
 **Cache** (`app/cache/`):
 - `cache_service.py` - CacheService с graceful degradation для Redis
@@ -285,7 +288,7 @@
   - Токен-лимиты по IP-адресу (не по сессии)
   - Настраиваемый лимит токенов и временное окно
   - Порог предупреждения при приближении к лимиту (по умолчанию 80%)
-  - Redis-хранилище с graceful degradation
+  - Redis-хранилище — **fail-closed** (в отличие от CacheService, который fail-open): если Redis недоступен, возвращает 503, блокируя ВСЕ запросы
   - Информация о лимите возвращается в событии `end` стриминга
   - Фронтенд показывает предупреждение при приближении к лимиту, блокирует при превышении
 
@@ -293,8 +296,8 @@
 - `factory.py` - класс `LLMFactory`, `parse_llm_id()`, `get_llm_factory()`, `get_provider_info()`
 - `providers.py` - `LLMProvider` enum (GIGACHAT, DEEPSEEK, QWEN), `ProviderConfig`
 - `exceptions.py` - `LLMConfigError`, `LLMProviderError`
-- `validation.py` - `validate_llm_config()` для валидации при старте
-- `gigachat_adapter.py` - GigaChat адаптер для LangChain (legacy)
+- `validation.py` - `validate_llm_config()` для валидации при старте (валидирует 5 ролей: identity, planner, answer, critic, agent; исключает router_llm)
+- `gigachat_adapter.py` - GigaChat адаптер для LangChain (legacy, не используется LLMFactory)
 
 **Schemas** (`app/schemas/`):
 - `chat.py` - ChatRequest, ChatMessage (стриминговые типы)
@@ -689,7 +692,7 @@ pytest tests/
 3. Frontend SSR: Next.js → content-api-new `/api/v1/*` → PostgreSQL → JSON
 4. Чат агента: пользователь → frontend-new AgentDock → rag-api-new `/api/v1/agent/chat/stream` → `RouterNode` → ветвление
 5. Запрос RAG (rag-api-new):
-   - RouterNode (regex/LLM) → ветка "rag" → ScopeGuard → PlannerLLM → PlanExecutor
+   - RouterNode (regex/LLM) → ветка "rag" → ReAct Agent → PlannerLLM → PlanExecutor
    - → HybridRetriever (dense + BM25) → Rerank → Evidence
    - → FactNormalizer → AnswerLLM → RenderEngine → Ответ
 6. Флоу отправки резюме: пользователь просит CV → RouterNode → "cv_start" → CvStartNode (запрос email) → пользователь шлёт email → "cv_process" → CvProcessNode → EmailService (SMTP) → PDF-вложение
@@ -757,9 +760,9 @@ PDF резюме должен находиться по пути `CV_FILE_PATH` 
 
 Новая RAG система использует продвинутую многослойную архитектуру:
 
-1. **Scope Guard**: Детектирует off-topic вопросы (сказки, генерация кода, общие знания)
-   - Возвращает вежливый отказ с 5 предложенными вопросами о портфолио
-   - См. `app/agent/scope_guard/scope_guard.py`
+1. **Обработка off-topic**: Через `AGENT_SYSTEM_PROMPT` в `graph.py` — агент сам решает, вызывать RAG-тулзу или ответить напрямую
+   - Модуль `ScopeGuard` существует в `app/agent/scope_guard/`, но **НЕ вызывается** из основного пайплайна
+   - Системный промпт агента инструктирует его использовать portfolio tool только для релевантных вопросов
 
 2. **LLM Planner**: Генерирует структурированный план запроса с intents, entities, tool calls
    - Использует `with_structured_output()` для надежного парсинга JSON
@@ -920,12 +923,13 @@ RAG система создает несколько типов документ
 - `contact` - контактная информация
 - `stat` - ключевые метрики
 - `focus_area`, `work_approach` - информация о карьере
+- `catalog` - сводные документы (technologies_all, technologies_by_company)
 - `item` - атомарные документы (achievements, bullets, stats, contacts)
 
 ### Персистентность BM25
 
 BM25 индекс хранится на диске:
-- Локация: `~/.bm25.{collection}.pkl`
+- Локация: `.bm25.{collection}.pkl` (относительно CWD)
 - Загружается на старте через `bm25_try_load()`
 - Сохраняется после индексации через `bm25_try_save()`
 - Сбрасывается при очистке коллекции
@@ -1023,19 +1027,21 @@ BM25 индекс хранится на диске:
 - Many-to-many с Project
 
 **Publication** (`publication.py`):
-- Статьи/посты (title, year, source, url, badge)
+- Статьи/посты
+- Поля: title, year, source, url, badge, description_md, order_index
 - Источники: "Habr" | "GitHub" | "Blog" | "Other"
 
 **Contact** (`contact.py`):
 - Контакты
 - Типы: email, telegram, github, linkedin, hh, leetcode, other
-- Поля: label, value, url
+- Поля: label, value, url, order_index, is_primary
 
 **Stat** (`stats.py`):
-- Метрики для отображения (key, label, value, hint, group_name)
+- Метрики для отображения (key, label, value, hint, group_name, order_index)
 
 **TechFocus** (`tech_focus.py`):
-- Технологические направления
+- Технологические направления (label, description, order_index)
+- One-to-many с `TechFocusTag` (name, order_index)
 
 **HeroTag** (`hero_tag.py`):
 - Теги hero (name, url, icon, order_index)
@@ -1183,8 +1189,8 @@ BM25 индекс хранится на диске:
    - Все API строго проверяют CORS
 
 8. **Сетевое взаимодействие Docker**:
-   - PostgreSQL доступен через `host.docker.internal` (внешняя БД)
-   - Внутри Docker используйте имена сервисов (`chroma:8000`, `litellm:4000`)
+   - PostgreSQL доступен через `postgres:5432` (внутренний Docker-сервис)
+   - Внутри Docker используйте имена сервисов (`chroma:8000`, `litellm:4000`, `tei:80`)
 
 9. **Алиасы моделей LiteLLM**:
    - Названия моделей должны совпадать с алиасами в `infra/litellm/config.yaml`
@@ -1195,7 +1201,7 @@ BM25 индекс хранится на диске:
     - Frontend рендерит через `react-markdown`
 
 11. **Состояние BM25**:
-    - Индекс BM25 хранится в `~/.bm25.{collection}.pkl`
+    - Индекс BM25 хранится в `.bm25.{collection}.pkl` (относительно CWD)
     - Очищайте ChromaDB и BM25 при ресете коллекции `/api/v1/admin/collection`
 
 12. **Коллекция ChromaDB**:
@@ -1216,13 +1222,18 @@ BM25 индекс хранится на диске:
     - Rate limit по IP, не по сессии — все пользователи с одного IP делят лимит
     - Для CV-отправки отдельный Redis-лимит: 3/IP и 2/email в час
 
-16. **Настройка отправки резюме**:
+15. **Настройка отправки резюме**:
     - PDF резюме должен лежать по пути из `CV_FILE_PATH` (по умолчанию `/app/data/cv.pdf` в контейнере)
     - Директория `data/` в корне проекта монтируется в контейнер как volume
     - SMTP-настройки обязательны для работы отправки CV
     - Если SMTP не настроен — `EmailService` логирует предупреждение, отправка упадёт
 
-15. **Техспецификации в `discource/`**:
+16. **Модуль ScopeGuard**:
+    - Модуль `app/agent/scope_guard/` существует, но **НЕ вызывается** из основного пайплайна
+    - Off-topic детекция реализована через `AGENT_SYSTEM_PROMPT` в `graph.py`
+    - Не добавляйте вызовы ScopeGuard в RAG пайплайн
+
+17. **Техспецификации в `discource/`**:
     - Всегда проверяйте `discource/docs/` на наличие ТЗ перед реализацией новых фич
     - Проверяйте `discource/specs/` для детальных спецификаций реализации
     - Создавайте новую спецификацию перед началом сложных реализаций
@@ -1291,7 +1302,7 @@ AI-Portfolio/
 │   │   │   │   ├── rag_tool.py     # RAG тулза (ReAct подграф)
 │   │   │   │   ├── identity/       # Identity-вопросы (classifier.py, prompts.py)
 │   │   │   │   ├── planner/        # LLM планировщик (planner_llm.py, schemas_v3.py, schemas.py, prompts.py, shortcuts.py)
-│   │   │   │   ├── scope_guard/    # Off-topic детекция (scope_guard.py, schemas.py)
+│   │   │   │   ├── scope_guard/    # Off-topic детекция — НЕ активен в пайплайне (scope_guard.py, schemas.py)
 │   │   │   │   ├── executor/       # Plan executor (execute_plan.py)
 │   │   │   │   ├── normalizer/     # Fact normalizer (normalizer.py, fact_bundle.py)
 │   │   │   │   ├── answer/         # Генерация ответов (answer_llm.py, prompts.py)
@@ -1360,12 +1371,8 @@ AI-Portfolio/
 │   │   └── Dockerfile.prod         # Docker-образ для продакшена
 │   │
 │
-├── data/                            # Статические файлы, монтируемые в контейнеры
+├── data/                            # Статические файлы, монтируемые в контейнеры (gitignored)
 │   └── cv.pdf                       # PDF резюме для отправки по email
-│
-├── scripts/
-│   ├── ingest.py                   # Legacy-ингест RAG
-│   └── settings.py
 │
 ├── infra/
 │   ├── docker-compose.local.yaml   # ✅ Основной compose (локальная разработка)
