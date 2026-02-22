@@ -649,6 +649,7 @@ export default function AgentDock() {
             rateLimitError={rateLimitError}
             onRateLimitRetry={handleRateLimitRetry}
             onMessageRetry={handleMessageRetry}
+            isMobile={isMobile}
           />
         </div>
       ) : null}

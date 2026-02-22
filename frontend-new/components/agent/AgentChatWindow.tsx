@@ -22,6 +22,7 @@ type AgentChatWindowProps = {
   rateLimitError?: RateLimitError | null;
   onRateLimitRetry?: () => void;
   onMessageRetry?: (question: string) => void;
+  isMobile?: boolean;
 };
 
 export default function AgentChatWindow({
@@ -40,7 +41,8 @@ export default function AgentChatWindow({
   rateLimitInfo,
   rateLimitError,
   onRateLimitRetry,
-  onMessageRetry
+  onMessageRetry,
+  isMobile = false
 }: AgentChatWindowProps) {
   const typing = loading && !streamingStarted;
 
@@ -98,7 +100,10 @@ export default function AgentChatWindow({
           sendDisabled={sendDisabled}
           streaming={streaming}
           onStop={onStop}
-          suggestions={["Расскажи об AI-проектах", "Где применял RAG?", "Опыт в разработке", "Как можно связаться?"]}
+          suggestions={isMobile
+            ? ["Расскажи об AI-проектах", "Отправь резюме", "Какой опыт в разработке?", "Как связаться?"]
+            : ["Расскажи об AI-проектах", "Отправь резюме на email", "Какой опыт в разработке?", "Как можно связаться?"]
+          }
         />
       )}
     </div>
