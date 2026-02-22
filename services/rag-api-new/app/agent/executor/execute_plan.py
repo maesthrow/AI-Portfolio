@@ -118,7 +118,7 @@ class PlanExecutor:
                 if facts:
                     preview = [
                         {"type": f.type, "text": truncate_text(f.text, limit=180)}
-                        for f in facts[:3]
+                        for f in facts[:5]
                     ]
                     logger.info(
                         "Tool facts preview tool=%s preview=%s",

@@ -106,9 +106,9 @@ class RenderEngine:
         return "\n".join(lines).strip()
 
     def _render_short(self, facts: list[FactItem]) -> str:
-        """Render first 2-3 facts as short paragraph with URL metadata support."""
+        """Render facts as short paragraph with URL metadata support."""
         texts = []
-        for fact in facts[:3]:
+        for fact in facts:
             # Phase 3: Include URLs for contacts, projects, publications
             formatted = self._format_fact_inline(fact)
             if formatted:
