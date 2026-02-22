@@ -63,11 +63,11 @@ PROFILE_DATA = {
     "status": "ready_to_connect_",
     "avatar_url": "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
     "summary_md": (
-        "AI-инженер с продуктовым подходом и опытом backend-разработки (Python/.NET).\n"
+        "AI-инженер с продуктовым подходом и опытом backend-разработки.\n"
         "Внедрял AI-решения в коммерческих проектах; фокус — архитектура агентных систем, качество продукта и бизнес-эффект."
     ),
     "hero_headline": "AI Engineer • LLM Specialist • Python Developer",
-    "hero_description": "Строю надежные продуктовые AI-системы — от идеи до запуска.",
+    "hero_description": "Строю надежные AI-системы — от идеи до запуска.",
     "current_position": "AI-агенты для Сбера (аутстаффинг)",
 }
 
@@ -136,7 +136,7 @@ EXPERIENCE_DATA = [
         "end_date": date(2025, 12, 30),
         "is_current": False,
         "kind": "commercial",
-        "company_role_md": "Разрабатываю ML‑продукты: LLM/RAG/CV, строю backend-архитектуру сервисов.",
+        "company_role_md": "Разрабатывал ML‑продукты: LLM/RAG/CV, строил backend-архитектуру сервисов.",
         "summary_md": (
             "Проект по разработке сервисов на базе ML-решений."
         ),
@@ -637,7 +637,7 @@ SECTION_META_DATA = [
     {
         "section_key": "experience",
         "title": "Коммерческий опыт",
-        "subtitle": "Коммерческие проекты и компании: AI-продукты, backend-сервисы и интеграционные решения",
+        "subtitle": "Коммерческие проекты и компании: AI-системы, backend-сервисы и интеграционные решения",
     },
     {
         "section_key": "contacts",
