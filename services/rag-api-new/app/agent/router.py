@@ -1,7 +1,8 @@
 """Hybrid intent router for the top-level StateGraph.
 
 Architecture:
-1. ``pending_action`` check — deterministic, state-based (CV multi-turn)
+1. ``pending_action`` check — deterministic email extraction, then
+   3-way LLM classification (YES / CANCEL / CHANGE)
 2. Regex fast-path — covers ~70% of messages (greetings, thanks, obvious CV)
 3. LLM fallback — DeepSeek-chat classifies ambiguous messages (~300ms)
 
@@ -61,14 +62,6 @@ _CV_REQUEST_RE: list[re.Pattern[str]] = [
     re.compile(r"(?:резюме|cv)\s+на\s+\S+@\S+", re.IGNORECASE),
 ]
 
-# Patterns for CV multi-turn continuation (is user still talking about CV?)
-_CV_RELATED_RE: list[re.Pattern[str]] = [
-    re.compile(r"\b(?:резюме|cv|curriculum)\b", re.IGNORECASE),
-    re.compile(r"\b(?:отправ|пришл|присл|вышл|скинь)\b", re.IGNORECASE),
-    re.compile(r"\b(?:почт|email|mail|@)\b", re.IGNORECASE),
-    re.compile(r"^(?:да|нет|ладно|хорошо|ок|ok)\b", re.IGNORECASE),
-]
-
 
 def _regex_classify(text: str) -> str | None:
     """Try to classify via regex. Returns intent or ``None``."""
@@ -87,11 +80,6 @@ def _regex_classify(text: str) -> str | None:
     return None
 
 
-def _is_cv_related(text: str) -> bool:
-    """Check if text is still about the CV flow (for multi-turn)."""
-    return any(p.search(text) for p in _CV_RELATED_RE)
-
-
 # ---------------------------------------------------------------------------
 # Intent → graph route mapping
 # ---------------------------------------------------------------------------
@@ -101,6 +89,7 @@ _INTENT_TO_ROUTE: dict[str, str] = {
     "thanks": "thanks",
     "farewell": "farewell",
     "cv_request": "cv_start",
+    "off_topic": "off_topic",
     "rag": "rag",
 }
 
@@ -130,21 +119,23 @@ async def router_node(state: dict[str, Any], config: RunnableConfig) -> dict:
 
     pending = state.get("pending_action") or ""
 
-    # 1. Multi-turn CV continuation (deterministic, state-based)
+    # 1. Multi-turn CV flow: email extraction → 3-way LLM classification
     if pending == "cv_awaiting_email":
         if extract_email(text):
             logger.info("router: cv_process (email found in pending flow)")
             return {"_route_intent": "cv_process"}
-        if _is_cv_related(text):
-            logger.info("router: cv_process (CV-related, still awaiting email)")
-            return {"_route_intent": "cv_process"}
-        # LLM fallback: is user still talking about CV?
+        # LLM decides: YES (still providing email) / CANCEL / CHANGE
         from .router_llm import is_cv_continuation
         from ..deps import router_llm
-        if await is_cv_continuation(text, router_llm()):
+        result = await is_cv_continuation(text, router_llm())
+        if result == "yes":
             logger.info("router: cv_process (LLM confirmed CV continuation)")
             return {"_route_intent": "cv_process"}
-        logger.info("router: rag (topic change from cv_awaiting_email)")
+        if result == "cancel":
+            logger.info("router: cv_cancel (LLM detected CV refusal)")
+            return {"_route_intent": "cv_cancel"}
+        # result == "change"
+        logger.info("router: rag (LLM detected topic change from cv flow)")
         return {"_route_intent": "rag"}
 
     # 2. Regex fast-path

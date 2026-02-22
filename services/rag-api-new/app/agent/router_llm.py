@@ -22,38 +22,46 @@ ROUTER_SYSTEM_PROMPT = """\
 - thanks — благодарность (спасибо, спасиб, спс, благодарю, спасибки)
 - farewell — прощание (пока, до свидания, до встречи, bye, удачи, всего доброго)
 - cv_request — пользователь хочет получить или отправить резюме/CV (отправь резюме, можешь прислать cv, хочу получить резюме, скинь cv на почту)
-- rag — вопрос о портфолио, проектах, опыте, технологиях, или что-либо другое
+- off_topic — запрос НЕ о портфолио разработчика: сказки, анекдоты, шутки, стихи, написание кода, погода, новости, политика, общие знания, развлечения, игры, придумывание названий, ролевые игры
+- rag — вопрос о портфолио, проектах, опыте, технологиях, навыках или контактах разработчика
 
+Если неясно — выбирай rag.
 Ответь ТОЛЬКО одним словом.\
 """
 
-_VALID_INTENTS = frozenset({"greeting", "thanks", "farewell", "cv_request", "rag"})
+_VALID_INTENTS = frozenset({
+    "greeting", "thanks", "farewell", "cv_request", "off_topic", "rag",
+})
 
 CV_CONTINUATION_PROMPT = """\
 Контекст: бот попросил пользователя указать email-адрес, чтобы отправить резюме.
 Пользователь ответил сообщением ниже.
 
-Определи: пользователь продолжает разговор об отправке резюме \
-(пытается указать email, уточняет детали отправки), \
-или задаёт новый вопрос / меняет тему / отказывается о отправки резюме?
+Определи намерение пользователя. Ответь ОДНИМ словом: YES, CANCEL или CHANGE.
 
-Примеры YES (продолжение — пользователь отвечает на просьбу указать email):
+YES — пользователь продолжает (пытается указать email, уточняет детали отправки, \
+даже если адрес неполный или неточный):
 "test@mail.ru", "на мой gmail", "на тот же адрес", "сейчас скину", \
-"а можно на яндекс?", "не хочу", "нет спасибо", "давай на почту"
+"а можно на яндекс?", "давай на почту", "на рабочую почту", "на мой", \
+"на мою почту", "скинь на email"
 
-Примеры NO (смена темы — пользователь задаёт новый вопрос или отказывается о отправки резюме):
+CANCEL — пользователь явно отказывается от отправки резюме:
+"не нужно", "не хочу", "не надо", "ладно не надо", "нет спасибо", \
+"отмена", "передумал", "забудь", "не нужно отправлять", "ладно, не нужно"
+
+CHANGE — пользователь меняет тему, задаёт новый вопрос:
 "расскажи о проектах", "какие технологии?", "как связаться?", \
-"как можно связаться?", "что ты умеешь?", "кто ты?", "контакты", "не нужно отправлять"
-
-Ответь ОДНИМ словом: YES или NO.\
+"что ты умеешь?", "кто ты?", "контакты", "расскажи сказку"\
 """
+
+_VALID_CV_RESULTS = frozenset({"YES", "CANCEL", "CHANGE"})
 
 
 async def classify_intent(text: str, llm: BaseChatModel) -> str:
     """Classify user message intent via LLM.
 
     Returns one of: ``greeting``, ``thanks``, ``farewell``,
-    ``cv_request``, ``rag``.
+    ``cv_request``, ``off_topic``, ``rag``.
 
     Falls back to ``"rag"`` on any error (graceful degradation).
     """
@@ -73,14 +81,18 @@ async def classify_intent(text: str, llm: BaseChatModel) -> str:
         return "rag"
 
 
-async def is_cv_continuation(text: str, llm: BaseChatModel) -> bool:
-    """Check if user message is still about the CV/email flow.
+async def is_cv_continuation(text: str, llm: BaseChatModel) -> str:
+    """Classify user message in the CV multi-turn flow.
 
-    Used when ``pending_action == "cv_awaiting_email"`` and regex
-    didn't match.  Returns ``True`` to stay in CV flow,
-    ``False`` to treat as topic change.
+    Used when ``pending_action == "cv_awaiting_email"`` and no email
+    address was found in the message.
 
-    Falls back to ``True`` on error (keep user in flow rather
+    Returns one of:
+    - ``"yes"``    — user is still providing email / clarifying CV details
+    - ``"cancel"`` — user refuses / cancels CV sending
+    - ``"change"`` — user changes topic entirely
+
+    Falls back to ``"yes"`` on error (keep user in flow rather
     than silently drop context).
     """
     try:
@@ -89,9 +101,14 @@ async def is_cv_continuation(text: str, llm: BaseChatModel) -> bool:
             HumanMessage(content=text),
         ])
         result = response.content.strip().upper().rstrip(".")
-        is_cv = result == "YES"
-        logger.info("LLM cv_continuation %r → %s", text[:50], result)
-        return is_cv
+        if result in _VALID_CV_RESULTS:
+            logger.info("LLM cv_continuation %r → %s", text[:50], result)
+            return result.lower()
+        logger.warning(
+            "LLM cv_continuation returned invalid %r, defaulting to yes",
+            result,
+        )
+        return "yes"
     except Exception as exc:
-        logger.warning("LLM cv_continuation failed (%s), defaulting to True", exc)
-        return True
+        logger.warning("LLM cv_continuation failed (%s), defaulting to yes", exc)
+        return "yes"

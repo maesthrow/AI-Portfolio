@@ -1,9 +1,10 @@
 """Hybrid StateGraph agent.
 
 Top-level StateGraph with hybrid routing (regex fast-path → LLM fallback):
-- RAG branch      → ``create_agent`` ReAct subgraph (portfolio_rag_tool)
-- CV branch       → explicit graph nodes (cv_start / cv_process)
+- RAG branch       → ``create_agent`` ReAct subgraph (portfolio_rag_tool)
+- CV branch        → explicit graph nodes (cv_start / cv_process / cv_cancel)
 - Smalltalk branch → deterministic responses (greetings, thanks, farewells)
+- Off-topic branch → deterministic refusal with suggested questions
 
 Router architecture:
     START → router_node (async, writes ``_route_intent``)
@@ -11,9 +12,11 @@ Router architecture:
         ├─ "rag"        → rag_agent → clear_pending → END
         ├─ "cv_start"   → cv_start_node → END
         ├─ "cv_process" → cv_process_node → END
+        ├─ "cv_cancel"  → cv_cancel_node → END
         ├─ "greeting"   → smalltalk → END
         ├─ "thanks"     → smalltalk → END
-        └─ "farewell"   → smalltalk → END
+        ├─ "farewell"   → smalltalk → END
+        └─ "off_topic"  → offtopic → END
 """
 from __future__ import annotations
 
@@ -125,9 +128,11 @@ def build_agent_graph():
             ├─ "rag"        → rag_agent (ReAct subgraph) → clear_pending → END
             ├─ "cv_start"   → cv_start_node → END
             ├─ "cv_process" → cv_process_node → END
+            ├─ "cv_cancel"  → cv_cancel_node → END
             ├─ "greeting"   → smalltalk_node → END
             ├─ "thanks"     → smalltalk_node → END
-            └─ "farewell"   → smalltalk_node → END
+            ├─ "farewell"   → smalltalk_node → END
+            └─ "off_topic"  → offtopic_node → END
 
     The ``MemorySaver`` checkpointer on the *parent* graph persists
     ``AgentState`` (including ``pending_action``) across HTTP requests.
@@ -135,7 +140,9 @@ def build_agent_graph():
     from .rag_tool import portfolio_rag_tool
     from .router import router_node, route_edge
     from .cv_nodes import cv_start_node, cv_process_node
+    from .cv_cancel_node import cv_cancel_node
     from .smalltalk_node import smalltalk_node
+    from .offtopic_node import offtopic_node
     from ..deps import agent_llm
 
     # --- Inner ReAct agent for RAG (subgraph, NO own checkpointer) ---
@@ -153,7 +160,9 @@ def build_agent_graph():
     graph.add_node("clear_pending", _clear_pending)
     graph.add_node("cv_start", cv_start_node)
     graph.add_node("cv_process", cv_process_node)
+    graph.add_node("cv_cancel", cv_cancel_node)
     graph.add_node("smalltalk", smalltalk_node)
+    graph.add_node("off_topic", offtopic_node)
 
     # START → router_node (writes _route_intent to state)
     graph.add_edge(START, "router")
@@ -163,9 +172,11 @@ def build_agent_graph():
         "rag": "rag_agent",
         "cv_start": "cv_start",
         "cv_process": "cv_process",
+        "cv_cancel": "cv_cancel",
         "greeting": "smalltalk",
         "thanks": "smalltalk",
         "farewell": "smalltalk",
+        "off_topic": "off_topic",
     })
 
     # Edges to END
@@ -173,13 +184,16 @@ def build_agent_graph():
     graph.add_edge("clear_pending", END)
     graph.add_edge("cv_start", END)
     graph.add_edge("cv_process", END)
+    graph.add_edge("cv_cancel", END)
     graph.add_edge("smalltalk", END)
+    graph.add_edge("off_topic", END)
 
     checkpointer = MemorySaver()
     compiled = graph.compile(checkpointer=checkpointer)
 
     logger.info(
-        "Agent graph built: StateGraph with hybrid router + ReAct subgraph (RAG) + CV nodes"
+        "Agent graph built: StateGraph with hybrid router + ReAct subgraph (RAG) "
+        "+ CV nodes + off-topic guard"
     )
 
     return compiled
