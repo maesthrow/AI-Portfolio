@@ -86,7 +86,7 @@
 
 - Продвинутый семантический поиск с LLM-планированием запросов
 - Knowledge Graph для структурированных запросов
-- Scope Guard для детекции off-topic вопросов
+- Off-topic guard на уровне роутера (LLM-классификатор + детерминированный отказ)
 - Детерминированная нормализация фактов и генерация ответов
 - Точка входа: `app/main.py`
 - Порт: 8014 (Docker compose local через `RAG_NEW_PORT`), 8000 (default uvicorn)
@@ -98,11 +98,13 @@
     ↓
 [RouterNode] - Гибридная классификация: regex быстрый путь → LLM fallback
     ├─ "greeting"/"thanks"/"farewell" → [SmallTalkNode] → END (детерминированно, без LLM)
+    ├─ "off_topic"  → [OffTopicNode]  → END (детерминированный отказ с подсказками)
     ├─ "cv_start"   → [CvStartNode]   → END (начало отправки резюме)
-    ├─ "cv_process" → [CvProcessNode] → END (обработка email в CV-флоу)
+    ├─ "cv_process" → [CvProcessNode]  → END (обработка email в CV-флоу)
+    ├─ "cv_cancel"  → [CvCancelNode]   → END (адаптивный LLM-ответ на отказ)
     └─ "rag"        → [RAG ReAct подграф]
                           ↓
-                     [AGENT_SYSTEM_PROMPT] - Off-topic через системный промпт (модуль ScopeGuard есть, но НЕ активен)
+                     [AGENT_SYSTEM_PROMPT] - Страховочная сетка для off-topic (основной guard на уровне RouterNode)
                           ↓
                      [PlannerLLM] - Генерация QueryPlanV3
                           ↓
@@ -139,16 +141,18 @@
   - GET `/api/v1/rate-limit/status` - Статус rate limit для текущего IP
 
 **Агентная система** (`app/agent/`):
-- `graph.py` - Верхний `StateGraph` с гибридным роутером, ветвящимся на RAG подграф, CV, смолток
+- `graph.py` - Верхний `StateGraph` с гибридным роутером, ветвящимся на RAG подграф, CV, смолток, off-topic
 - `graph_state.py` - `AgentState` TypedDict: `messages`, `pending_action` (`""` | `"cv_awaiting_email"`), `_route_intent`
 - `router.py` - `router_node(state, config)`: regex → LLM fallback; `route_edge(state)` условное ребро
-- `router_llm.py` - `classify_intent(text, llm)` → `greeting/thanks/farewell/cv_request/rag`; `is_cv_continuation(text, llm)` для multi-turn
+- `router_llm.py` - `classify_intent(text, llm)` → `greeting/thanks/farewell/cv_request/off_topic/rag`; `is_cv_continuation(text, llm)` → `"yes"/"cancel"/"change"` для multi-turn CV
 - `cv_nodes.py` - Узлы графа для отправки резюме:
   - `cv_start_node` - начинает флоу: извлекает email из текста или запрашивает, устанавливает `pending_action="cv_awaiting_email"`
   - `cv_process_node` - обрабатывает email в multi-turn флоу
   - `_check_cv_rate_limit(ip, email)` / `_record_cv_send(ip, email)` - Redis-лимиты по IP и email
   - `_emit_status("sending_cv", "Отправляю резюме...", config)`
+- `cv_cancel_node.py` - Адаптивный LLM-ответ (через `answer_llm`) при отказе от отправки CV; сбрасывает `pending_action`
 - `smalltalk_node.py` - Детерминированные ответы для `greeting`, `thanks`, `farewell` (без вызовов LLM)
+- `offtopic_node.py` - Детерминированный отказ на off-topic с подсказками (без вызовов LLM)
 - `rag_tool.py` - Async RAG тулза для ReAct подграфа с эмиссией статусов пайплайна
   - `_emit_status(stage, text, config)` - Отправляет status-события на фронтенд через `asyncio.Queue` из `config["configurable"]["_status_queue"]`
   - Этапы: `planning`, `searching`, `verifying`, `answering`
@@ -208,7 +212,7 @@
 **Scope Guard** (`app/agent/scope_guard/`) — **НЕ активен в пайплайне**:
 - `scope_guard.py` - Модуль детекции off-topic (сказки, шутки, генерация кода и т.д.)
 - `schemas.py` - ScopeDecision с suggested_prompts для перенаправления пользователя
-- **Важно**: ScopeGuard НЕ вызывается из основного RAG пайплайна (`rag_tool.py`). Off-topic отклонение обрабатывается через `AGENT_SYSTEM_PROMPT` в `graph.py` — агент сам решает, вызывать `portfolio_rag_tool` или ответить напрямую
+- **Важно**: ScopeGuard НЕ вызывается из основного пайплайна. Off-topic обрабатывается на **уровне роутера** через `classify_intent()` → `off_topic` → `offtopic_node` (детерминированный отказ). `AGENT_SYSTEM_PROMPT` служит страховочной сеткой
 
 **Executor** (`app/agent/executor/`):
 - `execute_plan.py` - PlanExecutor для оркестрации тулзов с fallback handling
@@ -696,8 +700,10 @@ pytest tests/
    - → HybridRetriever (dense + BM25) → Rerank → Evidence
    - → FactNormalizer → AnswerLLM → RenderEngine → Ответ
 6. Флоу отправки резюме: пользователь просит CV → RouterNode → "cv_start" → CvStartNode (запрос email) → пользователь шлёт email → "cv_process" → CvProcessNode → EmailService (SMTP) → PDF-вложение
-7. Флоу смолтока: приветствие/благодарность/прощание → RouterNode → SmallTalkNode → готовый ответ (без LLM)
-8. Thinking Status события: rag_tool.py / cv_nodes.py `_emit_status()` → `asyncio.Queue` через config → chat.py unified queue → NDJSON `status` event → фронтенд ThinkingStatus компонент
+7. Флоу отмены CV: пользователь отказывается в CV-флоу → RouterNode (3-way LLM: YES/CANCEL/CHANGE) → "cv_cancel" → CvCancelNode (адаптивный LLM-ответ через answer_llm, сброс pending_action)
+8. Флоу смолтока: приветствие/благодарность/прощание → RouterNode → SmallTalkNode → готовый ответ (без LLM)
+9. Флоу off-topic: пользователь спрашивает не по теме (сказки, код и т.д.) → RouterNode (LLM classify_intent → off_topic) → OffTopicNode → детерминированный отказ с подсказками
+10. Thinking Status события: rag_tool.py / cv_nodes.py `_emit_status()` → `asyncio.Queue` через config → chat.py unified queue → NDJSON `status` event → фронтенд ThinkingStatus компонент
 
 ### NDJSON Streaming Events (`/api/v1/agent/chat/stream`)
 
@@ -736,20 +742,25 @@ pytest tests/
 Перед любой RAG-обработкой агентный граф запускает гибридный роутер (`app/agent/router.py`):
 
 1. **Regex быстрый путь**: Проверяет паттерны приветствий (`привет`, `hello`), благодарностей, прощаний, запросов CV — мгновенная диспетчеризация без LLM
-2. **Multi-turn состояние**: Если `pending_action == "cv_awaiting_email"`, проверяет, прислал ли пользователь email
-3. **LLM fallback**: Для неоднозначных входов вызывает `router_llm` (`classify_intent()`) для классификации как `greeting/thanks/farewell/cv_request/rag`
+2. **Multi-turn CV состояние**: Если `pending_action == "cv_awaiting_email"`: извлечение email → 3-way LLM классификация (`is_cv_continuation()` → `YES/CANCEL/CHANGE`)
+3. **LLM fallback**: Для неоднозначных входов вызывает `router_llm` (`classify_intent()`) для классификации как `greeting/thanks/farewell/cv_request/off_topic/rag`
 
 **Ветки:**
 - `greeting/thanks/farewell` → `smalltalk_node` (детерминированные готовые ответы, 0 вызовов LLM)
+- `off_topic` → `offtopic_node` (детерминированный отказ с подсказками, 0 вызовов LLM)
 - `cv_start` → `cv_start_node` (извлечь/запросить email, запустить отправку CV)
 - `cv_process` → `cv_process_node` (обработать email в текущем CV-флоу)
+- `cv_cancel` → `cv_cancel_node` (адаптивный LLM-ответ через `answer_llm`, сброс `pending_action`)
 - `rag` → полный ReAct подграф с RAG пайплайном
 
 ### Отправка резюме по email (rag-api-new)
 
 Multi-turn флоу отправки CV:
 1. Пользователь просит CV → `cv_start_node`: извлекает email из текста или устанавливает `pending_action="cv_awaiting_email"` и запрашивает email
-2. Пользователь присылает email → `cv_process_node`: валидирует email, проверяет лимиты, вызывает `EmailService.send_cv()`
+2. Пользователь отвечает в CV-флоу → роутер запускает 3-way LLM (`is_cv_continuation()`):
+   - `YES` → `cv_process_node`: валидирует email, проверяет лимиты, вызывает `EmailService.send_cv()`
+   - `CANCEL` → `cv_cancel_node`: адаптивный LLM-ответ (через `answer_llm`), сброс `pending_action`
+   - `CHANGE` → `rag`: смена темы, `clear_pending` сбрасывает `pending_action`
 3. `EmailService` (stdlib `smtplib`): собирает multipart MIME сообщение (HTML тело + PDF вложение), отправляет через STARTTLS
 4. Rate limiting: 3 отправки на IP в час, 2 отправки на email в час (Redis ключи `cv:ip:{ip}` и `cv:email:{email}`)
 5. Валидация email: regex + блок-лист disposable доменов, `extract_email()` парсит email из свободного текста
@@ -760,9 +771,8 @@ PDF резюме должен находиться по пути `CV_FILE_PATH` 
 
 Новая RAG система использует продвинутую многослойную архитектуру:
 
-1. **Обработка off-topic**: Через `AGENT_SYSTEM_PROMPT` в `graph.py` — агент сам решает, вызывать RAG-тулзу или ответить напрямую
+1. **Обработка off-topic**: Основной guard — **на уровне роутера** (LLM `classify_intent()` → `off_topic` → `offtopic_node` с детерминированным отказом). `AGENT_SYSTEM_PROMPT` — страховочная сетка
    - Модуль `ScopeGuard` существует в `app/agent/scope_guard/`, но **НЕ вызывается** из основного пайплайна
-   - Системный промпт агента инструктирует его использовать portfolio tool только для релевантных вопросов
 
 2. **LLM Planner**: Генерирует структурированный план запроса с intents, entities, tool calls
    - Использует `with_structured_output()` для надежного парсинга JSON
@@ -1230,7 +1240,8 @@ BM25 индекс хранится на диске:
 
 16. **Модуль ScopeGuard**:
     - Модуль `app/agent/scope_guard/` существует, но **НЕ вызывается** из основного пайплайна
-    - Off-topic детекция реализована через `AGENT_SYSTEM_PROMPT` в `graph.py`
+    - Off-topic детекция реализована на **уровне роутера** через `classify_intent()` → `off_topic` → `offtopic_node`
+    - `AGENT_SYSTEM_PROMPT` служит страховочной сеткой
     - Не добавляйте вызовы ScopeGuard в RAG пайплайн
 
 17. **Техспецификации в `discource/`**:
@@ -1293,12 +1304,14 @@ AI-Portfolio/
 │   │   │   ├── deps.py             # Общие зависимости (LLMs, vectorstore)
 │   │   │   ├── prefetch.py         # Прогрев кэша для популярных вопросов
 │   │   │   ├── agent/              # Агентная система
-│   │   │   │   ├── graph.py        # StateGraph: роутер + ReAct + CV + смолток
+│   │   │   │   ├── graph.py        # StateGraph: роутер + ReAct + CV + смолток + off-topic
 │   │   │   │   ├── graph_state.py  # AgentState TypedDict (messages, pending_action, _route_intent)
 │   │   │   │   ├── router.py       # router_node (regex→LLM), route_edge
-│   │   │   │   ├── router_llm.py   # classify_intent(), is_cv_continuation()
+│   │   │   │   ├── router_llm.py   # classify_intent() (6 intents вкл. off_topic), is_cv_continuation() (YES/CANCEL/CHANGE)
 │   │   │   │   ├── cv_nodes.py     # cv_start_node, cv_process_node, CV rate limiting
+│   │   │   │   ├── cv_cancel_node.py # Адаптивный LLM-ответ на отказ (answer_llm), сброс pending_action
 │   │   │   │   ├── smalltalk_node.py # Детерминированные ответы приветствие/спасибо/прощание
+│   │   │   │   ├── offtopic_node.py  # Детерминированный off-topic отказ с подсказками
 │   │   │   │   ├── rag_tool.py     # RAG тулза (ReAct подграф)
 │   │   │   │   ├── identity/       # Identity-вопросы (classifier.py, prompts.py)
 │   │   │   │   ├── planner/        # LLM планировщик (planner_llm.py, schemas_v3.py, schemas.py, prompts.py, shortcuts.py)
