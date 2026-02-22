@@ -598,10 +598,32 @@ def _experience_query(entity_key: str | None) -> GraphQueryResult:
             "text": "\n".join([p for p in text_parts if p]),
         })
 
+    # For general experience queries, append profile summary as context
+    sources = [_node_to_source(c) for c in companies[:10]]
+    if not entity_key:
+        persons = store.get_nodes_by_type(NodeType.PERSON)
+        if persons:
+            person = persons[0]
+            summary = person.data.get("summary_md")
+            current_position = person.data.get("current_position")
+            if summary or current_position:
+                text_parts = []
+                if current_position:
+                    text_parts.append(f"Текущая позиция: {current_position}")
+                if summary:
+                    text_parts.append(summary)
+                items.append({
+                    "title": person.data.get("title"),
+                    "summary_md": summary,
+                    "current_position": current_position,
+                    "text": "\n".join(text_parts),
+                })
+                sources.append(_node_to_source(person))
+
     return GraphQueryResult(
         items=items,
         found=len(items) > 0,
-        sources=[_node_to_source(c) for c in companies[:10]],
+        sources=sources,
         confidence=0.9 if items else 0.0,
         intent=Intent.EXPERIENCE,
         entity_key=entity_key,
