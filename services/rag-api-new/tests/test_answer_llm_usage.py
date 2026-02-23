@@ -55,7 +55,7 @@ def test_answer_llm_technology_usage_is_deterministic():
     )
 
     llm = _DummyLLM(fail_if_called=True)
-    answer = AnswerLLM(llm).generate(payload)
+    answer, _ = AnswerLLM(llm).generate(payload)
 
     assert "Дмитрий" in answer
     assert "RAG" in answer
@@ -75,7 +75,7 @@ def test_answer_llm_recovers_when_llm_returns_not_found():
     )
 
     llm = _DummyLLM(content="Такой информации нет в портфолио.")
-    answer = AnswerLLM(llm).generate(payload)
+    answer, _ = AnswerLLM(llm).generate(payload)
 
     assert "RAG" in answer
     assert "t2 — Нейросети" in answer

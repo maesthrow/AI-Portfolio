@@ -191,7 +191,7 @@ docker logs -f ai-folio-rag-ingest-1
 **Примечание:** В контейнере rag-api нет curl, используем Python urllib.
 
 ```bash
-# Статистика коллекции ChromaDB
+# Статистика коллекции pgvector
 docker exec ai-folio-rag-api-1 python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/v1/admin/stats').read().decode())"
 
 # Красивый вывод JSON
@@ -260,7 +260,6 @@ docker exec -it ai-folio-postgres-1 psql -U $POSTGRES_USER -d $POSTGRES_DB
 
 # Health check статус
 docker inspect ai-folio-content-api-1 --format='{{.State.Health.Status}}'
-docker inspect ai-folio-chroma-1 --format='{{.State.Health.Status}}'
 
 # Использование ресурсов
 docker stats --no-stream
@@ -283,7 +282,6 @@ docker system prune -f
 | content-api | 8000 | - (через caddy) | FastAPI |
 | rag-api | 8000 | - (через caddy) | RAG Agent API |
 | postgres | 5432 | - (internal) | PostgreSQL |
-| chroma | 8000 | - (internal) | Vector DB |
 | litellm | 4000 | - (internal) | LLM Proxy |
 | tei | 80 | - (internal) | Embeddings |
 

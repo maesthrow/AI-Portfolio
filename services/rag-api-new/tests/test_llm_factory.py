@@ -241,6 +241,7 @@ class TestLLMFactoryProviders:
                 temperature=0.3,
                 max_tokens=2048,
                 verify_ssl_certs=False,
+                timeout=90,
             )
             assert llm is mock_llm
 

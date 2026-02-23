@@ -24,12 +24,12 @@
 
 ## Обзор проекта
 
-**AI-Portfolio** — микросервисное киберпанк-портфолио с возможностями RAG (Retrieval-Augmented Generation). Система состоит из фронтенда на Next.js, базы данных PostgreSQL, бэкенд-сервисов на FastAPI и векторной БД ChromaDB для семантического поиска с агентом на LangGraph.
+**AI-Portfolio** — микросервисное киберпанк-портфолио с возможностями RAG (Retrieval-Augmented Generation). Система состоит из фронтенда на Next.js, базы данных PostgreSQL с расширением pgvector для семантического поиска, бэкенд-сервисов на FastAPI и агента на LangGraph.
 
 **Технологический стек:**
 - Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown, remark-gfm, lucide-react
 - Backend: Python 3.12+, FastAPI, SQLAlchemy 2.0, Alembic
-- RAG: LangChain 1.x, LangGraph 1.x, ChromaDB, sentence-transformers, rank-bm25
+- RAG: LangChain 1.x, LangGraph 1.x, pgvector (расширение PostgreSQL), sentence-transformers, rank-bm25
 - LLM-инфраструктура: LiteLLM proxy, vLLM (Qwen2.5-7B-Instruct-AWQ), TEI (multilingual-e5-base embeddings)
 - База данных: PostgreSQL 16
 - Инфраструктура: Docker Compose
@@ -122,7 +122,7 @@
 **Основные модули:**
 - `app/main.py` - FastAPI приложение с роутерами, health endpoints (`/healthz`, `/meta`)
 - `app/settings.py` - Pydantic настройки с температурами LLM
-- `app/deps.py` - Общие зависимости (инстансы LLM, vectorstore, reranker)
+- `app/deps.py` - Общие зависимости (инстансы LLM, PGVectorStore через `pg_engine()`, reranker)
 - `app/prefetch.py` - Прогрев кэша для популярных вопросов
   - `POPULAR_QUESTIONS` - Список частых вопросов в user-style и agent-style формулировках
   - `prefetch_popular_plans()` - Прогревает Redis кэш после ingest (~60-70% cache hit rate)
@@ -132,7 +132,7 @@
 - `ingest.py` - POST `/api/v1/ingest` - Загрузка одного документа
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Пакетный импорт ExportPayload
 - `admin.py` - Админские эндпоинты:
-  - DELETE `/api/v1/admin/collection` - Очистка коллекции ChromaDB
+  - DELETE `/api/v1/admin/collection` - Очистка коллекции pgvector
   - GET `/api/v1/admin/stats` - Статистика коллекции и графа
   - GET `/api/v1/admin/cache/stats` - Статистика кэша (Redis)
   - DELETE `/api/v1/admin/cache/plans` - Очистка plan cache
@@ -186,7 +186,7 @@
 **TechCategory** (для фильтрации технологий):
 - `language` - Языки программирования (Python, C#, JavaScript, SQL)
 - `database` - Базы данных (PostgreSQL, MongoDB, Redis)
-- `vector_store` - Векторные БД (ChromaDB, Qdrant, pgvector)
+- `vector_store` - Векторные БД (pgvector, Qdrant, ChromaDB)
 - `framework` - Фреймворки (FastAPI, React, Django)
 - `ml_framework` - ML-фреймворки (LangChain, LangGraph, vLLM)
 - `mlops` - MLOps-инструменты (MLFlow, LiteLLM)
@@ -408,9 +408,8 @@
   - `docker-compose-prod.yaml` — продакшен конфигурация
 - Сервисы (`docker-compose.local.yaml`):
   - `frontend` (порт 3000) — Next.js фронтенд, собирается из frontend-new/
-  - `postgres` (порт 5433) — PostgreSQL 16
+  - `postgres` (порт 5433) — PostgreSQL 16 с расширением pgvector (общий для content-api и rag-api)
   - `content-api` (порт 8003) — собирается из content-api-new/
-  - `chroma` (порт 8001 внешний / 8000 внутренний) — ChromaDB
   - `tei` (порт 8006) — Text Embeddings Inference (multilingual-e5-base)
   - `litellm` (порт 8005 внешний / 4000 внутренний) — прокси LLM/embeddings
   - `redis` (порт 6379) — Redis для кэша и rate limit
@@ -420,7 +419,7 @@
   - `.env.dev`, `.env.local`, `.env.prod`, `.env.example` — переменные окружения
   - `DOCKER-LOCAL.md`, `DOCKER-PROD.md` — руководства по Docker
   - `caddy/Caddyfile` — reverse proxy (продакшен)
-  - `init/postgres-init.sql` — инициализация БД (uuid-ossp)
+  - `init/postgres-init.sql` — инициализация БД (uuid-ossp, pgvector)
   - `scripts/ingest.py` — скрипт для RAG-индексации
   - `litellm/config.yaml` — алиасы моделей LiteLLM
   - `models/intfloat/multilingual-e5-base/` — модель для TEI
@@ -551,7 +550,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # Документация API
 # Откройте http://localhost:8000/api/swagger
 
-# Загрузка документов в ChromaDB (после наполнения content-api)
+# Загрузка документов в pgvector (после наполнения content-api)
 # 1. Экспорт из content-api: GET http://localhost:8003/api/v1/rag/export
 # 2. Импорт в rag-api: POST http://localhost:8014/api/v1/ingest/batch
 # Или используйте docker compose сервис rag-ingest для автоматического экспорта+импорта
@@ -565,9 +564,8 @@ tei_base_url=http://localhost:8006/v1      # TEI embeddings (прямой дос
 embedding_model=text-embedding-3-large
 reranker_model=BAAI/bge-reranker-base
 max_rerank_candidates=80                   # макс. кандидатов на реранкинг
-CHROMA_HOST=localhost
-CHROMA_PORT=8001
-chroma_collection=portfolio_new
+DATABASE_URL=postgresql+psycopg://user:password@localhost:5433/ai_portfolio_new
+COLLECTION_NAME=portfolio_new
 FRONTEND_ORIGIN=http://localhost:3000
 LOG_LEVEL=INFO
 max_user_input_tokens=250                  # макс. длина сообщения в токенах
@@ -613,7 +611,7 @@ cd infra
 docker compose -f docker-compose.local.yaml up -d
 
 # запустить отдельные сервисы
-docker compose -f docker-compose.local.yaml up -d chroma tei litellm
+docker compose -f docker-compose.local.yaml up -d postgres tei litellm redis
 docker compose -f docker-compose.local.yaml up -d content-api rag-api
 
 # одноразовый импорт данных (экспорт из content-api → инжест в rag-api)
@@ -692,7 +690,7 @@ pytest tests/
 ## Поток данных
 
 1. Управление контентом: админ/скрипты → PostgreSQL (через content-api-new)
-2. RAG-индексация: content-api-new `/api/v1/rag/export` → rag-api-new `/api/v1/ingest/batch` → ChromaDB + BM25 + Knowledge Graph (или через docker-сервис `rag-ingest` для автоматизации)
+2. RAG-индексация: content-api-new `/api/v1/rag/export` → rag-api-new `/api/v1/ingest/batch` → pgvector + BM25 + Knowledge Graph (или через docker-сервис `rag-ingest` для автоматизации)
 3. Frontend SSR: Next.js → content-api-new `/api/v1/*` → PostgreSQL → JSON
 4. Чат агента: пользователь → frontend-new AgentDock → rag-api-new `/api/v1/agent/chat/stream` → `RouterNode` → ветвление
 5. Запрос RAG (rag-api-new):
@@ -915,7 +913,7 @@ INFO: TokenUsage summary: message_id=abc123 total=3847 breakdown=[planner=1200, 
 ### Гибридный поиск
 
 RAG сервис использует гибридный поиск:
-1. **Dense Search**: ChromaDB similarity search с embeddings
+1. **Dense Search**: pgvector similarity search с embeddings
 2. **BM25 Search**: Лексический keyword matching
 3. **RRF Merge**: Reciprocal Rank Fusion для объединения результатов
 4. **MMR Dedup**: Удаление похожих документов
@@ -1116,7 +1114,7 @@ BM25 индекс хранится на диске:
 
 **RAG API:**
 - `reranker_model` - модель реранкера (по умолчанию `BAAI/bge-reranker-base`)
-- `chroma_collection` - имя коллекции ChromaDB (по умолчанию `portfolio_new`)
+- `COLLECTION_NAME` - имя коллекции pgvector (по умолчанию `portfolio_new`)
 - `tei_base_url` - URL TEI для прямого доступа к embeddings (по умолчанию `http://tei:80/v1`)
 - `embedding_model` - модель embeddings (по умолчанию `text-embedding-3-large`)
 - `embedding_batch_size` - размер батча для embeddings (по умолчанию 4)
@@ -1158,14 +1156,14 @@ BM25 индекс хранится на диске:
 - `CV_SEND_LIMIT_WINDOW_SECONDS` - окно лимита отправок (по умолчанию 3600 = 1 час)
 
 **Векторная БД:**
-- `CHROMA_HOST` - хост ChromaDB
-- `CHROMA_PORT` - порт ChromaDB (по умолчанию 8001 внешний / 8000 внутренний)
+- pgvector работает внутри общего инстанса PostgreSQL (отдельного сервиса нет)
+- `DATABASE_URL` - та же строка подключения, что и для content-api (см. секцию "База данных" выше)
+- `COLLECTION_NAME` - имя коллекции pgvector (по умолчанию `portfolio_new`)
 
 **Порты сервисов (docker-compose.local.yaml):**
 - `frontend` - 3000 (Next.js)
-- `postgres` - 5433 (PostgreSQL)
+- `postgres` - 5433 (PostgreSQL с pgvector)
 - `content-api` - 8003 (Content API)
-- `chroma` - 8001 (ChromaDB)
 - `tei` - 8006 (Text Embeddings Inference)
 - `litellm` - 8005 (LiteLLM proxy)
 - `redis` - 6379 (Redis)
@@ -1200,7 +1198,8 @@ BM25 индекс хранится на диске:
 
 8. **Сетевое взаимодействие Docker**:
    - PostgreSQL доступен через `postgres:5432` (внутренний Docker-сервис)
-   - Внутри Docker используйте имена сервисов (`chroma:8000`, `litellm:4000`, `tei:80`)
+   - PostgreSQL доступен через `postgres:5432` (общий для content-api и rag-api, pgvector)
+   - Внутри Docker используйте имена сервисов (`litellm:4000`, `tei:80`)
 
 9. **Алиасы моделей LiteLLM**:
    - Названия моделей должны совпадать с алиасами в `infra/litellm/config.yaml`
@@ -1212,11 +1211,12 @@ BM25 индекс хранится на диске:
 
 11. **Состояние BM25**:
     - Индекс BM25 хранится в `.bm25.{collection}.pkl` (относительно CWD)
-    - Очищайте ChromaDB и BM25 при ресете коллекции `/api/v1/admin/collection`
+    - Очищайте коллекцию pgvector и BM25 при ресете через `/api/v1/admin/collection`
 
-12. **Коллекция ChromaDB**:
-    - `rag-api-new` использует `chroma_collection=portfolio_new`
-    - Старая коллекция `portfolio` (из удалённого rag-api) больше не используется
+12. **Коллекция pgvector**:
+    - `rag-api-new` использует `COLLECTION_NAME=portfolio_new`
+    - pgvector хранит embeddings в общей базе PostgreSQL (отдельного сервиса для векторной БД нет)
+    - Старая коллекция ChromaDB `portfolio` (из удалённого rag-api) больше не используется
 
 13. **Инвалидация кэша**:
     - Plan cache автоинвалидируется при изменении content hash (после ingest)
@@ -1301,7 +1301,7 @@ AI-Portfolio/
 │   │   ├── app/
 │   │   │   ├── main.py             # FastAPI с роутерами
 │   │   │   ├── settings.py         # Pydantic-настройки (температуры и др.)
-│   │   │   ├── deps.py             # Общие зависимости (LLMs, vectorstore)
+│   │   │   ├── deps.py             # Общие зависимости (LLMs, PGVectorStore, reranker)
 │   │   │   ├── prefetch.py         # Прогрев кэша для популярных вопросов
 │   │   │   ├── agent/              # Агентная система
 │   │   │   │   ├── graph.py        # StateGraph: роутер + ReAct + CV + смолток + off-topic
@@ -1397,7 +1397,7 @@ AI-Portfolio/
 │   ├── DOCKER-LOCAL.md             # Руководство по локальному Docker
 │   ├── DOCKER-PROD.md              # Руководство по продакшен Docker
 │   ├── caddy/Caddyfile             # Reverse proxy (продакшен)
-│   ├── init/postgres-init.sql      # Инициализация БД (uuid-ossp)
+│   ├── init/postgres-init.sql      # Инициализация БД (uuid-ossp, pgvector)
 │   ├── scripts/ingest.py           # Скрипт RAG-индексации
 │   ├── litellm/
 │   │   └── config.yaml             # Алиасы моделей LiteLLM

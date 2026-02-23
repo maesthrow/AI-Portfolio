@@ -2,15 +2,14 @@ from functools import lru_cache
 from typing import Optional
 import logging
 
+import threading
+
 import torch
 from sentence_transformers import CrossEncoder
 
-import chromadb
-from chromadb.config import Settings as ChromaSettings
-
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import OpenAIEmbeddings
-from langchain_chroma import Chroma
+from langchain_postgres import PGEngine, PGVectorStore, Column
 
 from .agent.graph import build_agent_graph
 from .llm.factory import get_llm_factory
@@ -37,22 +36,54 @@ def embeddings() -> OpenAIEmbeddings:
     )
 
 
-@lru_cache()
-def chroma_client() -> chromadb.HttpClient:
-    s = settings()
-    return chromadb.HttpClient(
-        host=s.chroma_host,
-        port=s.chroma_port,
-        settings=ChromaSettings(allow_reset=False),
-    )
+_METADATA_COLUMNS = [
+    Column("type", "TEXT"),
+    Column("project_id", "TEXT"),
+    Column("ref_id", "TEXT"),
+    Column("doc_id", "TEXT"),
+]
+
+_METADATA_COLUMN_NAMES = ["type", "project_id", "ref_id", "doc_id"]
 
 
-def vectorstore(collection: Optional[str] = None) -> Chroma:
+_pg_engine_instance: PGEngine | None = None
+_pg_engine_lock = threading.Lock()
+
+
+def pg_engine() -> PGEngine:
+    global _pg_engine_instance
+    if _pg_engine_instance is not None:
+        return _pg_engine_instance
+    with _pg_engine_lock:
+        if _pg_engine_instance is not None:
+            return _pg_engine_instance
+        s = settings()
+        engine = PGEngine.from_connection_string(url=s.database_url)
+        try:
+            engine.init_vectorstore_table(
+                table_name=s.collection_name,
+                vector_size=768,
+                metadata_columns=_METADATA_COLUMNS,
+                overwrite_existing=False,
+                store_metadata=True,
+            )
+            logger.info("pgvector table '%s' created", s.collection_name)
+        except Exception as exc:
+            if "DuplicateTable" in type(exc).__name__ or "already exists" in str(exc):
+                logger.info("pgvector table '%s' already exists, skipping init", s.collection_name)
+            else:
+                raise
+        _pg_engine_instance = engine
+        return engine
+
+
+def vectorstore(collection: Optional[str] = None) -> PGVectorStore:
     s = settings()
-    return Chroma(
-        client=chroma_client(),
-        collection_name=collection or s.chroma_collection,
-        embedding_function=embeddings(),
+    return PGVectorStore.create_sync(
+        engine=pg_engine(),
+        table_name=collection or s.collection_name,
+        embedding_service=embeddings(),
+        metadata_columns=_METADATA_COLUMN_NAMES,
     )
 
 

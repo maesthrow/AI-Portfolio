@@ -26,7 +26,7 @@ def _compute_payload_hash(payload: ExportPayload) -> str:
 
 @router.post("/ingest/batch", response_model=IngestBatchResult)
 def ingest_batch(payload: ExportPayload):
-    coll = settings().chroma_collection
+    coll = settings().collection_name
 
     # 1. Вычисляем hash payload
     new_hash = _compute_payload_hash(payload)

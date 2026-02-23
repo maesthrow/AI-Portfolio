@@ -28,8 +28,8 @@ merged into US1 since `fetch_by_ids()` is required for search to work.
 **Purpose**: Replace Python dependencies and update application settings.
 No code logic changes — only package declarations and config fields.
 
-- [ ] T001 [P] Replace `langchain-chroma` and `chromadb` with `langchain-postgres>=0.0.17` and `psycopg[binary]>=3.1` in `services/rag-api-new/pyproject.toml`
-- [ ] T002 [P] Update `services/rag-api-new/app/settings.py`: remove fields `chroma_host`, `chroma_port`, `chroma_collection` and property `chroma_client_kwargs`; add field `database_url` (str, from env `DATABASE_URL`) and rename/keep `collection_name` (str, default `"portfolio_new"`)
+- [x] T001 [P] Replace `langchain-chroma` and `chromadb` with `langchain-postgres>=0.0.17` and `psycopg[binary]>=3.1` in `services/rag-api-new/pyproject.toml`
+- [x] T002 [P] Update `services/rag-api-new/app/settings.py`: remove fields `chroma_host`, `chroma_port`, `chroma_collection` and property `chroma_client_kwargs`; add field `database_url` (str, from env `DATABASE_URL`) and rename/keep `collection_name` (str, default `"portfolio_new"`)
 
 ---
 
@@ -40,7 +40,8 @@ This is the single most critical change — ALL user stories depend on it.
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T003 Rewrite `services/rag-api-new/app/deps.py`: remove `import chromadb`, `from chromadb.config import Settings`, `from langchain_chroma import Chroma`; remove `chroma_client()` function; add `pg_engine()` function returning `PGEngine.from_connection_string(settings().database_url)`; add `init_vectorstore_table()` call with `table_name="portfolio_new"`, `vector_size=768`, `metadata_columns=[Column("type", TEXT), Column("project_id", TEXT), Column("ref_id", TEXT), Column("doc_id", TEXT)]`; replace `vectorstore()` function to return `PGVectorStore.create_sync(engine=pg_engine(), table_name=settings().collection_name, embedding_service=embeddings(), metadata_columns=["type", "project_id", "ref_id", "doc_id"])`. Ensure `embeddings()` function remains unchanged.
+- [x] T003 Rewrite `services/rag-api-new/app/deps.py`: remove `import chromadb`, `from chromadb.config import Settings`, `from langchain_chroma import Chroma`; remove `chroma_client()` function; add `pg_engine()` function returning `PGEngine.from_connection_string(settings().database_url)`; add `init_vectorstore_table()` call with `table_name="portfolio_new"`, `vector_size=768`, `metadata_columns=[Column("type", TEXT), Column("project_id", TEXT), Column("ref_id", TEXT), Column("doc_id", TEXT)]`; replace `vectorstore()` function to return `PGVectorStore.create_sync(engine=pg_engine(), table_name=settings().collection_name, embedding_service=embeddings(), metadata_columns=["type", "project_id", "ref_id", "doc_id"])`. Ensure `embeddings()` function remains unchanged.
+- [x] T003a Verify `services/rag-api-new/app/main.py`: ensure no startup/shutdown events reference ChromaDB; update any lifespan handler if it initializes chroma_client
 
 **Checkpoint**: `deps.py` imports compile, PGEngine connects to PostgreSQL, `vectorstore()` returns a PGVectorStore instance.
 
@@ -54,9 +55,10 @@ This is the single most critical change — ALL user stories depend on it.
 
 ### Implementation for User Story 2
 
-- [ ] T004 [US2] Remove function `_filter_complex_metadata()` and its helper logic (lines 18-37) from `services/rag-api-new/app/routers/ingest.py`; update `upsert_documents()` to pass `it.metadata` directly to `vs.add_texts()` without flattening; remove `_csv`-suffix field generation
-- [ ] T005 [US2] Verify `services/rag-api-new/app/indexing/normalizer.py` produces metadata values compatible with JSONB (lists as Python lists, dicts as Python dicts, no custom objects). Check all `make_doc()` and `chunk_doc()` calls ensure `technologies`, `project_ids`, `project_slugs`, `project_names` are plain Python lists
-- [ ] T006 [US2] Update `upsert_documents()` in `services/rag-api-new/app/routers/ingest.py` to use PGVectorStore API: `vs.delete(ids=ids_all)` (same API) then `vs.add_texts(texts=texts, metadatas=metadatas, ids=ids)` (same API). Verify upsert semantics work (delete + re-add)
+- [x] T004 [US2] Remove function `_filter_complex_metadata()` and its helper logic (lines 18-37) from `services/rag-api-new/app/routers/ingest.py`; update `upsert_documents()` to pass `it.metadata` directly to `vs.add_texts()` without flattening; remove `_csv`-suffix field generation
+- [x] T005 [US2] Verify `services/rag-api-new/app/indexing/normalizer.py` produces metadata values compatible with JSONB (lists as Python lists, dicts as Python dicts, no custom objects). Check all `make_doc()` and `chunk_doc()` calls ensure `technologies`, `project_ids`, `project_slugs`, `project_names` are plain Python lists
+- [x] T006 [US2] Update `upsert_documents()` in `services/rag-api-new/app/routers/ingest.py` to use PGVectorStore API: `vs.delete(ids=ids_all)` (same API) then `vs.add_texts(texts=texts, metadatas=metadatas, ids=ids)` (same API). Verify upsert semantics work (delete + re-add)
+- [x] T006a [US2] Verify `services/rag-api-new/app/routers/ingest_batch.py` uses the same `upsert_documents()` from `ingest.py` (shared import) or update its own metadata handling to pass metadata without flattening; ensure batch endpoint `/api/v1/ingest/batch` works with PGVectorStore
 
 **Checkpoint**: Batch ingest completes, documents stored in `portfolio_new` table with correct metadata.
 
@@ -70,9 +72,10 @@ This is the single most critical change — ALL user stories depend on it.
 
 ### Implementation for User Story 1 + 5
 
-- [ ] T007 [US1] Rewrite `fetch_by_ids()` function in `services/rag-api-new/app/rag/retrieval.py`: remove the `getattr(vs, "_collection", None)` ChromaDB hack (lines 13-39); replace with `vs.get_by_ids(ids)` which returns `list[Document]`; convert to `list[Doc]` format matching existing return type
-- [ ] T008 [US1] Verify `similarity_search_by_vector(embedding, k, filter)` calls in `services/rag-api-new/app/rag/retrieval.py` work with PGVectorStore: check `HybridRetriever.retrieve()` dense search path (line ~157) with filter `{"type": {"$in": [...]}}` and `expand_by_project()` (line ~107) with compound filter `{"type": {"$in": [...]}, "project_id": {"$in": [...]}}`; no code changes expected if API is compatible, but verify and fix if needed
-- [ ] T009 [US1] Verify `DenseRetriever.retrieve()` in `services/rag-api-new/app/rag/retrieval.py` works with PGVectorStore filter parameter (same verification as T008 but for the simpler retriever class)
+- [x] T007 [US1] Rewrite `fetch_by_ids()` function in `services/rag-api-new/app/rag/retrieval.py`: remove the `getattr(vs, "_collection", None)` ChromaDB hack (lines 13-39); replace with `vs.get_by_ids(ids)` which returns `list[Document]`; convert to `list[Doc]` format matching existing return type
+- [x] T008 [US1] Verify `similarity_search_by_vector(embedding, k, filter)` calls in `services/rag-api-new/app/rag/retrieval.py` work with PGVectorStore: check `HybridRetriever.retrieve()` dense search path (line ~157) with filter `{"type": {"$in": [...]}}` and `expand_by_project()` (line ~107) with compound filter `{"type": {"$in": [...]}, "project_id": {"$in": [...]}}`; no code changes expected if API is compatible, but verify and fix if needed
+- [x] T009 [US1] Verify `DenseRetriever.retrieve()` in `services/rag-api-new/app/rag/retrieval.py` works with PGVectorStore filter parameter (same verification as T008 but for the simpler retriever class)
+- [x] T009a [US1] Verify `services/rag-api-new/app/rag/search.py` orchestration layer: ensure `portfolio_search()` passes correct parameters to `HybridRetriever` and no ChromaDB-specific logic remains. Removed stale `_csv` suffix fields from `matches_entity_ext()` and `_extract_project_names_from_metadata()` in `answer_llm.py`
 
 **Checkpoint**: Agent answers questions correctly. `fetch_by_ids()` uses SQL. Hybrid search works end-to-end.
 
@@ -86,9 +89,9 @@ This is the single most critical change — ALL user stories depend on it.
 
 ### Implementation for User Story 4
 
-- [ ] T010 [US4] Rewrite `clear_collection()` in `services/rag-api-new/app/routers/admin.py`: remove `from app.deps import chroma_client`; replace `client.delete_collection(collection_name)` with SQL `TRUNCATE TABLE "{collection_name}"` via PGEngine; keep BM25 `bm25.reset(collection_name)` call; remove `vectorstore(collection_name)` re-creation call (PGVectorStore table persists after TRUNCATE)
-- [ ] T011 [US4] Rewrite `collection_stats()` in `services/rag-api-new/app/routers/admin.py`: remove `client.get_or_create_collection()`, `coll.count()`, `coll.get(include=["metadatas"])` ChromaDB calls; replace with SQL queries via PGEngine: `SELECT COUNT(*) FROM "{collection_name}"` for total count and `SELECT type, COUNT(*) FROM "{collection_name}" GROUP BY type` for per-type breakdown
-- [ ] T012 [US4] Update imports in `services/rag-api-new/app/routers/admin.py`: remove `chroma_client` import from `app.deps`; add `pg_engine` import from `app.deps`; ensure all admin endpoints use PGEngine for database access
+- [x] T010 [US4] Rewrite `clear_collection()` in `services/rag-api-new/app/routers/admin.py`: remove `from app.deps import chroma_client`; replace `client.delete_collection(collection_name)` with SQL `TRUNCATE TABLE "{collection_name}"` via PGEngine; keep BM25 `bm25.reset(collection_name)` call; remove `vectorstore(collection_name)` re-creation call (PGVectorStore table persists after TRUNCATE)
+- [x] T011 [US4] Rewrite `collection_stats()` in `services/rag-api-new/app/routers/admin.py`: remove `client.get_or_create_collection()`, `coll.count()`, `coll.get(include=["metadatas"])` ChromaDB calls; replace with SQL queries via PGEngine: `SELECT COUNT(*) FROM "{collection_name}"` for total count and `SELECT type, COUNT(*) FROM "{collection_name}" GROUP BY type` for per-type breakdown
+- [x] T012 [US4] Update imports in `services/rag-api-new/app/routers/admin.py`: remove `chroma_client` import from `app.deps`; add `pg_engine` import from `app.deps`; ensure all admin endpoints use PGEngine for database access
 
 **Checkpoint**: `GET /api/v1/admin/stats` returns correct counts. `DELETE /api/v1/admin/collection` clears all vectors.
 
@@ -102,13 +105,13 @@ This is the single most critical change — ALL user stories depend on it.
 
 ### Implementation for User Story 3
 
-- [ ] T013 [P] [US3] Update `infra/init/postgres-init.sql`: add `CREATE EXTENSION IF NOT EXISTS "vector";` after existing `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`
-- [ ] T014 [US3] Update `infra/docker-compose.local.yaml`: change postgres image from `postgres:16` to `pgvector/pgvector:pg16`; remove entire `chroma` service block; remove `chroma_data` from volumes declaration; remove `chroma` from rag-api `depends_on`; add `depends_on: postgres` to rag-api; replace `CHROMA_HOST`, `CHROMA_PORT`, `chroma_collection`, `ANONYMIZED_TELEMETRY` env vars in rag-api with `DATABASE_URL` using same connection string as content-api
-- [ ] T015 [US3] Update `infra/docker-compose-prod.yaml`: same changes as T014 (postgres image, remove chroma service/volume/depends_on, add DATABASE_URL to rag-api env)
-- [ ] T016 [P] [US3] Update `infra/.env.dev`: remove `CHROMA_PORT` from ports section; remove entire Chroma section (`CHROMA_HOST`, `CHROMA_COLLECTION`); verify `DATABASE_URL` is defined and accessible for rag-api
-- [ ] T017 [P] [US3] Update `infra/.env.local`: same changes as T016 (remove CHROMA_PORT, CHROMA_HOST, CHROMA_COLLECTION)
-- [ ] T018 [P] [US3] Update `infra/.env.prod`: remove `CHROMA_COLLECTION` from internal ports section; remove entire Chroma section (`CHROMA_HOST`, `CHROMA_PORT`)
-- [ ] T019 [P] [US3] Update `infra/.env.example`: remove `CHROMA_PORT` from ports section; replace entire `ChromaDB (Vector Database)` section with pgvector documentation referencing `DATABASE_URL` and `COLLECTION_NAME`
+- [x] T013 [P] [US3] Update `infra/init/postgres-init.sql`: add `CREATE EXTENSION IF NOT EXISTS "vector";` after existing `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`
+- [x] T014 [US3] Update `infra/docker-compose.local.yaml`: change postgres image from `postgres:16` to `pgvector/pgvector:pg16`; remove entire `chroma` service block; remove `chroma_data` from volumes declaration; remove `chroma` from rag-api `depends_on`; add `depends_on: postgres` to rag-api; replace `CHROMA_HOST`, `CHROMA_PORT`, `chroma_collection`, `ANONYMIZED_TELEMETRY` env vars in rag-api with `DATABASE_URL` using same connection string as content-api
+- [x] T015 [US3] Update `infra/docker-compose-prod.yaml`: same changes as T014 (postgres image, remove chroma service/volume/depends_on, add DATABASE_URL to rag-api env)
+- [x] T016 [P] [US3] Update `infra/.env.dev`: remove `CHROMA_PORT` from ports section; remove entire Chroma section (`CHROMA_HOST`, `CHROMA_COLLECTION`); verify `DATABASE_URL` is defined and accessible for rag-api
+- [x] T017 [P] [US3] Update `infra/.env.local`: same changes as T016 (remove CHROMA_PORT, CHROMA_HOST, CHROMA_COLLECTION)
+- [x] T018 [P] [US3] Update `infra/.env.prod`: remove `CHROMA_COLLECTION` from internal ports section; remove entire Chroma section (`CHROMA_HOST`, `CHROMA_PORT`)
+- [x] T019 [P] [US3] Update `infra/.env.example`: remove `CHROMA_PORT` from ports section; replace entire `ChromaDB (Vector Database)` section with pgvector documentation referencing `DATABASE_URL` and `COLLECTION_NAME`
 
 **Checkpoint**: Docker Compose starts without chroma. PostgreSQL has pgvector extension. All env files clean.
 
@@ -122,10 +125,10 @@ This is the single most critical change — ALL user stories depend on it.
 
 ### Implementation for User Story 6
 
-- [ ] T020 [US6] Update `CLAUDE.md`: replace all ChromaDB references with pgvector throughout the file — Architecture section (RAG API description, vector store references), Environment Variables (remove CHROMA_*, add pgvector connection), Docker services (remove chroma service, update postgres image), Common Pitfalls (remove ChromaDB-specific pitfalls, add pgvector notes), File Structure (remove chroma references), Data Flow (update RAG ingestion flow), Technology Stack table (ChromaDB → pgvector), Key Architectural Patterns (update Hybrid Retrieval section)
-- [ ] T021 [US6] Update `CLAUDE_RU.md`: synchronize all changes from T020, ensuring Russian translation is consistent with updated `CLAUDE.md`
-- [ ] T022 [P] [US6] Update `infra/DOCKER-LOCAL.md`: remove `chroma` row from services table (line ~229); update comment on line ~161 from "ChromaDB" to "pgvector"; update any curl examples referencing chroma
-- [ ] T023 [P] [US6] Update `infra/DOCKER-PROD.md`: remove `chroma` row from services table (line ~287); remove `docker inspect ai-folio-chroma-1` health check example (line ~263); update comment on line ~195 from "ChromaDB" to "pgvector"
+- [x] T020 [US6] Update `CLAUDE.md`: replace all ChromaDB references with pgvector throughout the file — Architecture section (RAG API description, vector store references), Environment Variables (remove CHROMA_*, add pgvector connection), Docker services (remove chroma service, update postgres image), Common Pitfalls (remove ChromaDB-specific pitfalls, add pgvector notes), File Structure (remove chroma references), Data Flow (update RAG ingestion flow), Technology Stack table (ChromaDB → pgvector), Key Architectural Patterns (update Hybrid Retrieval section)
+- [x] T021 [US6] Update `CLAUDE_RU.md`: synchronize all changes from T020, ensuring Russian translation is consistent with updated `CLAUDE.md`
+- [x] T022 [P] [US6] Update `infra/DOCKER-LOCAL.md`: remove `chroma` row from services table (line ~229); update comment on line ~161 from "ChromaDB" to "pgvector"; update any curl examples referencing chroma
+- [x] T023 [P] [US6] Update `infra/DOCKER-PROD.md`: remove `chroma` row from services table (line ~287); remove `docker inspect ai-folio-chroma-1` health check example (line ~263); update comment on line ~195 from "ChromaDB" to "pgvector"
 
 **Checkpoint**: All documentation reflects pgvector. No ChromaDB references.
 
@@ -135,11 +138,11 @@ This is the single most critical change — ALL user stories depend on it.
 
 **Purpose**: End-to-end verification, test suite, final cleanup.
 
-- [ ] T024 Run `pytest tests/ -v` in `services/rag-api-new/` and fix any failures caused by migration
-- [ ] T025 Start full Docker Compose stack (`docker compose -f docker-compose.local.yaml up -d`), run `rag-ingest`, verify `/api/v1/admin/stats` returns correct document counts
-- [ ] T026 Test AI agent with 5+ questions from `POPULAR_QUESTIONS` via `/api/v1/agent/chat/stream`, verify quality of answers
-- [ ] T027 Run `grep -ri "chroma" --include="*.py" --include="*.yaml" --include="*.md" --include="*.toml" --include="*.env*" --include="*.sql"` across repo (excluding `.git/`, `node_modules/`, `specs/`, `.specify/`) and fix any remaining active references
-- [ ] T028 Verify `pg_dump` of `ai_portfolio_new` includes both content-api tables and `portfolio_new` vector table
+- [x] T024 Run `pytest tests/ -v` in `services/rag-api-new/` and fix any failures caused by migration. Fixed 3 pre-existing test failures: unpacked tuple return from `AnswerLLM.generate()`, added `timeout=90` to GigaChat mock. Result: 96 passed, 20 skipped
+- [x] T025 Start full Docker Compose stack (`docker compose -f docker-compose.local.yaml up -d`), run `rag-ingest`, verify `/api/v1/admin/stats` returns correct document counts. Result: 87 docs ingested, graph 81 nodes/163 edges, prefetch 33 cache + 6 shortcuts, admin stats confirmed
+- [x] T026 Test AI agent with 5+ questions from `POPULAR_QUESTIONS` via `/api/v1/agent/chat/stream`, verify quality of answers and measure response time. Result: agent works, answers factually correct. Performance issues documented in `known-issues.md` (planner retry, low confidence, 52s latency, 15k tokens) — all pre-existing, not migration-related
+- [x] T027 Run `grep -ri "chroma" --include="*.py" --include="*.yaml" --include="*.md" --include="*.toml" --include="*.env*" --include="*.sql"` across repo (excluding `.git/`, `node_modules/`, `specs/`, `.specify/`) and fix any remaining active references. This task serves as catch-all for FR-024 (remove ALL chromadb/langchain_chroma imports) beyond the files explicitly covered by T003 and T012
+- [x] T028 Verify `pg_dump` of `ai_portfolio_new` includes both content-api tables and `portfolio_new` vector table. Result: 19 tables in single DB — 18 content-api + 1 pgvector (`portfolio_new` with `vector(768)`). Single `pg_dump` backs up everything
 
 ---
 
@@ -251,4 +254,4 @@ If MVP validation fails at step 5:
 - US5 (SQL capabilities) merged into US1 — `fetch_by_ids()` fix is required for search
 - Commit after each phase or logical group
 - Stop at any checkpoint to validate independently
-- Total: 28 tasks across 8 phases
+- Total: 31 tasks across 8 phases (T003a, T006a, T009a added by /speckit.analyze)

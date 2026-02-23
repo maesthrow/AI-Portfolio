@@ -158,7 +158,7 @@ docker compose -p ai-portfolio-local -f docker-compose.local.yaml --env-file .en
 ## RAG API Stats
 
 ```bash
-# Статистика коллекции ChromaDB (количество документов по типам)
+# Статистика коллекции pgvector (количество документов по типам)
 curl.exe "http://localhost:8004/api/v1/admin/stats"
 
 # Красивый вывод JSON
@@ -226,7 +226,6 @@ docker image prune -f
 | content-api | 8000 | 8003 | http://localhost:8003 |
 | rag-api | 8000 | 8004 | http://localhost:8004 |
 | postgres | 5432 | 5433 | localhost:5433 |
-| chroma | 8000 | 8001 | http://localhost:8001 |
 | litellm | 4000 | 8005 | http://localhost:8005 |
 | tei | 80 | 8006 | http://localhost:8006 |
 

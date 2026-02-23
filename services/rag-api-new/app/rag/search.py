@@ -108,11 +108,8 @@ def _apply_entity_filter(docs: List[Doc], entities: List[Entity], policy: Entity
             "title",
             "ref_id",
             "technologies",
-            "technologies_csv",
             "tags",
-            "tags_csv",
             "project_names",
-            "project_names_csv",
         ]:
             if _value_matches(md.get(key)):
                 return True
@@ -243,7 +240,7 @@ def portfolio_search(
         SearchResult с найденными фактами или evidence
     """
     cfg = settings()
-    coll = collection or cfg.chroma_collection
+    coll = collection or cfg.collection_name
 
     # === Create search plan with default parameters ===
     # Параметры поиска определяет Planner LLM, здесь используем значения по умолчанию

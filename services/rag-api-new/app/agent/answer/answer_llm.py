@@ -407,10 +407,6 @@ class AnswerLLM:
             except Exception:
                 pass
 
-        csv = md.get("project_names_csv")
-        if isinstance(csv, str) and csv.strip():
-            return [p.strip() for p in csv.split(",") if p.strip()]
-
         return []
 
     @staticmethod

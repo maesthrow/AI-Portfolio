@@ -31,7 +31,7 @@ services:
 
   # ===== POSTGRES =====
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -73,29 +73,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
-
-  # ===== CHROMA =====
-  chroma:
-    image: ghcr.io/chroma-core/chroma:latest
-    restart: unless-stopped
-    environment:
-      CHROMA_SERVER_AUTH_ENABLED: "false"
-      ANONYMIZED_TELEMETRY: "false"
-    ports:
-      - "${CHROMA_PORT:-8001}:8000"
-    command: ["run", "--host", "0.0.0.0", "--port", "8000"]
-    volumes:
-      - chroma_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/heartbeat"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   # ===== TEI (embeddings) =====
   tei:
@@ -177,11 +154,9 @@ services:
       # === Reranker ===
       RERANKER_MODEL: ${RERANKER_MODEL:-BAAI/bge-reranker-base}
       MAX_RERANK_CANDIDATES: ${MAX_RERANK_CANDIDATES:-80}
-      # === Chroma ===
-      CHROMA_HOST: chroma
-      CHROMA_PORT: 8000
-      chroma_collection: ${CHROMA_COLLECTION:-portfolio_new}
-      ANONYMIZED_TELEMETRY: "false"
+      # === pgvector (shared DB with content-api) ===
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      COLLECTION_NAME: ${COLLECTION_NAME:-portfolio_new}
       # === CORS ===
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       FRONTEND_LOCAL_IP: ${FRONTEND_LOCAL_IP:-http://localhost:3000}
@@ -227,7 +202,7 @@ services:
       - 8.8.8.8
       - 8.8.4.4
     depends_on:
-      - chroma
+      - postgres
       - litellm
       - redis
 
@@ -251,6 +226,5 @@ services:
 
 volumes:
   pg_data:
-  chroma_data:
   tei_cache:
   redis_data:

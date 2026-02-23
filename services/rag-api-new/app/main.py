@@ -33,7 +33,7 @@ def healthz():
         "ok": True,
         "env": "rag-api-new",
         "log_level": s.log_level,
-        "collection": s.chroma_collection,
+        "collection": s.collection_name,
         "planner_llm": s.planner_llm,
         "answer_llm": s.answer_llm,
         "agent_llm": s.agent_llm,

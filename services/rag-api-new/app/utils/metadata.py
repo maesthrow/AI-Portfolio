@@ -2,7 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from typing import Any, Callable, Iterable
+
+# Fixed namespace for deterministic UUID generation from string doc_ids.
+# langchain_id column is UUID; our IDs are strings like "profile:1".
+_DOC_UUID_NAMESPACE = uuid.UUID("b4a7e3d1-5c2f-4a8b-9e6d-1f0c3b5a7d9e")
+
+
+def doc_id_to_langchain_id(doc_id: str) -> str:
+    """Convert string doc_id (e.g. 'profile:1') to deterministic UUID string."""
+    return str(uuid.uuid5(_DOC_UUID_NAMESPACE, doc_id))
 
 
 def _sha1(obj: Any) -> str:

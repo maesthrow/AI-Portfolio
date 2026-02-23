@@ -20,8 +20,8 @@ dependencies = [
 
   # --- Провайдеры / векторка ---
   "langchain-openai>=0.3.0",
-  "langchain-chroma>=0.2.0,<0.3.0",
-  "chromadb>=0.5.15",
+  "langchain-postgres>=0.0.17",
+  "psycopg[binary]>=3.1",
 
   # --- Модели эмбеддингов ---
   "sentence-transformers>=3.0.0,<4.0.0",

@@ -1,42 +1,31 @@
 from __future__ import annotations
 import logging
-from typing import Any, List, Tuple
+from typing import List, Tuple
 from .types import Doc, Retriever
 from .utils import doc_id_of
 from ..indexing import bm25
 from ..cache.embedding_cache import get_embedding_with_cache
 from ..deps import embeddings, settings
+from ..utils.metadata import doc_id_to_langchain_id
 
 logger = logging.getLogger(__name__)
 
 
 def fetch_by_ids(vs, ids: list[str], question: str) -> list[Doc]:
+    """Fetch documents by ID via PGVectorStore.get_by_ids().
+
+    Args:
+        ids: String doc_ids (e.g. "profile:1") — converted to UUID for langchain_id lookup.
+    """
     if not ids:
         return []
     try:
-        # Prefer direct Chroma get-by-ids (stable for hybrid merge) over metadata filters.
-        data: dict[str, Any] | None = None
-        coll = getattr(vs, "_collection", None)
-        if coll is not None and hasattr(coll, "get"):
-            data = coll.get(ids=ids, include=["documents", "metadatas"])
-        elif hasattr(vs, "get"):
-            data = vs.get(ids=ids, include=["documents", "metadatas"])
-        if not isinstance(data, dict):
-            return []
+        uuid_ids = [doc_id_to_langchain_id(i) for i in ids]
+        documents = vs.get_by_ids(uuid_ids)
+        return [Doc(page_content=d.page_content, metadata=d.metadata or {}) for d in documents]
     except Exception:
+        logger.warning("fetch_by_ids failed for %d ids", len(ids), exc_info=True)
         return []
-
-    got_ids = data.get("ids") or []
-    docs = data.get("documents") or []
-    metas = data.get("metadatas") or []
-    by_id: dict[str, Doc] = {}
-    for did, txt, md in zip(got_ids, docs, metas):
-        if not did:
-            continue
-        by_id[str(did)] = Doc(page_content=txt or "", metadata=md or {})
-
-    out = [by_id.get(str(i)) for i in ids if by_id.get(str(i))]
-    return [d for d in out if d]
 
 
 class DenseRetriever(Retriever):

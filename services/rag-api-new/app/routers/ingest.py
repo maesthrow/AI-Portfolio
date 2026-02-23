@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Iterable
 
@@ -10,31 +9,10 @@ from app.deps import settings, vectorstore
 from app.indexing import bm25
 from app.indexing.persistence import bm25_try_load, bm25_try_save
 from app.schemas.ingest import IngestItem, IngestRequest, IngestResult
+from app.utils.metadata import doc_id_to_langchain_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["ingest"])
-
-
-def _filter_complex_metadata(md: dict[str, Any] | None) -> dict[str, Any]:
-    if not md:
-        return {}
-    out: dict[str, Any] = {}
-    for k, v in md.items():
-        if v is None:
-            continue
-        if isinstance(v, (str, int, float, bool)):
-            out[k] = v
-        elif isinstance(v, (list, tuple)):
-            try:
-                out[f"{k}_csv"] = ",".join(map(str, v))
-            except Exception:
-                pass
-            out[k] = json.dumps(v, ensure_ascii=False, sort_keys=True)
-        elif isinstance(v, dict):
-            out[k] = json.dumps(v, ensure_ascii=False, sort_keys=True)
-        else:
-            out[k] = str(v)
-    return out
 
 
 def _batched(seq: Iterable[Any], n: int):
@@ -53,9 +31,11 @@ def upsert_documents(collection: str, items: list[IngestItem]) -> IngestResult:
 
     bm25_try_load(collection)
 
+    # PGVectorStore langchain_id is UUID — convert string doc_ids to deterministic UUIDs
     try:
         if ids_all:
-            vs.delete(ids=ids_all)
+            uuid_ids = [doc_id_to_langchain_id(i) for i in ids_all]
+            vs.delete(ids=uuid_ids)
     except Exception:
         logger.warning("vectorstore delete_ids failed", exc_info=True)
     try:
@@ -66,16 +46,17 @@ def upsert_documents(collection: str, items: list[IngestItem]) -> IngestResult:
     upserted = 0
     for batch in _batched(items, max_batch):
         ids = [it.id for it in batch]
+        uuid_batch_ids = [doc_id_to_langchain_id(i) for i in ids]
         texts = [it.text for it in batch]
-        metadatas = [_filter_complex_metadata(it.metadata) for it in batch]
+        metadatas = [it.metadata or {} for it in batch]
         try:
-            vs.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+            vs.add_texts(texts=texts, metadatas=metadatas, ids=uuid_batch_ids)
             upserted += len(batch)
         except Exception as e:
             preview = ", ".join(ids[:3])
             raise HTTPException(
                 500,
-                f"Chroma upsert failed on batch size {len(batch)} (e.g. ids: {preview}...): {e}",
+                f"pgvector upsert failed on batch size {len(batch)} (e.g. ids: {preview}...): {e}",
             )
 
         try:
@@ -94,5 +75,5 @@ def upsert_documents(collection: str, items: list[IngestItem]) -> IngestResult:
 
 @router.post("/ingest", response_model=IngestResult)
 def ingest(req: IngestRequest):
-    coll = req.collection or settings().chroma_collection
+    coll = req.collection or settings().collection_name
     return upsert_documents(coll, req.items)

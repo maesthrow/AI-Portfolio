@@ -75,10 +75,9 @@ class Settings(BaseSettings):
     # Reranker
     reranker_model: str = "BAAI/bge-reranker-base"
 
-    # Chroma
-    chroma_host: str = "localhost"
-    chroma_port: int = 8001
-    chroma_collection: str = "portfolio_new"
+    # pgvector (shared DATABASE_URL with content-api)
+    database_url: str = "postgresql+psycopg://ai_user:ai_password@localhost:5433/ai_portfolio_new"
+    collection_name: str = "portfolio_new"
 
     # CORS
     frontend_origin: str | AnyUrl = "http://localhost:3001"
@@ -201,10 +200,6 @@ class Settings(BaseSettings):
     При 240 docs × ~17ms/doc = 4s. При 80 docs = ~1.3s.
     Документы после лимита отбрасываются (уже отсортированы по RRF score).
     """
-
-    @property
-    def chroma_client_kwargs(self) -> dict:
-        return {"host": self.chroma_host, "port": self.chroma_port}
 
 
 @lru_cache

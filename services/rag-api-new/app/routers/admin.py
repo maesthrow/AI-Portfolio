@@ -4,7 +4,9 @@ import logging
 
 from fastapi import APIRouter, Request
 
-from app.deps import chroma_client, settings, vectorstore, rate_limiter
+from sqlalchemy import text
+
+from app.deps import pg_engine, settings, vectorstore, rate_limiter
 from app.rate_limit import RateLimitStatus
 from app.indexing import bm25
 from app.schemas.admin import (
@@ -26,39 +28,47 @@ logger = logging.getLogger(__name__)
 @router.delete("/admin/collection", response_model=ClearResult)
 def clear_collection():
     cfg = settings()
-    client = chroma_client()
-    collection_name = cfg.chroma_collection
+    collection_name = cfg.collection_name
+    engine = pg_engine()
 
     try:
-        client.delete_collection(collection_name)
+        async def _truncate():
+            async with engine._pool.connect() as conn:
+                await conn.execute(text(f'TRUNCATE TABLE "{collection_name}"'))
+                await conn.commit()
+        engine._run_as_sync(_truncate())
     except Exception:
-        logger.warning("Chroma delete_collection failed", exc_info=True)
-    finally:
-        try:
-            bm25.reset(collection_name)
-        except Exception:
-            logger.warning("BM25 reset failed", exc_info=True)
+        logger.warning("pgvector TRUNCATE failed", exc_info=True)
 
-    vectorstore(collection_name)
+    try:
+        bm25.reset(collection_name)
+    except Exception:
+        logger.warning("BM25 reset failed", exc_info=True)
+
     return ClearResult(ok=True, collection=collection_name, recreated=True)
 
 
 @router.get("/admin/stats", response_model=StatsResult)
 def collection_stats():
     cfg = settings()
-    client = chroma_client()
-    coll = client.get_or_create_collection(cfg.chroma_collection)
+    engine = pg_engine()
+    collection_name = cfg.collection_name
 
-    total = coll.count()
-    by_type = None
-    safe_limit = 5000
-    if total and total <= safe_limit:
-        data = coll.get(include=["metadatas"])
-        counts: dict[str, int] = {}
-        for md in data.get("metadatas") or []:
-            t = (md or {}).get("type") or "unknown"
-            counts[t] = counts.get(t, 0) + 1
-        by_type = counts
+    total = 0
+    by_type: dict[str, int] | None = None
+    try:
+        async def _stats():
+            async with engine._pool.connect() as conn:
+                r1 = await conn.execute(text(f'SELECT COUNT(*) FROM "{collection_name}"'))
+                cnt = r1.scalar() or 0
+                r2 = await conn.execute(
+                    text(f'SELECT type, COUNT(*) FROM "{collection_name}" GROUP BY type')
+                )
+                types = {row[0] or "unknown": row[1] for row in r2}
+                return cnt, types
+        total, by_type = engine._run_as_sync(_stats())
+    except Exception:
+        logger.warning("pgvector stats query failed", exc_info=True)
 
     # === Graph-RAG: статистика графа (always enabled) ===
     from app.graph.store import get_graph_store
@@ -66,12 +76,12 @@ def collection_stats():
     stats = store.stats()
     graph_stats = GraphStats(
         nodes=stats["nodes"],
-            edges=stats["edges"],
-            nodes_by_type=stats["nodes_by_type"],
-        )
+        edges=stats["edges"],
+        nodes_by_type=stats["nodes_by_type"],
+    )
 
     return StatsResult(
-        collection=cfg.chroma_collection,
+        collection=collection_name,
         total=total,
         by_type=by_type,
         graph_stats=graph_stats,
