@@ -72,3 +72,5 @@ alembic/versions/__pycache__/
 task_plan.md
 findings.md
 progress.md
+
+.claude/settings.local.json
