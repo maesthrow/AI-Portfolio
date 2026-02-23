@@ -130,7 +130,7 @@ The following technology choices are non-negotiable for the project:
 |-------|-----------|-----------------|
 | Frontend | Next.js 14 + React 18 + TypeScript | Tailwind CSS, Framer Motion |
 | Backend API | FastAPI + SQLAlchemy 2.0 | Python 3.12+ |
-| RAG Pipeline | LangChain 1.x + LangGraph 1.x | ChromaDB, sentence-transformers |
+| RAG Pipeline | LangChain 1.x + LangGraph 1.x | pgvector, sentence-transformers |
 | LLM Infra | LiteLLM proxy, vLLM (Qwen), TEI | Multi-provider: GigaChat, DeepSeek, Qwen |
 | Database | PostgreSQL 16 | Alembic migrations |
 | Cache / Rate Limit | Redis | Fail-closed rate limiter, fail-open cache |
@@ -146,7 +146,7 @@ Additional constraints:
 - Markdown fields (`*_md`) rendered with `react-markdown` + `remark-gfm`.
 - No emojis in code or UI unless explicitly requested.
 - Docker internal networking: services communicate via service names
-  (e.g., `postgres:5432`, `chroma:8000`, `litellm:4000`).
+  (e.g., `postgres:5432`, `litellm:4000`, `tei:80`).
 
 ## Development Workflow
 
