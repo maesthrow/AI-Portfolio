@@ -212,14 +212,14 @@ EXPERIENCE_DATA = [
         "end_date": date(2023, 8, 1),
         "is_current": False,
         "kind": "commercial",
-        "company_role_md": "Разрабатывал программное обеспечение для подразделений испытательного центра.",
+        "company_role_md": "Разрабатывал программное обеспечение для подразделений испытательного центра ракетно-космическое предприятия.",
         "summary_md": (
-            "Ракетно-космическое предприятие."
+            "Система контроля испытательного оборудования."
         ),
         "achievements_md": (
-            "- По собственной инициативе разработал систему контроля испытательного оборудования (СКИО).\n"
-            "- Успешно внедрил систему в работу испытательного центра.\n"
-            "- Оптимизировал производственный процесс в рамках бережливого производства.\n"
+            "- По личной инициативе предложил идею и самостоятельно разработал систему контроля испытательного оборудования (СКИО).\n"
+            "- Успешно запустил и внедрил систему в работу подразделений испытательного центра.\n"
+            "- Оптимизировал производственный процесс предприятия в рамках бережливого производства.\n"
         ),
         "description_md": None,
         "order_index": 40,
@@ -232,11 +232,11 @@ PROJECTS_DATA = [
         "slug": "t2-ml",
         "description_md": (
             "ML-платформа компании t2: CV-сервисы для ребрендинга, "
-            "LLM + RAG-системы, бэкенд авто-обучения и инференса CV-моделей."
+            "LLM + RAG-системы, backend авто-обучения и инференса CV-моделей."
         ),
         "long_description_md": (
             "- Сервис на базе компьютерного зрения для распознавания бренда на тысячах фотографий с точек продаж.\n"
-            "- LLM-ассистент с RAG для расчёта штрафов и по договорам (LangChain/LangGraph, vLLM, ChromaDB).\n"
+            "- LLM-ассистент с RAG для расчёта штрафов и по договорам (LangChain/LangGraph, vLLM, Qdrant).\n"
             "- MLOps: MLflow, Celery, RabbitMQ, пайплайн автообучения, валидации и инференса ML-моделей компьютерного зрения.\n"
             "- Backend на FastAPI, интеграции с внутренними сервисами t2."
         ),
@@ -300,8 +300,8 @@ PROJECTS_DATA = [
         "name": "F3 TAIL",
         "slug": "f3-tail",
         "description_md": (
-            "Сервисы для автоматизации аптек и розничной торговли: интеграции, мониторинг, "
-            "бот службы поддержки."
+            "Сервисы для автоматизации аптек и розничной торговли: оптимизация, интеграция, мониторинг, "
+            "создание бота службы поддержки."
         ),
         "long_description_md": None,
         "period": "2023–2024",
@@ -329,8 +329,8 @@ PROJECTS_DATA = [
         "name": "СКИО",
         "slug": "skio",
         "description_md": (
-            "Серверная часть и БД системы контроля испытательного оборудования (СКИО): "
-            "проектирование схемы БД, архитектуры приложения, автоматизация выгрузок документации."
+            "Создание системы контроля испытательного оборудования (СКИО): "
+            "полный цикл разработки от проектирования базы данных и архитектуры приложения до реализации backend, ui, тестирования и запуска."
         ),
         "period": "2021–2023",
         "company_name": "АО «РКЦ «Прогресс»",
@@ -350,13 +350,13 @@ PROJECTS_DATA = [
         "name": "HyperKeeper",
         "slug": "hyperkeeper",
         "description_md": (
-            "Личный Telegram-бот-хранилище: структура папок, файлы, медиа, текстовые заметки. "
+            "Личный Telegram-бот с множеством фич для хранения файлов, медиа и текстовых заметок в удобной структуре папок. "
             "Интеграция с LLM (GigaChat), история диалогов и быстрый поиск по контенту."
         ),
         "long_description_md": (
-            "- Личный проект: Telegram-бот для загрузки документов, заметок и медиа.\n"
-            "- RAG-поиск по личному хранилищу, интегрированная LLM-модель GigaChat и сохраннеие истории диалогов.\n"
-            "- Модульная архитектура: aiogram, LangChain, MongoDB, ChromaDB."
+            "- Личный проект: Telegram-бот для удобного хранения документов, заметок и медиа.\n"
+            "- RAG-поиск по личному хранилищу, интегрированная LLM-модель GigaChat и сохранение истории диалогов.\n"
+            "- Модульная архитектура: aiogram, LangChain, MongoDB, ChromaDB, Redis"
         ),
         "period": "2023 — 2024",
         "company_name": None,
@@ -372,6 +372,8 @@ PROJECTS_DATA = [
             "MongoDB",
             "LangChain",
             "GigaChain",
+            "ChromaDB",
+            "Redis",
             "Docker",
         ],
     },
@@ -379,14 +381,16 @@ PROJECTS_DATA = [
         "name": "AI-Portfolio",
         "slug": "ai-portfolio",
         "description_md": (
-            "Личный AI-портфолио-сайт. Фронтенд на Next.js, backend-сервисы (content-api, rag-api) на FastAPI, "
-            "LLM-инфраструктура (vLLM, TEI, ChromaDB). Встроенный AI-агент для ответов на вопросы по опыту и проектам."
+            "Сайт-портфолио в стиле киберпанк с встроенным AI-агентом. "
+            "Агент отвечает на вопросы по содержимому портфолио, отправляет CV на email "
+            "и поддерживает мультитурновый диалог через стриминг в реальном времени."
         ),
         "long_description_md": (
-            "- Next.js фронтенд и дизайн портфолио.\n"
-            "- Content API + RAG API на FastAPI, отдельные сервисы для данных и индексации.\n"
-            "- vLLM, Text Embeddings Inference, ChromaDB и агенты для ответов по содержимому сайта.\n"
-            "- Полная автоматизация контента через сиды и CI/CD пайплайн."
+            "- Микросервисная архитектура: Content API и RAG API на FastAPI, фронтенд на Next.js (SSR), оркестрация через Docker Compose.\n"
+            "- AI-агент на LangGraph с гибридным роутером (regex fast-path + LLM-классификация) и 6 независимыми LLM-ролями (GigaChat, DeepSeek, Qwen).\n"
+            "- RAG-пайплайн: векторное хранилище pgvector, граф знаний, гибридный поиск (dense + BM25), кросс-энкодер реранкер, кэш эмбеддингов и планов в Redis.\n"
+            "- Стриминг NDJSON с отображением этапов пайплайна в реальном времени (планирование → поиск → верификация → ответ).\n"
+            "- Отправка CV через мультитурновый диалог с агентом, rate-limiting по IP и email."
         ),
         "period": "2025 — н.в.",
         "company_name": None,
@@ -396,30 +400,32 @@ PROJECTS_DATA = [
         "repo_url": "https://github.com/maesthrow/AI-Portfolio",
         "demo_url": "https://ai-folio.ru",
         "technologies": [
-            "Next.js",
             "FastAPI",
-            "vLLM",
             "LangChain",
             "LangGraph",
-            "Embeddings",
-            "ChromaDB",
             "RAG",
-            "Docker",
+            "pgvector",
             "PostgreSQL",
             "Redis",
+            "LiteLLM",
+            "vLLM",
+            "Docker",
+            "Next.js",
+            "TypeScript",
+            "Tailwind CSS",
         ],
     },
     {
         "name": "ReAct-Agent",
         "slug": "react-agent",
         "description_md": (
-            "ReAct-агент на базе LLM, комбинирующий рассуждение и вызов инструментов. "
-            "Поддерживает цепочку действий: поиск задач, операции над ними, интеграция с внешними API."
+            "Прототип AI-агента на базе LLM с применением ReAct-паттерна, комбинирующий рассуждение и вызов инструментов. "
+            "Создан для демонстрации агентного стека на примере навыка поиска в сети во время ответов на вопросы."
         ),
         "long_description_md": (
-            "- Реализация ReAct-подхода с LangChain и кастомными тулзами.\n"
+            "- Реализация ReAct-подхода на LangChain/LangGraph и кастомными инструментами (tools).\n"
             "- Поддержка сложных последовательностей действий и возврата к предыдущим шагам.\n"
-            "- Демонстрация AI-агентного стека и интеграции с внешними API."
+            "- Хранение состояния диалогов, автономный поиск в сети через DuckDuckGo и логирование результатов."
         ),
         "period": "2025",
         "company_name": None,
@@ -429,12 +435,11 @@ PROJECTS_DATA = [
         "repo_url": "https://github.com/maesthrow/ReAct-Agent",
         "demo_url": None,
         "technologies": [
-            "Python",
             "LLM",
             "ReAct",
             "LangChain",
             "LangGraph",
-            "vLLM",
+            "DuckDuckGo",
         ],
     },
 ]
@@ -500,6 +505,7 @@ TECH_FOCUS_DATA = [
             "LangGraph",
             "RAG",
             "ReAct",
+            "pgvector",
             "ChromaDB",
             "Qdrant",
             "OpenAI API",
@@ -672,6 +678,7 @@ TECHNOLOGIES_WITH_CATEGORIES = {
     # Programming Languages
     "Python 3.9": "language",
     "Python 3.12": "language",
+    "TypeScript": "language",
     "C#": "language",
 
     # Databases
@@ -684,6 +691,9 @@ TECHNOLOGIES_WITH_CATEGORIES = {
     "ChromaDB": "vector_store",
     "Qdrant": "vector_store",
     "pgvector": "vector_store",
+
+    # CSS Frameworks
+    "Tailwind CSS": "framework",
 
     # Frameworks
     "FastAPI": "framework",
@@ -722,6 +732,7 @@ TECHNOLOGIES_WITH_CATEGORIES = {
     "Celery": "library",
     "pytest": "library",
     "ADO.NET": "library",
+    "DuckDuckGo": "library",
 
     # Tools
     "Docker": "tool",
