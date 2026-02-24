@@ -340,6 +340,16 @@ class PlannerLLM:
                 tc["args"] = args
 
         sanitized = QueryPlanV3.model_validate(data)
+
+        # ISSUE-002 fix: GigaChat retry often produces confidence=0.0 on a valid plan.
+        # rag_tool.py forces hybrid search when confidence < 0.5, causing unnecessary
+        # +15-20s latency. Override 0.0 to 0.5 when the plan is structurally valid.
+        if (sanitized.confidence == 0.0
+                and sanitized.intents
+                and sanitized.tool_calls):
+            sanitized.confidence = 0.5
+            logger.debug("confidence=0.0 overridden to 0.5 (valid plan, likely retry artifact)")
+
         if sanitized.model_dump(mode="json") != original:
             logger.info("Plan sanitized JSON=%s", compact_json(sanitized.model_dump(mode="json")))
         return sanitized
