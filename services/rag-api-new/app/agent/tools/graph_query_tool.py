@@ -24,6 +24,7 @@ _INTENT_MAPPING = {
     IntentV2.EXPERIENCE_SUMMARY: "experience",
     IntentV2.TECHNOLOGY_OVERVIEW: "technologies",
     IntentV2.CONTACTS: "contacts",
+    IntentV2.PROJECT_LIST: "project_list",
     IntentV2.GENERAL_UNSTRUCTURED: "general",
 }
 
@@ -35,6 +36,8 @@ def execute_graph_query(
     scope: str | None = None,
     company_id: str | None = None,
     project_id: str | None = None,
+    kind: str | None = None,
+    domain: str | None = None,
     limit: int = 20,
 ) -> tuple[list[FactItem], list[dict[str, Any]], bool, float]:
     """
@@ -47,6 +50,8 @@ def execute_graph_query(
         scope: Query scope level (global/company/project)
         company_id: Filter by company ID
         project_id: Filter by project ID
+        kind: Project kind filter for project_list ("personal" or "commercial")
+        domain: Domain filter for project_list
         limit: Maximum number of results
 
     Returns:
@@ -93,23 +98,27 @@ def execute_graph_query(
             intent_enum = Intent.GENERAL
 
     logger.info(
-        "graph_query: intent=%s, entity_key=%s, tech_category=%s, scope=%s, company=%s, project=%s",
+        "graph_query: intent=%s, entity_key=%s, tech_category=%s, scope=%s, company=%s, project=%s, kind=%s, domain=%s",
         intent_enum.value,
         entity_key,
         tech_category,
         scope,
         company_key,
         project_key,
+        kind,
+        domain,
     )
 
     # Use filters if provided, otherwise use legacy query
-    if tech_category or company_key or project_key:
+    if tech_category or company_key or project_key or kind or domain:
         result = graph_query_with_filters(
             intent=intent_enum,
             entity_key=entity_key,
             tech_category=tech_category,
             company_key=company_key,
             project_key=project_key,
+            kind=kind,
+            domain=domain,
             limit=limit,
         )
     else:

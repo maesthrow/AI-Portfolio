@@ -231,11 +231,15 @@ class PlanExecutor:
             intent = tool_call.args.get("intent", "general")
             entity_id = tool_call.args.get("entity_id")
             tech_category = tool_call.args.get("tech_category")
+            kind = tool_call.args.get("kind")
+            domain = tool_call.args.get("domain")
 
             facts, sources, found, confidence = execute_graph_query(
                 intent=intent,
                 entity_id=entity_id,
                 tech_category=tech_category,
+                kind=kind,
+                domain=domain,
             )
             return facts, sources, found, confidence, ""
 

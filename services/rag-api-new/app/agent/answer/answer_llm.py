@@ -228,6 +228,9 @@ class AnswerLLM:
         # Детерминированная генерация для деталей проекта (сохраняет markdown links + полный контекст)
         if intents == ["project_details"] or set(intents) == {"project_details", "project_achievements"}:
             return self._answer_project_details(facts=payload.items)
+        # Детерминированная генерация для листинга проектов (граф уже отфильтровал нужные)
+        if intents == ["project_list"] or "project_list" in intents:
+            return self._answer_project_list(facts=payload.items)
         return None
 
     def _recover_from_evidence(self, payload: FactsPayload, rendered_facts: str, evidence_text: str) -> str | None:
@@ -380,6 +383,13 @@ class AnswerLLM:
 
     def _answer_project_details(self, facts: list) -> str | None:
         """Детерминированная генерация ответа для деталей проекта."""
+        if not facts:
+            return None
+        preamble = "Проекты:" if len(facts) > 1 else ""
+        return self._deterministic_render(facts, preamble=preamble)
+
+    def _answer_project_list(self, facts: list) -> str | None:
+        """Детерминированная генерация ответа для списка проектов."""
         if not facts:
             return None
         preamble = "Проекты:" if len(facts) > 1 else ""

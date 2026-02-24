@@ -26,6 +26,7 @@ class IntentV2(str, Enum):
     EXPERIENCE_SUMMARY = "experience_summary"
     PROFILE = "profile"  # Информация о разработчике (PERSON node: name, title, summary, location)
     CONTACTS = "contacts"
+    PROJECT_LIST = "project_list"
     GENERAL_UNSTRUCTURED = "general_unstructured"
 
 

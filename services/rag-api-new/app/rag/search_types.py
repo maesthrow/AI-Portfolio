@@ -21,6 +21,7 @@ class Intent(str, Enum):
     TECHNOLOGIES = "technologies"
     EXPERIENCE = "experience"
     PROFILE = "profile"  # Информация о разработчике (PERSON node)
+    PROJECT_LIST = "project_list"
     GENERAL = "general"
 
 

@@ -650,6 +650,7 @@ def graph_query(intent: Intent, entity_key: str | None = None) -> GraphQueryResu
         Intent.TECHNOLOGIES: lambda: _technologies_query(entity_key),
         Intent.PROJECT_DETAILS: lambda: _project_details_query(entity_key or ""),
         Intent.EXPERIENCE: lambda: _experience_query(entity_key),
+        Intent.PROJECT_LIST: lambda: _list_projects_query(entity_key),
     }
 
     handler = handlers.get(intent)
@@ -673,6 +674,8 @@ def graph_query_with_filters(
     tech_category: str | None = None,
     company_key: str | None = None,
     project_key: str | None = None,
+    kind: str | None = None,
+    domain: str | None = None,
     limit: int = 20,
 ) -> GraphQueryResult:
     """
@@ -682,6 +685,8 @@ def graph_query_with_filters(
     - tech_category: категория технологии из node.data["category"]
     - company_key: фильтр по компании
     - project_key: фильтр по проекту
+    - kind: "personal" | "commercial" (для project_list)
+    - domain: домен проекта (для project_list)
 
     Args:
         intent: Намерение (тип запроса)
@@ -689,12 +694,23 @@ def graph_query_with_filters(
         tech_category: Категория технологий (language/database/framework/etc.)
         company_key: Slug компании для фильтрации
         project_key: Slug проекта для фильтрации
+        kind: Тип проекта для project_list ("personal" или "commercial")
+        domain: Домен проекта для project_list
         limit: Максимальное количество результатов
 
     Returns:
         GraphQueryResult с отфильтрованными фактами
     """
     store = get_graph_store()
+
+    # === Handle project_list queries with optional filters ===
+    if intent == Intent.PROJECT_LIST:
+        return _list_projects_query(
+            entity_key,
+            kind=kind,
+            tech_category=tech_category,
+            domain=domain,
+        )
 
     # === Handle technology queries with category filter ===
     # CRITICAL FIX: When tech_category is specified, return PROJECTS using those technologies
@@ -796,6 +812,54 @@ def _technologies_by_category_query(
     )
 
 
+def _collect_projects_by_tech_category(
+    projects: list[GraphNode],
+    category: str,
+) -> list[tuple[GraphNode, list[str]]]:
+    """
+    Отфильтровать проекты по категории технологий.
+
+    Для каждого проекта проверяет USES-рёбра к TECHNOLOGY-нодам
+    с matching category. Возвращает пары (project, [tech_names]).
+
+    Args:
+        projects: Список PROJECT-нод для фильтрации
+        category: Категория технологий (ml_framework, language, etc.)
+
+    Returns:
+        Список кортежей (project_node, matching_tech_names),
+        отсортированный по количеству совпавших технологий (desc)
+    """
+    store = get_graph_store()
+    category_lower = category.lower()
+
+    # Собрать все технологии нужной категории
+    all_techs = store.get_nodes_by_type(NodeType.TECHNOLOGY)
+    category_tech_ids = {
+        t.id: t.name for t in all_techs
+        if (t.data.get("category") or "").lower() == category_lower
+    }
+
+    if not category_tech_ids:
+        return []
+
+    # Для каждого проекта найти пересечение с category_tech_ids через USES
+    result = []
+    for project in projects:
+        uses_edges = store.get_outgoing_edges(project.id, EdgeType.USES)
+        matched_techs = [
+            category_tech_ids[e.target_id]
+            for e in uses_edges
+            if e.target_id in category_tech_ids
+        ]
+        if matched_techs:
+            result.append((project, matched_techs))
+
+    # Сортировка: больше совпавших технологий → выше
+    result.sort(key=lambda x: len(x[1]), reverse=True)
+    return result
+
+
 def _projects_by_tech_category_query(
     category: str,
     limit: int = 20
@@ -819,51 +883,10 @@ def _projects_by_tech_category_query(
     """
     store = get_graph_store()
 
-    # 1. Get all technologies in this category
-    techs = store.get_nodes_by_type(NodeType.TECHNOLOGY)
-    category_lower = category.lower()
-    filtered_techs = [
-        t for t in techs
-        if (t.data.get("category") or "").lower() == category_lower
-    ]
+    all_projects = store.get_nodes_by_type(NodeType.PROJECT)
+    matched = _collect_projects_by_tech_category(all_projects, category)
 
-    if not filtered_techs:
-        logger.warning(
-            "No technologies found for category '%s', cannot find projects",
-            category
-        )
-        return GraphQueryResult(
-            items=[],
-            found=False,
-            sources=[],
-            confidence=0.0,
-            intent=Intent.TECHNOLOGIES,
-            entity_key=category,
-        )
-
-    logger.info(
-        "Found %d technologies in category '%s': %s",
-        len(filtered_techs),
-        category,
-        [t.name for t in filtered_techs[:5]]
-    )
-
-    # 2. For each technology, get projects using it
-    project_tech_map = {}  # project_id -> {project: GraphNode, technologies: [str]}
-
-    for tech in filtered_techs:
-        incoming_edges = store.get_incoming_edges(tech.id, EdgeType.USES)
-        for edge in incoming_edges:
-            source_node = store.get_node(edge.source_id)
-            if source_node and source_node.type == NodeType.PROJECT:
-                if source_node.id not in project_tech_map:
-                    project_tech_map[source_node.id] = {
-                        "project": source_node,
-                        "technologies": []
-                    }
-                project_tech_map[source_node.id]["technologies"].append(tech.name)
-
-    if not project_tech_map:
+    if not matched:
         logger.warning(
             "No projects found using technologies from category '%s'",
             category
@@ -879,29 +902,17 @@ def _projects_by_tech_category_query(
 
     logger.info(
         "Found %d projects using technologies from category '%s'",
-        len(project_tech_map),
+        len(matched),
         category
     )
 
-    # 3. Sort projects by number of technologies from this category (descending)
-    projects_sorted = sorted(
-        project_tech_map.values(),
-        key=lambda x: len(x["technologies"]),
-        reverse=True
-    )
+    # Apply limit
+    top_projects = matched[:limit]
 
-    # 4. Apply limit
-    top_projects = projects_sorted[:limit]
-
-    # 5. Build result items
+    # Build result items
     items = []
     sources = []
-    for entry in top_projects:
-        project = entry["project"]
-        techs_used = entry["technologies"]
-
-        # Build text field with project info and technologies
-        # Проекты с company_name — коммерческие (личные не привязаны к компании)
+    for project, techs_used in top_projects:
         company_name = project.data.get("company_name")
         if company_name:
             company_str = f"коммерческий, {company_name}"
@@ -912,10 +923,10 @@ def _projects_by_tech_category_query(
             tech_list += f" и ещё {len(techs_used) - 3}"
 
         items.append({
-            "name": project.name,  # For compatibility with _item_to_fact
-            "project": project.name,  # Additional field
+            "name": project.name,
+            "project": project.name,
             "project_slug": project.slug,
-            "slug": project.slug,  # For compatibility
+            "slug": project.slug,
             "company_name": project.data.get("company_name"),
             "domain": project.data.get("domain"),
             "period": project.data.get("period"),
@@ -941,4 +952,103 @@ def _projects_by_tech_category_query(
         confidence=0.9 if items else 0.0,
         intent=Intent.TECHNOLOGIES,
         entity_key=category,
+    )
+
+
+def _list_projects_query(
+    entity_key: str | None = None,
+    *,
+    kind: str | None = None,
+    tech_category: str | None = None,
+    domain: str | None = None,
+) -> GraphQueryResult:
+    """
+    Перечисление проектов с опциональными фильтрами.
+
+    Возвращает ВСЕ проекты, отфильтрованные по:
+    - kind: personal (company_name is None) / commercial (company_name is not None)
+    - tech_category: проекты, использующие технологии из категории (через хелпер)
+    - domain: проекты с совпадающим доменом (case-insensitive partial match)
+
+    Args:
+        entity_key: Не используется для project_list (зарезервирован для совместимости)
+        kind: Фильтр по типу: "personal" или "commercial"
+        tech_category: Фильтр по категории технологий
+        domain: Фильтр по домену проекта
+    """
+    store = get_graph_store()
+    projects = store.get_nodes_by_type(NodeType.PROJECT)
+
+    # === Filter by kind ===
+    if kind == "personal":
+        projects = [p for p in projects if not p.data.get("company_name")]
+    elif kind == "commercial":
+        projects = [p for p in projects if p.data.get("company_name")]
+
+    # === Filter by domain ===
+    if domain:
+        domain_lower = domain.lower()
+        projects = [
+            p for p in projects
+            if domain_lower in (p.data.get("domain") or "").lower()
+        ]
+
+    # === Filter by tech_category (через shared helper) ===
+    if tech_category:
+        matched = _collect_projects_by_tech_category(projects, tech_category)
+        # Сохраняем порядок из хелпера (по кол-ву совпавших технологий)
+        projects = [project for project, _ in matched]
+
+    # === Build items ===
+    items = []
+    for p in projects:
+        company_name = p.data.get("company_name")
+        derived_kind = "commercial" if company_name else "personal"
+
+        # Собираем технологии из data["technologies"] и USES edges
+        tech_names = list(p.data.get("technologies") or [])
+        uses_edges = store.get_outgoing_edges(p.id, EdgeType.USES)
+        for edge in uses_edges:
+            tech_node = store.get_node(edge.target_id)
+            if tech_node and tech_node.name not in tech_names:
+                tech_names.append(tech_node.name)
+
+        # Формируем текст
+        if company_name:
+            kind_label = f"коммерческий, {company_name}"
+        else:
+            kind_label = "личный проект"
+        desc = p.data.get("description_md") or ""
+        tech_str = ", ".join(tech_names[:5])
+        if len(tech_names) > 5:
+            tech_str += f" и ещё {len(tech_names) - 5}"
+
+        items.append({
+            "name": p.name,
+            "slug": p.slug,
+            "description": desc,
+            "technologies": tech_names,
+            "period": p.data.get("period"),
+            "company_name": company_name,
+            "domain": p.data.get("domain"),
+            "repo_url": p.data.get("repo_url"),
+            "demo_url": p.data.get("demo_url"),
+            "kind": derived_kind,
+            "text": f"{p.name} ({kind_label}) — {desc[:120]}{'...' if len(desc) > 120 else ''}",
+        })
+
+    sources = [_node_to_source(p) for p in projects[:10]]
+
+    logger.info(
+        "list_projects: kind=%s tech_category=%s domain=%s → %d projects",
+        kind, tech_category, domain, len(items),
+    )
+
+    return GraphQueryResult(
+        items=items,
+        found=bool(items),
+        sources=sources,
+        confidence=1.0 if items else 0.0,
+        intent=Intent.PROJECT_LIST,
+        entity_key=entity_key,
     )

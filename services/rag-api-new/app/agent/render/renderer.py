@@ -297,6 +297,7 @@ class RenderEngine:
             "technology": "Технологии",
             "technology_usage": "Проекты",
             "project": "Проекты",
+            "project_list": "Проекты",
             "experience": "Опыт",
             "contact": "Контакты",
             "text": "Информация",

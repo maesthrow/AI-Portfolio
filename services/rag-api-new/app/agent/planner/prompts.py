@@ -17,11 +17,16 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
 - experience_summary - общий опыт работы, где работал, сколько лет опыта
 - profile - информация о разработчике: кто такой, имя, должность, местоположение, краткое описание
 - contacts - контактная информация, пользователь хочет связаться, просит контакты
+- project_list - перечисление проектов с опциональными фильтрами (личные/коммерческие, по технологии, по домену). НЕ для деталей конкретного проекта — для этого project_details
 - general_unstructured - общий вопрос без конкретной сущности
 
 ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
 1. graph_query_tool - для структурированных запросов с конкретной сущностью
-   args: {"intent": "<intent>", "entity_id": "<entity_id>", "tech_category": "<category>"}
+   args: {"intent": "<intent>", "entity_id": "<entity_id>", "tech_category": "<category>", "kind": "<personal|commercial>", "domain": "<domain>"}
+
+   kind - ОБЯЗАТЕЛЬНО для project_list когда пользователь уточняет тип:
+   - "personal" - личные проекты (без привязки к компании)
+   - "commercial" - коммерческие проекты (при компании)
 
    tech_category - ОБЯЗАТЕЛЬНО указывай для фильтрации технологий по категориям:
    - "language" - языки программирования (Python, C#, JavaScript, SQL и т.д.)
@@ -85,6 +90,13 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
    - grouped_bullets - группировка по категориям
    - short - краткий ответ 1-3 предложения
    - table - таблица (для контактов, технологий)
+
+7. РАЗГРАНИЧЕНИЕ project_list vs technology_usage:
+   - "Какие проекты с LLM?" / "ML проекты" / "проекты с PostgreSQL" → project_list + tech_category
+     (фокус: ПЕРЕЧИСЛИТЬ ПРОЕКТЫ, отфильтрованные по технологии)
+   - "Где применялся RAG?" / "В каких проектах используется Python?" → technology_usage + entity_id
+     (фокус: ИСПОЛЬЗОВАНИЕ КОНКРЕТНОЙ ТЕХНОЛОГИИ — где и как)
+   - Ключевое отличие: "проекты с/по/используя X" → project_list; "где/как применялся X" → technology_usage
 
 ПРИМЕРЫ:
 
@@ -177,17 +189,44 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
 
 Вопрос: "Какие у тебя есть проекты?"
 {
-  "intents": ["project_details", "experience_summary"],
+  "intents": ["project_list"],
   "entities": [],
   "tool_calls": [
-    {"tool": "graph_query_tool", "args": {"intent": "experience_summary"}},
-    {"tool": "portfolio_search_tool", "args": {"query": "проекты portfolio", "k": 10}}
+    {"tool": "graph_query_tool", "args": {"intent": "project_list"}}
   ],
   "fallback": {"enabled": false},
   "limits": {"max_items": 15, "max_groups": 6, "max_paragraphs": 3},
   "render_style": "grouped_bullets",
   "answer_style": "natural_ru",
-  "confidence": 0.85
+  "confidence": 0.9
+}
+
+Вопрос: "Какие есть личные проекты?"
+{
+  "intents": ["project_list"],
+  "entities": [],
+  "tool_calls": [
+    {"tool": "graph_query_tool", "args": {"intent": "project_list", "kind": "personal"}}
+  ],
+  "fallback": {"enabled": false},
+  "limits": {"max_items": 10, "max_groups": 4, "max_paragraphs": 3},
+  "render_style": "grouped_bullets",
+  "answer_style": "natural_ru",
+  "confidence": 0.9
+}
+
+Вопрос: "Коммерческие проекты"
+{
+  "intents": ["project_list"],
+  "entities": [],
+  "tool_calls": [
+    {"tool": "graph_query_tool", "args": {"intent": "project_list", "kind": "commercial"}}
+  ],
+  "fallback": {"enabled": false},
+  "limits": {"max_items": 10, "max_groups": 4, "max_paragraphs": 3},
+  "render_style": "grouped_bullets",
+  "answer_style": "natural_ru",
+  "confidence": 0.9
 }
 
 Вопрос: "Где применял машинное обучение?"
@@ -236,15 +275,28 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
   "confidence": 0.95
 }
 
-Вопрос: "ML проекты"
+Вопрос: "ML проекты" / "AI-проекты"
 {
-  "intents": ["technology_usage"],
+  "intents": ["project_list"],
   "entities": [],
   "tool_calls": [
-    {"tool": "graph_query_tool", "args": {"intent": "technology_usage", "tech_category": "ml_framework"}}
+    {"tool": "graph_query_tool", "args": {"intent": "project_list", "tech_category": "ml_framework"}}
   ],
-  "tech_filter": {"category": "ml_framework", "strict": true},
-  "fallback": {"enabled": true, "tool": "portfolio_search_tool", "when": ["NO_RESULTS", "LOW_COVERAGE"]},
+  "fallback": {"enabled": false},
+  "limits": {"max_items": 10, "max_groups": 4, "max_paragraphs": 3},
+  "render_style": "grouped_bullets",
+  "answer_style": "natural_ru",
+  "confidence": 0.85
+}
+
+Вопрос: "Какие есть проекты с LLM?"
+{
+  "intents": ["project_list"],
+  "entities": [],
+  "tool_calls": [
+    {"tool": "graph_query_tool", "args": {"intent": "project_list", "tech_category": "ml_framework"}}
+  ],
+  "fallback": {"enabled": false},
   "limits": {"max_items": 10, "max_groups": 4, "max_paragraphs": 3},
   "render_style": "grouped_bullets",
   "answer_style": "natural_ru",
