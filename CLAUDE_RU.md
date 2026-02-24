@@ -110,7 +110,7 @@
                           ↓
                      [PlanExecutor]
                           ├─ [graph_query_tool]
-                          └─ [portfolio_search_tool]
+                          └─ [portfolio_rag_tool (гибридный поиск)]
                           ↓
                      [FactNormalizer] → [AnswerLLM] → [RenderEngine]
                           ↓
@@ -153,10 +153,11 @@
 - `cv_cancel_node.py` - Адаптивный LLM-ответ (через `answer_llm`) при отказе от отправки CV; сбрасывает `pending_action`
 - `smalltalk_node.py` - Детерминированные ответы для `greeting`, `thanks`, `farewell` (без вызовов LLM)
 - `offtopic_node.py` - Детерминированный отказ на off-topic с подсказками (без вызовов LLM)
-- `rag_tool.py` - Async RAG тулза для ReAct подграфа с эмиссией статусов пайплайна
+- `rag_tool.py` - `@tool("portfolio_rag_tool")` — Async RAG тулза для ReAct подграфа с эмиссией статусов пайплайна
   - `_emit_status(stage, text, config)` - Отправляет status-события на фронтенд через `asyncio.Queue` из `config["configurable"]["_status_queue"]`
   - Этапы: `planning`, `searching`, `verifying`, `answering`
   - Тяжёлые sync-операции обёрнуты в `asyncio.to_thread()` (planner, executor, critic, search, answer)
+  - **Важно**: Имя тулзы в LangChain — `portfolio_rag_tool` (не `portfolio_search_tool`)
 
 **Identity** (`app/agent/identity/`):
 - `classifier.py` - Двухуровневая детекция identity-вопросов:
@@ -172,6 +173,9 @@
 
 **Планировщик** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-планировщик запросов со structured output
+  - **Provider-aware метод вывода**: GigaChat → `method="json_schema"`, DeepSeek/Qwen (ChatOpenAI) → `method="json_mode"` (исправлены ISSUE-001/002)
+  - Использует `include_raw=True` для извлечения usage_metadata вместе с parsed plan
+  - Retry с repair prompt при ошибке валидации (max_retries=2)
 - `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCallV3, RenderStyleV3, AnswerStyleV3, InfoNeed, ScopeLevel, TechFilter, Scope, EntitiesV3, AnswerFormatV3, LimitsConfigV3, FallbackConfigV3, FactBundleItem, FactBundle, NormalizerOutput, GroundingResult
 - `schemas.py` - Legacy QueryPlan схема (совместимость с V2)
 - `prompts.py` - Системные промпты для планировщика (intents, tools, entity extraction)
@@ -207,6 +211,7 @@
 - `EXPERIENCE_SUMMARY` - Опыт работы
 - `PROFILE` - Информация о разработчике (PERSON node: имя, должность, описание, локация)
 - `CONTACTS` - Контактная информация
+- `PROJECT_LIST` - **НОВЫЙ** Список всех проектов с фильтрами (kind: personal/commercial, domain, технология)
 - `GENERAL_UNSTRUCTURED` - Fallback для общих вопросов
 
 **Scope Guard** (`app/agent/scope_guard/`) — **НЕ активен в пайплайне**:
@@ -242,8 +247,8 @@
 - `grounding_verifier.py` - Проверка, что ответ основан на evidence
 
 **Tools** (`app/agent/tools/`):
-- `portfolio_search_tool.py` - Гибридный поиск с полным RAG пайплайном
-- `graph_query_tool.py` - Структурированные запросы к графу (project_details, technologies, experience)
+- `portfolio_search_tool.py` - Функция `execute_portfolio_search()` — гибридный поиск с полным RAG пайплайном (вызывается из `portfolio_rag_tool` как fallback)
+- `graph_query_tool.py` - `graph_query_tool` — структурированные запросы к графу (project_details, technologies, experience, **project_list** с фильтрами kind/domain)
 
 **Email модуль** (`app/email/`):
 - `service.py` - Класс `EmailService`: `send_cv(to_email)` через `smtplib` (STARTTLS), multipart MIME с HTML телом + PDF вложением
@@ -266,7 +271,9 @@
 - `schema.py` - NodeType (PERSON, COMPANY, PROJECT, ACHIEVEMENT, TECHNOLOGY, CONTACT), EdgeType
   - PROJECT = личный или experience-based (не "standalone")
 - `builder.py` - Построение графа из ExportPayload (включает поле `kind` для проектов из опыта)
-- `query.py` - Выполнение запросов к графу (классифицирует проекты как "коммерческий" или "личный проект" по наличию company_name)
+- `query.py` - Выполнение запросов к графу:
+  - Классифицирует проекты как "коммерческий" или "личный проект" по наличию company_name
+  - `_list_projects_query(kind, domain, tech_key)` — **НОВЫЙ** возвращает список всех проектов с фильтрами: `kind` ("personal"/"commercial"), `domain`, `technology_key`
 - `store.py` - In-memory GraphStore singleton
 
 **Indexing** (`app/indexing/`):
@@ -426,12 +433,13 @@
 
 **Важно:** В compose сервис `rag-api` собирается из `../services/rag-api-new`. Отдельного сервиса `rag-api-new` в compose нет. Порт по умолчанию — `8014` (переменная `RAG_NEW_PORT`).
 
-### 5. **Техническая документация** (`discource/`)
-**Хранилище технических заданий и спецификаций проекта**
+### 5. **Техническая документация**
 
-Папка `discource/` содержит всю техническую документацию для реализации фич:
+Существуют два хранилища документации с разным предназначением:
 
-**Структура:**
+#### `discource/` — Устаревшие ТЗ (legacy)
+**Исходная архитектурная документация:**
+
 ```
 discource/
 ├── docs/                            # Технические задания (ТЗ)
@@ -444,11 +452,29 @@ discource/
 └── planning-with-files-archive/     # Архив сессий планирования
 ```
 
-**Типы документов:**
-- **ТЗ (Технические Задания)** в `docs/`: Высокоуровневые требования и архитектурные решения
-- **Спецификации** в `specs/`: Детальные спецификации реализации с примерами кода
+#### `specs/` (корень проекта) — **НОВЫЙ** SpecKit Feature Specs
+**Активные спецификации фич (SpecKit workflow):**
 
-**Ключевые спецификации:**
+```
+specs/
+├── 001-migrate-pgvector/            # ChromaDB → pgvector миграция ✅ ВЫПОЛНЕНО
+│   ├── spec.md, plan.md, tasks.md, quickstart.md
+│   ├── known-issues.md              # Известные проблемы (ISSUE-001, ISSUE-002)
+│   └── checklists/
+├── 002-fix-project-list-query/      # Реализация PROJECT_LIST интента ✅ ВЫПОЛНЕНО
+│   ├── spec.md, plan.md, tasks.md, data-model.md, research.md
+│   └── checklists/
+└── 003-fix-planner-output-method/   # Provider-aware structured output ✅ ВЫПОЛНЕНО
+    ├── spec.md, plan.md, tasks.md, data-model.md, research.md
+    └── checklists/
+```
+
+**Содержание ключевых спецификаций:**
+- `001-migrate-pgvector`: Миграция ChromaDB → pgvector; `known-issues.md` документирует ISSUE-001 (GigaChat NoneType retry) и ISSUE-002 (confidence=0.0 форсировал hybrid search)
+- `002-fix-project-list-query`: Добавлен интент `PROJECT_LIST` для листинга проектов с фильтрами kind/domain/технология; исправлен planner, graph query, normalizer и answer слои
+- `003-fix-planner-output-method`: Исправлен хардкод `method="json_schema"` — GigaChat использует `json_schema`, DeepSeek/Qwen используют `json_mode`
+
+**Ключевые ТЗ в `discource/`:**
 
 1. **Мультипровайдерные LLM** (`TZ_MULTI_LLM_PROVIDERS.md`):
    - Архитектура провайдеров GigaChat, DeepSeek, Qwen
@@ -470,15 +496,16 @@ discource/
    - Fact Normalizer для фильтрации по intent
    - Grounding verification
 
-5. **Identity vs Profile** (`specs/agent-identity-vs-profile-detection.md`):
+5. **Identity vs Profile** (`discource/specs/agent-identity-vs-profile-detection.md`):
    - Лингвистический паттерн: местоимения 2-го лица → Identity вопросы
    - 3-е лицо / имя → Profile вопросы
    - Реализация intent PROFILE
 
 **Когда использовать:**
-- Перед реализацией новой фичи проверьте, есть ли спецификация в `discource/`
-- Создайте новую спецификацию в `specs/` перед началом сложных реализаций
-- Используйте ТЗ как референс для архитектурных решений
+- Перед реализацией новой фичи проверьте `specs/` (SpecKit workflow) — ищите активные спецификации
+- Используйте `discource/docs/` для legacy архитектурных решений
+- Создавайте новую спецификацию в `specs/` (нумерованную, напр. `004-название-фичи/`) для сложных задач
+- Примечание: имя папки `discource/` — намеренная опечатка (сохраняется для совместимости)
 
 ---
 
@@ -1244,11 +1271,23 @@ BM25 индекс хранится на диске:
     - `AGENT_SYSTEM_PROMPT` служит страховочной сеткой
     - Не добавляйте вызовы ScopeGuard в RAG пайплайн
 
-17. **Техспецификации в `discource/`**:
-    - Всегда проверяйте `discource/docs/` на наличие ТЗ перед реализацией новых фич
-    - Проверяйте `discource/specs/` для детальных спецификаций реализации
-    - Создавайте новую спецификацию перед началом сложных реализаций
-    - Примечание: папка называется `discource` (опечатка сохранена для консистентности)
+17. **Техспецификации — два места хранения**:
+    - `specs/` (корень проекта) — SpecKit workflow для активных спецификаций фич. Проверяйте **в первую очередь**
+    - `discource/docs/` — legacy ТЗ для архитектурных решений (multi-LLM, rate limit, RAG, hardening)
+    - `discource/specs/` — legacy спецификации (identity vs profile detection)
+    - Новые фичи: создавайте нумерованную спецификацию в `specs/` (напр. `004-название/`)
+    - Примечание: папка `discource/` — намеренная опечатка (сохраняется для совместимости)
+
+18. **Structured Output планировщика** (критично для совместимости провайдеров):
+    - GigaChat: обязательно использовать `method="json_schema"` в `with_structured_output()`
+    - DeepSeek / Qwen (ChatOpenAI): обязательно `method="json_mode"` — DeepSeek отклоняет `json_schema` с HTTP 400
+    - Определяется автоматически в `planner_llm.py` по `type(self.llm).__name__ == "GigaChat"`
+    - НЕ хардкодируйте `method="json_schema"` — это полностью сломает планировщик с DeepSeek
+
+19. **Critic и триггер Hybrid Search** (исправление ISSUE-002):
+    - `confidence < 0.5` (не `== 0.0`) запускает обязательный hybrid search вне зависимости от настроек critic
+    - `confidence >= critic_confidence_threshold` (по умолчанию 0.7) пропускает critic полностью (lazy critic)
+    - Если GigaChat вернул `confidence=0.0` после retry при валидном плане — hybrid search триггерится (намеренно, гарантирует покрытие для low-confidence планов)
 
 ---
 
@@ -1377,6 +1416,7 @@ AI-Portfolio/
 │   │   │   ├── test_tz_v3_acceptance.py  # Приёмочные тесты QueryPlanV3
 │   │   │   ├── test_answer_llm_usage.py  # Отслеживание токенов Answer LLM
 │   │   │   ├── test_llm_factory.py       # Тесты LLM фабрики
+│   │   │   ├── test_project_list.py      # Тесты интента PROJECT_LIST
 │   │   │   ├── test_usage_collector.py   # Тесты TokenUsageCollector
 │   │   │   └── llm/test_providers.py     # Тесты провайдеров
 │   │   ├── pyproject.toml
@@ -1404,7 +1444,18 @@ AI-Portfolio/
 │   └── models/
 │       └── intfloat/multilingual-e5-base/  # Модель TEI
 │
-├── discource/                       # 📋 Техническая документация и спецификации
+├── specs/                           # 🆕 SpecKit спецификации фич
+│   ├── 001-migrate-pgvector/        # ChromaDB → pgvector миграция ✅
+│   │   ├── spec.md, plan.md, tasks.md, quickstart.md, known-issues.md
+│   │   └── checklists/
+│   ├── 002-fix-project-list-query/  # Интент PROJECT_LIST ✅
+│   │   ├── spec.md, plan.md, tasks.md, data-model.md, research.md
+│   │   └── checklists/
+│   └── 003-fix-planner-output-method/ # Provider-aware structured output ✅
+│       ├── spec.md, plan.md, tasks.md, data-model.md, research.md
+│       └── checklists/
+│
+├── discource/                       # 📋 Legacy ТЗ и спецификации
 │   ├── docs/                        # Технические задания (ТЗ)
 │   │   ├── TZ_MULTI_LLM_PROVIDERS.md    # Мультипровайдерная LLM архитектура
 │   │   ├── TZ_RATE_LIMIT.md             # Спецификация rate limiting
@@ -1439,7 +1490,7 @@ AI-Portfolio/
 5. Следуйте существующим паттернам и соглашениям
 6. Для всех API используйте префикс `/api/v1/`
 7. Используйте markdown-поля (`*_md`) для контента, рендерящегося на фронте
-8. **Проверьте `discource/`** на наличие спецификаций перед реализацией новых фич
+8. **Проверьте `specs/` (корень проекта) в первую очередь** перед реализацией новых фич — используйте SpecKit workflow; также проверяйте `discource/` для legacy ТЗ
 
 **Никогда:**
 1. Не используйте удаленные директории (`content-api`, `frontend`, `rag-api`)

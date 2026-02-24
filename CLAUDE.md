@@ -86,7 +86,7 @@ Key modules:
 
 - Advanced semantic search with LLM-based query planning
 - Knowledge Graph for structured data queries
-- Scope Guard for off-topic detection
+- Off-topic detection at router level (regex + LLM classifier, deterministic refusal)
 - Deterministic fact normalization and answer generation
 - Entry point: `app/main.py`
 - Port: 8014 (Docker compose local via `RAG_NEW_PORT`), 8000 (default uvicorn)
@@ -110,7 +110,7 @@ User Message
                          ↓
                     [PlanExecutor]
                          ├─ [graph_query_tool]
-                         └─ [portfolio_search_tool]
+                         └─ [portfolio_rag_tool (hybrid search)]
                          ↓
                     [FactNormalizer] → [AnswerLLM] → [RenderEngine]
                          ↓
@@ -153,10 +153,11 @@ User Message
 - `cv_cancel_node.py` - Adaptive LLM response (via `answer_llm`) when user cancels CV sending; resets `pending_action`
 - `smalltalk_node.py` - Deterministic canned responses for `greeting`, `thanks`, `farewell` (no LLM calls)
 - `offtopic_node.py` - Deterministic off-topic refusal with suggested on-topic questions (no LLM calls)
-- `rag_tool.py` - Async RAG tool for ReAct subgraph with pipeline status emission
+- `rag_tool.py` - `@tool("portfolio_rag_tool")` — Async RAG tool for ReAct subgraph with pipeline status emission
   - `_emit_status(stage, text, config)` - Sends status events to frontend via `asyncio.Queue` from `config["configurable"]["_status_queue"]`
   - Stages emitted: `planning`, `searching`, `verifying`, `answering`
   - Heavy sync operations wrapped in `asyncio.to_thread()` (planner, executor, critic, search, answer)
+  - **Note**: Tool name in LangChain is `portfolio_rag_tool` (not `portfolio_search_tool`)
 
 **Identity** (`app/agent/identity/`):
 - `classifier.py` - Two-level identity question detection:
@@ -172,6 +173,9 @@ User Message
 
 **Planner** (`app/agent/planner/`):
 - `planner_llm.py` - LLM-based query plan generator with structured output
+  - **Provider-aware output method**: GigaChat → `method="json_schema"`, DeepSeek/Qwen (ChatOpenAI) → `method="json_mode"` (fixes ISSUE-001/002)
+  - Uses `include_raw=True` to extract usage_metadata alongside the parsed plan
+  - Retry with repair prompt on validation failure (max_retries=2)
 - `schemas_v3.py` - QueryPlanV3, IntentV3, TechCategory, ToolCallV3, RenderStyleV3, AnswerStyleV3, InfoNeed, ScopeLevel, TechFilter, Scope, EntitiesV3, AnswerFormatV3, LimitsConfigV3, FallbackConfigV3, FactBundleItem, FactBundle, NormalizerOutput, GroundingResult
 - `schemas.py` - Legacy QueryPlan schema (V2 compatibility)
 - `prompts.py` - System prompts for planner (intents, tools, entity extraction)
@@ -207,6 +211,7 @@ User Message
 - `EXPERIENCE_SUMMARY` - Work experience
 - `PROFILE` - Developer profile information (PERSON node: name, title, summary, location)
 - `CONTACTS` - Contact information
+- `PROJECT_LIST` - **NEW** List all projects with optional filters (kind: personal/commercial, domain, technology)
 - `GENERAL_UNSTRUCTURED` - Fallback for general questions
 
 **Scope Guard** (`app/agent/scope_guard/`) — **NOT active in pipeline**:
@@ -242,8 +247,8 @@ User Message
 - `grounding_verifier.py` - Verifies answer is grounded in evidence
 
 **Tools** (`app/agent/tools/`):
-- `portfolio_search_tool.py` - Hybrid search with full RAG pipeline
-- `graph_query_tool.py` - Structured graph queries (project_details, technologies, experience)
+- `portfolio_search_tool.py` - `execute_portfolio_search()` function — Hybrid search with full RAG pipeline (called by `portfolio_rag_tool` as fallback)
+- `graph_query_tool.py` - `graph_query_tool` — Structured graph queries (project_details, technologies, experience, **project_list** with kind/domain filters)
 
 **Email Module** (`app/email/`):
 - `service.py` - `EmailService` class: `send_cv(to_email)` via `smtplib` (STARTTLS), multipart MIME with HTML body + PDF attachment
@@ -266,7 +271,9 @@ User Message
 - `schema.py` - NodeType (PERSON, COMPANY, PROJECT, ACHIEVEMENT, TECHNOLOGY, CONTACT), EdgeType
   - PROJECT = personal or experience-based (not "standalone")
 - `builder.py` - Build graph from ExportPayload (includes `kind` field for experience projects)
-- `query.py` - Graph query execution (classifies projects as "коммерческий" or "личный проект" based on company_name)
+- `query.py` - Graph query execution:
+  - Classifies projects as "коммерческий" or "личный проект" based on company_name
+  - `_list_projects_query(kind, domain, tech_key)` — **NEW** lists all projects with optional filters: `kind` ("personal"/"commercial"), `domain`, `technology_key`
 - `store.py` - In-memory GraphStore singleton
 
 **Indexing** (`app/indexing/`):
@@ -422,12 +429,13 @@ User Message
   - `.env.dev`, `.env.local`, `.env.prod`, `.env.example` - Environment variable templates
   - `DOCKER-LOCAL.md`, `DOCKER-PROD.md` - Docker setup guides
 
-### 5. **Technical Documentation** (`discource/`)
-**Project specifications and technical requirements storage**
+### 5. **Technical Documentation**
 
-The `discource/` folder contains all technical documentation for feature implementation:
+Two documentation directories exist with different purposes:
 
-**Structure:**
+#### `discource/` — Legacy Technical Requirements (ТЗ)
+**Original architectural documentation:**
+
 ```
 discource/
 ├── docs/                            # Technical Requirements (ТЗ)
@@ -440,11 +448,29 @@ discource/
 └── planning-with-files-archive/     # Historical planning session archives
 ```
 
-**Document Types:**
-- **ТЗ (Technical Requirements)** in `docs/`: High-level requirements and architecture decisions
-- **Specs** in `specs/`: Detailed implementation specifications with code examples
+#### `specs/` (project root) — **NEW** SpecKit Feature Specs
+**Active feature implementation specs (SpecKit workflow):**
 
-**Key Specifications:**
+```
+specs/
+├── 001-migrate-pgvector/            # ChromaDB → pgvector migration ✅ COMPLETED
+│   ├── spec.md, plan.md, tasks.md, quickstart.md
+│   ├── known-issues.md              # Known issues from migration (ISSUE-001, ISSUE-002)
+│   └── checklists/
+├── 002-fix-project-list-query/      # PROJECT_LIST intent implementation ✅ COMPLETED
+│   ├── spec.md, plan.md, tasks.md, data-model.md, research.md, quickstart.md
+│   └── checklists/
+└── 003-fix-planner-output-method/   # Provider-aware planner structured output ✅ COMPLETED
+    ├── spec.md, plan.md, tasks.md, data-model.md, research.md, quickstart.md
+    └── checklists/
+```
+
+**Key specs content:**
+- `001-migrate-pgvector`: ChromaDB → pgvector migration; `known-issues.md` tracks ISSUE-001 (GigaChat NoneType retry) and ISSUE-002 (confidence=0.0 forced hybrid search)
+- `002-fix-project-list-query`: Added `PROJECT_LIST` intent for listing projects by kind/domain/technology; fixed planner, graph query, normalizer, and answer layers
+- `003-fix-planner-output-method`: Fixed `method="json_schema"` hardcode — GigaChat uses `json_schema`, DeepSeek/Qwen use `json_mode`
+
+**Key ТЗ documents in `discource/`:**
 
 1. **Multi-LLM Providers** (`TZ_MULTI_LLM_PROVIDERS.md`):
    - GigaChat, DeepSeek, Qwen provider architecture
@@ -466,15 +492,16 @@ discource/
    - Fact Normalizer for intent-based filtering
    - Grounding verification
 
-5. **Identity vs Profile Detection** (`specs/agent-identity-vs-profile-detection.md`):
+5. **Identity vs Profile Detection** (`discource/specs/agent-identity-vs-profile-detection.md`):
    - Linguistic pattern for 2nd person pronouns → Identity questions
    - 3rd person / name → Profile questions
    - PROFILE intent implementation
 
 **When to Use:**
-- Before implementing a new feature, check if a spec exists in `discource/`
-- Create a new spec in `specs/` before starting complex implementations
-- Reference ТЗ documents for architectural decisions
+- Before implementing a new feature, check `specs/` for active feature specs (SpecKit workflow)
+- Check `discource/docs/` for legacy ТЗ architectural decisions
+- Create a new spec in `specs/` (numbered, e.g. `004-feature-name/`) for complex implementations
+- Note: `discource/` folder name is intentional typo (preserved for consistency)
 
 ---
 
@@ -1241,11 +1268,23 @@ Key variables (see `infra/.env.dev`):
     - `AGENT_SYSTEM_PROMPT` serves as secondary safety net
     - Do not add ScopeGuard calls to the RAG pipeline
 
-17. **Technical Specs in `discource/`**:
-    - Always check `discource/docs/` for existing ТЗ before implementing new features
-    - Check `discource/specs/` for detailed implementation specifications
-    - Create a new spec before starting complex implementations
-    - Note: folder is named `discource` (typo preserved for consistency)
+17. **Technical Specs — two locations**:
+    - `specs/` (project root) — SpecKit workflow for active feature specs. Check here **first** for new features
+    - `discource/docs/` — legacy ТЗ for architectural decisions (multi-LLM, rate limit, RAG optimization, hardening)
+    - `discource/specs/` — legacy implementation specs (identity vs profile detection)
+    - New features: create numbered spec in `specs/` (e.g. `004-feature-name/`)
+    - Note: `discource/` folder name is intentional typo (preserved for consistency)
+
+18. **Planner Structured Output** (critical for provider compatibility):
+    - GigaChat must use `method="json_schema"` in `with_structured_output()`
+    - DeepSeek / Qwen (ChatOpenAI) must use `method="json_mode"` — DeepSeek rejects `json_schema` with HTTP 400
+    - This is auto-detected in `planner_llm.py` by checking `type(self.llm).__name__ == "GigaChat"`
+    - Do NOT hardcode `method="json_schema"` — it breaks DeepSeek planner entirely
+
+19. **Critic and Hybrid Search Trigger** (ISSUE-002 fix):
+    - `confidence < 0.5` (not `== 0.0`) triggers mandatory hybrid search regardless of critic skip settings
+    - `confidence >= critic_confidence_threshold` (default 0.7) skips critic entirely (lazy critic)
+    - After retry, if GigaChat returns `confidence=0.0` but plan is otherwise valid — hybrid search IS triggered (intentional, ensures coverage for low-confidence plans)
 
 ---
 
@@ -1374,6 +1413,7 @@ AI-Portfolio/
 │   │   │   ├── test_tz_v3_acceptance.py  # QueryPlanV3 acceptance
 │   │   │   ├── test_answer_llm_usage.py  # Answer LLM token tracking
 │   │   │   ├── test_llm_factory.py       # LLM factory tests
+│   │   │   ├── test_project_list.py      # PROJECT_LIST intent tests
 │   │   │   ├── test_usage_collector.py   # TokenUsageCollector tests
 │   │   │   └── llm/test_providers.py     # Provider-specific tests
 │   │   ├── pyproject.toml
@@ -1401,7 +1441,18 @@ AI-Portfolio/
 │   └── models/
 │       └── intfloat/multilingual-e5-base/  # TEI embedding model
 │
-├── discource/                       # 📋 Technical specifications and specs
+├── specs/                           # 🆕 SpecKit feature implementation specs
+│   ├── 001-migrate-pgvector/        # ChromaDB → pgvector migration ✅ DONE
+│   │   ├── spec.md, plan.md, tasks.md, quickstart.md, known-issues.md
+│   │   └── checklists/
+│   ├── 002-fix-project-list-query/  # PROJECT_LIST intent ✅ DONE
+│   │   ├── spec.md, plan.md, tasks.md, data-model.md, research.md
+│   │   └── checklists/
+│   └── 003-fix-planner-output-method/ # Provider-aware structured output ✅ DONE
+│       ├── spec.md, plan.md, tasks.md, data-model.md, research.md
+│       └── checklists/
+│
+├── discource/                       # 📋 Legacy ТЗ and specs
 │   ├── docs/                        # Technical requirements (ТЗ)
 │   │   ├── TZ_MULTI_LLM_PROVIDERS.md    # Multi-provider LLM architecture spec
 │   │   ├── TZ_RATE_LIMIT.md             # Rate limiting implementation spec
@@ -1438,7 +1489,7 @@ AI-Portfolio/
 6. Follow existing code patterns and naming conventions
 7. Ensure API endpoints include `/api/v1/` prefix
 8. Use markdown fields (`*_md`) for rich content that will be rendered with `react-markdown`
-9. **Check `discource/` for specs** before implementing new features - specs may already exist
+9. **Check `specs/` (project root) first** before implementing new features — use SpecKit workflow for active specs; also check `discource/` for legacy ТЗ
 
 **Never:**
 1. Use deleted directories (`content-api`, `frontend`, `rag-api`)
