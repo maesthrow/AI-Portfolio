@@ -304,7 +304,7 @@ PLANNER_SYSTEM_PROMPT = """Ты - Query Planner для портфолио раз
 }
 
 ВАЖНО:
-- Возвращай ТОЛЬКО структуру QueryPlan, никакого дополнительного текста
+- Возвращай ТОЛЬКО JSON-структуру QueryPlan, никакого дополнительного текста
 - Комбинируй инструменты для более полной информации (graph_query_tool + portfolio_search_tool)
 - Если не уверен в сущности - используй portfolio_search_tool
 - confidence < 0.5 означает, что лучше использовать fallback

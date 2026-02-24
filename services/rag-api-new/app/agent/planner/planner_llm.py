@@ -101,11 +101,18 @@ class PlannerLLM:
 
         for attempt in range(self.max_retries + 1):
             try:
-                # Create structured LLM with Pydantic model
+                # Select structured output method based on LLM provider:
+                # GigaChat uses json_schema; DeepSeek / Qwen (ChatOpenAI) use json_mode
+                _method = "json_schema" if type(self.llm).__name__ == "GigaChat" else "json_mode"
+                logger.debug(
+                    "Planner structured output method: %s (llm=%s)",
+                    _method,
+                    type(self.llm).__name__,
+                )
                 # include_raw=True to get both parsed result and raw AIMessage with usage_metadata
                 structured_llm = self.llm.with_structured_output(
                     QueryPlanV3,
-                    method="json_schema",  # Use JSON schema for better compatibility
+                    method=_method,
                     include_raw=True,
                 )
 
