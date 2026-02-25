@@ -163,6 +163,10 @@ docker compose -p ai-folio -f docker-compose-prod.yaml --env-file .env.prod up -
 sleep 15
 docker exec -it ai-folio-content-api-1 python -m app.seed.seed_ai_portfolio_new
 docker compose -p ai-folio -f docker-compose-prod.yaml --env-file .env.prod --profile init up rag-ingest
+или
+docker compose -p ai-folio -f docker-compose-prod.yaml --env-file .env.prod run --rm rag-ingest
+```
+
 ```
 
 ---
