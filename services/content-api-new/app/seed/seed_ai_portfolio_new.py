@@ -373,6 +373,7 @@ PROJECTS_DATA = [
             "aiogram",
             "aiogram-dialog",
             "MongoDB",
+            "LLM",
             "LangChain",
             "GigaChain",
             "RAG",
@@ -406,6 +407,7 @@ PROJECTS_DATA = [
         "technologies": [
             "Python",
             "FastAPI",
+            "LLM",
             "LangChain",
             "LangGraph",
             "RAG",

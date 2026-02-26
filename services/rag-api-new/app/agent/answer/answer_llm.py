@@ -54,7 +54,7 @@ class AnswerLLM:
         self.temperature = temperature
         self.renderer = RenderEngine()
 
-    def generate(self, payload: FactsPayload) -> tuple[str, Any]:
+    def generate(self, payload: FactsPayload) -> tuple[str, Any, bool]:
         """
         Generate answer from FactsPayload.
 
@@ -65,7 +65,8 @@ class AnswerLLM:
             payload: FactsPayload from Executor
 
         Returns:
-            tuple[str, usage]: User-facing answer string and usage metadata (None if deterministic)
+            tuple[str, usage, deterministic_used]: User-facing answer string,
+                usage metadata (None if deterministic), and whether deterministic path was used
         """
         logger.info(
             "Answer input: found=%s items=%d sources=%d intents=%s render_style=%s answer_style=%s coverage=%.2f evidence=%r",
@@ -86,14 +87,14 @@ class AnswerLLM:
         # Handle not found case (no facts and no evidence context)
         if not payload.items and not evidence_text and not payload.found:
             logger.info("Answer not-found: query=%r", truncate_text(payload.query, limit=400))
-            return self._get_not_found_response(payload), None
+            return self._get_not_found_response(payload), None, False
 
         # For some intents we can answer deterministically from evidence/facts.
         # This avoids LLM "false not-found" responses when evidence is present.
         deterministic = self._try_deterministic_answer(payload, evidence_text=evidence_text)
         if deterministic:
             logger.info("Answer deterministic_used=True preview=%r", truncate_text(deterministic, limit=800))
-            return deterministic, None
+            return deterministic, None, True
 
         # Pre-render facts for context.
         # For technology_overview, render all facts (portfolio has ~20 techs).
@@ -112,7 +113,7 @@ class AnswerLLM:
 
         if not rendered_facts:
             logger.info("Answer not-found (empty context): query=%r", truncate_text(payload.query, limit=400))
-            return self._get_not_found_response(payload), None
+            return self._get_not_found_response(payload), None, False
 
         # Get style instruction
         style_instruction = self._get_style_instruction(payload)
@@ -173,15 +174,15 @@ class AnswerLLM:
                         truncate_text(cleaned_answer, limit=200),
                         truncate_text(recovered, limit=800),
                     )
-                    return recovered, usage
+                    return recovered, usage, True
 
             logger.info("Answer final_preview=%r", truncate_text(cleaned_answer, limit=800))
-            return cleaned_answer, usage
+            return cleaned_answer, usage, False
 
         except Exception as e:
             logger.error("Answer generation failed: %s", e)
             # Return rendered facts as fallback
-            return rendered_facts, None
+            return rendered_facts, None, False
 
     def _get_not_found_response(self, payload: FactsPayload) -> str:
         """Get appropriate not-found response based on intent."""
@@ -269,6 +270,10 @@ class AnswerLLM:
         Uses ONLY provided facts/evidence:
         - Graph facts: metadata {technology, project}
         - Hybrid evidence: lines like "Используется в: <projects...>"
+        - Filtered fact bullets: achievements already filtered by normalizer
+
+        After normalizer content filtering, facts contain only relevant bullets.
+        The answer includes project names AND specific achievements.
         """
         q = (question or "").strip()
         if not q:
@@ -328,9 +333,26 @@ class AnswerLLM:
         ql = q.lower()
         mentioned = {t for t in normalized.keys() if t.lower() in ql}
 
-        # If nothing matched strictly, use loose token matching.
+        # Cross-language matching via TECH_ABBREVIATIONS:
+        # e.g. question "опыт с компьютерным зрением" should match "Computer Vision"
         if not mentioned:
-            tokens = {t.lower() for t in re.findall(r"[\\w#+\\-\\.]{2,}", ql)}
+            from ..normalizer.normalizer import TECH_ABBREVIATIONS
+            for tech in normalized.keys():
+                tl = tech.lower()
+                # Check if any abbreviation/translation of this tech appears in question
+                for canonical, abbrevs in TECH_ABBREVIATIONS.items():
+                    if canonical.lower() == tl:
+                        if any(a.lower() in ql for a in abbrevs):
+                            mentioned.add(tech)
+                            break
+                    elif tl in (a.lower() for a in abbrevs):
+                        if canonical.lower() in ql:
+                            mentioned.add(tech)
+                            break
+
+        # If nothing matched, use loose token matching.
+        if not mentioned:
+            tokens = {t.lower() for t in re.findall(r"[\w#+\-.]{2,}", ql)}
             for tech in normalized.keys():
                 tl = tech.lower()
                 if tl in tokens:
@@ -347,7 +369,69 @@ class AnswerLLM:
         if not mentioned:
             return None
 
-        # Render answer
+        # --- Extract achievements from filtered facts ---
+        # After normalizer content filtering, fact bullets are already relevant.
+        # Group achievements by project name for rich output.
+        project_achievements: dict[str, list[str]] = {}
+        for fact in facts or []:
+            md = getattr(fact, "metadata", None) or {}
+            proj_name = md.get("name") or md.get("project") or ""
+            company = md.get("company_name") or ""
+            period = md.get("period") or ""
+
+            text = getattr(fact, "text", "") or ""
+            bullets = [
+                line.strip()
+                for line in text.split("\n")
+                if line.strip().startswith("- ") or line.strip().startswith("\u2022 ")
+            ]
+            if bullets and proj_name:
+                key = proj_name
+                if company and period:
+                    key = f"{proj_name} ({company}, {period})"
+                elif company:
+                    key = f"{proj_name} ({company})"
+                project_achievements.setdefault(key, []).extend(bullets)
+
+        # Dedupe achievements per project (exact match)
+        for key in project_achievements:
+            seen_bullets: set[str] = set()
+            unique: list[str] = []
+            for b in project_achievements[key]:
+                if b not in seen_bullets:
+                    seen_bullets.add(b)
+                    unique.append(b)
+            project_achievements[key] = unique
+
+        # Cross-project dedup: when the same achievement appears under different
+        # project keys (e.g. company-level "Aston" and project-level
+        # "t2 — Нейросети (Aston, 2024 — 2025)"), keep it only in the most
+        # specific entry.  More specific keys (containing year/period) are
+        # processed first so they retain the bullet.
+        if len(project_achievements) > 1:
+            def _key_specificity(k: str) -> tuple:
+                has_year = bool(re.search(r"\d{4}", k))
+                has_parens = "(" in k
+                # Lower = higher priority: year+parens > parens > plain
+                return (0 if has_year else 1, 0 if has_parens else 1, k)
+
+            ordered_keys = sorted(project_achievements.keys(), key=_key_specificity)
+            global_seen: set[str] = set()
+            for key in ordered_keys:
+                filtered = []
+                for b in project_achievements[key]:
+                    norm = re.sub(r"^[-•]\s*", "", b.strip()).strip().lower()
+                    if norm not in global_seen:
+                        global_seen.add(norm)
+                        filtered.append(b)
+                project_achievements[key] = filtered
+
+            # Remove projects left empty after cross-project dedup
+            project_achievements = {
+                k: v for k, v in project_achievements.items() if v
+            }
+
+        # --- Render answer ---
         lines: list[str] = []
         for tech in sorted(mentioned, key=lambda x: x.lower()):
             projects = normalized.get(tech, [])
@@ -357,7 +441,15 @@ class AnswerLLM:
                 lines.append(f"Дмитрий применял {tech} в проектах:")
             else:
                 lines.append(f"{tech}:")
-            lines.extend([f"- {p}" for p in projects])
+
+            if project_achievements:
+                # Rich answer: project names with achievements
+                for proj_key, achievements in project_achievements.items():
+                    lines.append(f"\n**{proj_key}**:")
+                    lines.extend(achievements)
+            else:
+                # Fallback: plain project name list (no filtered bullets available)
+                lines.extend([f"- {p}" for p in projects])
 
         return "\n".join(lines).strip() if lines else None
 

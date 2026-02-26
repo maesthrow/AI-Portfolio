@@ -7,6 +7,7 @@ FactNormalizer - детерминированная фильтрация фак�
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from ..planner.schemas import FactItem, FactsPayload
@@ -20,6 +21,20 @@ from ..planner.schemas_v3 import (
 from .fact_bundle import build_fact_bundle
 
 logger = logging.getLogger(__name__)
+
+# Common technology abbreviation mappings (canonical English → abbreviations/translations)
+# NOTE: "CV" excluded from Computer Vision — ambiguous with "curriculum vitae"
+# (e.g. "Отправка CV через диалог" would false-positive match).
+TECH_ABBREVIATIONS: dict[str, list[str]] = {
+    "Computer Vision": ["компьютерное зрение", "компьютерн"],
+    "Machine Learning": ["ML", "машинное обучение", "машинн"],
+    "Natural Language Processing": ["NLP", "обработка естественного языка"],
+    "Artificial Intelligence": ["AI", "ИИ", "искусственный интеллект"],
+    "Deep Learning": ["DL", "глубокое обучение"],
+    "Named Entity Recognition": ["NER"],
+    "Optical Character Recognition": ["OCR"],
+    "Large Language Model": ["LLM", "языковая модель"],
+}
 
 
 class FactNormalizer:
@@ -45,6 +60,8 @@ class FactNormalizer:
         intent: str | IntentV3,
         tech_filter: TechFilter | None = None,
         max_items: int = 20,
+        entity_names: list[str] | None = None,
+        question: str | None = None,
     ) -> NormalizerOutput:
         """
         Apply deterministic normalization rules to facts.
@@ -54,6 +71,8 @@ class FactNormalizer:
             intent: Query intent
             tech_filter: Technology filter parameters
             max_items: Maximum number of items to return
+            entity_names: Technology entity names from planner (for content filtering)
+            question: Original user question (for keyword extraction)
 
         Returns:
             NormalizerOutput with filtered facts and metadata
@@ -97,6 +116,26 @@ class FactNormalizer:
             if tech_facts:
                 filtered = tech_facts
                 rules_applied.append("technology_usage_filter")
+
+            # === Rule 2b: Content-level bullet filtering ===
+            if entity_names:
+                keywords = self._build_content_keywords(entity_names, question)
+                if keywords:
+                    content_filtered = []
+                    for fact in filtered:
+                        new_text = self._filter_fact_bullets(fact.text, keywords)
+                        if new_text is not None:
+                            if new_text != fact.text:
+                                fact = FactItem(
+                                    type=fact.type,
+                                    text=new_text,
+                                    metadata=fact.metadata,
+                                    source_id=fact.source_id,
+                                )
+                            content_filtered.append(fact)
+                    if content_filtered:
+                        filtered = content_filtered
+                        rules_applied.append("technology_usage_content_filter")
 
         # === Rule 3: Experience summary - prioritize experience facts ===
         if intent_str == "experience_summary":
@@ -241,12 +280,122 @@ class FactNormalizer:
 
         return "\n\n".join(lines)
 
+    @staticmethod
+    def _build_content_keywords(
+        entity_names: list[str],
+        question: str | None = None,
+    ) -> set[str]:
+        """Build keyword set for content-level bullet filtering.
+
+        Combines three sources:
+        1. Entity names from planner (split into words + full phrase)
+        2. Abbreviation mappings from TECH_ABBREVIATIONS (bidirectional)
+        3. Significant tokens from original question (stem-like prefix)
+        """
+        keywords: set[str] = set()
+
+        for name in (entity_names or []):
+            name_lower = name.strip().lower()
+            if not name_lower:
+                continue
+            keywords.add(name_lower)
+            for word in name_lower.split():
+                if len(word) >= 2:
+                    keywords.add(word)
+
+            # Check TECH_ABBREVIATIONS bidirectionally
+            for canonical, abbrevs in TECH_ABBREVIATIONS.items():
+                canonical_lower = canonical.lower()
+                abbrevs_lower = [a.lower() for a in abbrevs]
+
+                if canonical_lower == name_lower:
+                    # Forward: entity name IS the canonical name
+                    for abbr in abbrevs_lower:
+                        keywords.add(abbr)
+                elif name_lower in abbrevs_lower:
+                    # Reverse: entity name IS one of the abbreviations
+                    keywords.add(canonical_lower)
+                    for word in canonical_lower.split():
+                        if len(word) >= 2:
+                            keywords.add(word)
+                    for abbr in abbrevs_lower:
+                        keywords.add(abbr)
+
+        # Extract significant tokens from question
+        if question:
+            tokens = re.findall(r'[\w]+', question.lower())
+            for token in tokens:
+                if len(token) < 3:
+                    continue
+                # Simple stem: remove likely case endings for long words
+                if len(token) >= 6:
+                    stem = token[: len(token) - 2]
+                else:
+                    stem = token
+                keywords.add(stem)
+
+        return keywords
+
+    @staticmethod
+    def _filter_fact_bullets(
+        fact_text: str,
+        keywords: set[str],
+    ) -> str | None:
+        """Filter bullet points in fact text by keyword relevance.
+
+        Header lines (non-bullets) are always preserved.
+        Bullet lines (starting with '- ' or '\\u2022 ') are kept only
+        if they contain any keyword as a case-insensitive substring.
+
+        For facts WITHOUT bullets (e.g. technology descriptions, project headers),
+        check if ANY line contains a keyword — if not, the entire fact is excluded.
+
+        Returns:
+            Filtered text with only matching bullets, or None if no content matched.
+        """
+        if not fact_text or not keywords:
+            return None
+
+        lines = fact_text.split('\n')
+        result: list[str] = []
+        total_bullets = 0
+        matched_bullets = 0
+
+        for line in lines:
+            stripped = line.strip()
+            is_bullet = stripped.startswith('- ') or stripped.startswith('\u2022 ')
+
+            if is_bullet:
+                total_bullets += 1
+                line_lower = stripped.lower()
+                if any(kw in line_lower for kw in keywords):
+                    matched_bullets += 1
+                    result.append(line)
+            else:
+                result.append(line)
+
+        if total_bullets == 0:
+            # No bullets — check if any line mentions a keyword.
+            # This prevents irrelevant non-bulleted facts (e.g. F3 TAIL project)
+            # from passing through when they have nothing to do with the query.
+            full_lower = fact_text.lower()
+            if any(kw in full_lower for kw in keywords):
+                return fact_text
+            return None
+
+        if matched_bullets == 0:
+            return None
+
+        return '\n'.join(result).strip()
+
 
 def normalize_facts(
     facts: list[FactItem],
     intent: str | IntentV3,
     tech_filter: TechFilter | None = None,
     max_items: int = 20,
+    entity_names: list[str] | None = None,
+    question: str | None = None,
 ) -> NormalizerOutput:
     """
     Convenience function for fact normalization.
@@ -256,9 +405,11 @@ def normalize_facts(
         intent: Query intent
         tech_filter: Technology filter
         max_items: Maximum items
+        entity_names: Technology entity names from planner (for content filtering)
+        question: Original user question (for keyword extraction)
 
     Returns:
         NormalizerOutput
     """
     normalizer = FactNormalizer()
-    return normalizer.normalize(facts, intent, tech_filter, max_items)
+    return normalizer.normalize(facts, intent, tech_filter, max_items, entity_names, question)

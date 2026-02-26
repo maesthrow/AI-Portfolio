@@ -176,6 +176,35 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
                     provider, model = get_provider_info(cfg.critic_llm)
                     collector.add("critic", provider, model, critic_usage)
 
+            # Override: for technology_usage, force search if no project/experience facts.
+            # Graph-only facts (technology_usage type) have no achievement bullets —
+            # insufficient for rich deterministic answers.
+            if primary_intent_value == "technology_usage" and not decision.need_search:
+                has_project_facts = any(
+                    f.type in ("project", "experience_project")
+                    for f in (payload.items or [])
+                )
+                if not has_project_facts:
+                    # Build entity-focused query for better retrieval.
+                    # Raw question like "опыт Дмитрия с CV" pulls in profile/unrelated projects.
+                    # Entity-focused query like "Computer Vision проекты достижения" targets project docs.
+                    entity_names = [
+                        e.get("name") for e in (plan.entities or [])
+                        if e.get("type") == "technology" and e.get("name")
+                    ]
+                    focused_query = f"{' '.join(entity_names)} проекты достижения" if entity_names else question
+
+                    decision = CriticDecision(
+                        sufficient=False,
+                        need_search=True,
+                        query=focused_query,
+                        reason="technology_usage_needs_project_facts",
+                    )
+                    logger.info(
+                        "Forcing hybrid search: technology_usage with no project/experience_project facts "
+                        "(only %d graph-type facts), query=%r", facts_count, focused_query
+                    )
+
             search_already_used = any(tc.tool == "portfolio_search_tool" for tc in (plan.tool_calls or []))
             if decision.need_search and not search_already_used:
                 search_query = (decision.query or "").strip() or question
@@ -242,11 +271,20 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
         if hasattr(plan, 'tech_filter') and plan.tech_filter:
             tech_filter_for_normalizer = plan.tech_filter
 
+        # Extract entity names from plan for content filtering
+        entity_names_for_normalizer = [
+            e.get("name") or e.get("id", "")
+            for e in (plan.entities or [])
+            if e.get("type") == "technology" and (e.get("name") or e.get("id"))
+        ]
+
         normalizer_output = normalizer.normalize(
             facts=payload.items,
             intent=intent_str,
             tech_filter=tech_filter_for_normalizer,
             max_items=_effective_max_items,
+            entity_names=entity_names_for_normalizer or None,
+            question=question,
         )
 
         # Update payload with normalized facts
@@ -294,7 +332,7 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
         _emit_status("answering", "Формирую ответ...", config)
 
         answer_gen = AnswerLLM(answer_llm())
-        answer, answer_usage = await asyncio.to_thread(answer_gen.generate, payload)
+        answer, answer_usage, deterministic_used = await asyncio.to_thread(answer_gen.generate, payload)
 
         # Record answer usage
         if answer_usage:
@@ -329,10 +367,18 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
         # Log usage summary
         collector.log_summary(f"rag_tool_{id(question)}")
 
+        # Surface reduction: when deterministic answer was used, strip raw data
+        # to prevent agent LLM from re-synthesizing from rendered_facts/items.
+        if deterministic_used:
+            rendered = ""
+            serialized_items = []
+        else:
+            serialized_items = [item.model_dump() for item in payload.items]
+
         return {
             "answer": answer,
             "rendered_facts": rendered,
-            "items": [item.model_dump() for item in payload.items],
+            "items": serialized_items,
             "sources": [src.model_dump() for src in payload.sources],
             "confidence": payload.meta.get("coverage", 0.0),
             "found": payload.found,
