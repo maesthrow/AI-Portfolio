@@ -185,7 +185,7 @@ class PlanExecutor:
         # Apply limits.
         # For technology_overview, use a higher minimum to return the full technology
         # set (~20 items) regardless of the planner's default max_items (10).
-        _MAX_ITEMS_TECHNOLOGY_OVERVIEW = 20
+        _MAX_ITEMS_TECHNOLOGY_OVERVIEW = 30
         effective_max_items = plan.limits.max_items
         if any(
             i.value == "technology_overview"
