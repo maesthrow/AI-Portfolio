@@ -7,6 +7,7 @@ Graph Query - запросы к графу знаний.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, List
 
 from ..rag.search_types import Intent, GraphQueryResult
@@ -455,12 +456,40 @@ def _technologies_query(entity_key: str | None) -> GraphQueryResult:
 
     # Все технологии (only when NO entity_key specified)
     techs = store.get_nodes_by_type(NodeType.TECHNOLOGY)
-    items = [{"name": t.name, "category": t.data.get("category")} for t in techs]
+
+    # Sort by (recency, frequency) — most recently used and most frequently used technologies
+    # appear first. This ensures primary languages like Python rank above niche/frontend
+    # technologies even if the latest project happens to use TypeScript or similar.
+    # Project nodes store dates as a "period" string (e.g. "2024 — 2025", "2025 — н.в.").
+    def _tech_sort_key(tech_node: GraphNode) -> tuple:
+        uses_edges = store.get_incoming_edges(tech_node.id, EdgeType.USES)
+        frequency = len(uses_edges)  # number of projects using this technology
+        best_year = 0
+        is_current = False
+        for edge in uses_edges:
+            project = store.get_node(edge.source_id)
+            if not project:
+                continue
+            period = project.data.get("period") or ""
+            # "н.в." means current project — highest recency score
+            if "н.в" in period:
+                is_current = True
+                continue
+            years = re.findall(r"\d{4}", period)
+            if years:
+                latest = int(max(years))
+                if latest > best_year:
+                    best_year = latest
+        recency_score = 9999 if is_current else best_year
+        return (recency_score, frequency)
+
+    techs_sorted = sorted(techs, key=_tech_sort_key, reverse=True)
+    items = [{"name": t.name, "category": t.data.get("category")} for t in techs_sorted]
 
     return GraphQueryResult(
         items=items,
         found=len(items) > 0,
-        sources=[_node_to_source(t) for t in techs[:10]],
+        sources=[_node_to_source(t) for t in techs_sorted[:10]],
         confidence=0.85 if items else 0.0,
         intent=Intent.TECHNOLOGIES,
     )

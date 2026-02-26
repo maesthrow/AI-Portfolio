@@ -182,8 +182,17 @@ class PlanExecutor:
                 logger.warning("Fallback failed: %s", e)
                 warnings.append(f"Резервный поиск не сработал: {e}")
 
-        # Apply limits
-        limited_facts = all_facts[: plan.limits.max_items]
+        # Apply limits.
+        # For technology_overview, use a higher minimum to return the full technology
+        # set (~20 items) regardless of the planner's default max_items (10).
+        _MAX_ITEMS_TECHNOLOGY_OVERVIEW = 20
+        effective_max_items = plan.limits.max_items
+        if any(
+            i.value == "technology_overview"
+            for i in plan.intents
+        ):
+            effective_max_items = max(effective_max_items, _MAX_ITEMS_TECHNOLOGY_OVERVIEW)
+        limited_facts = all_facts[:effective_max_items]
 
         # Group facts if needed
         groups = []

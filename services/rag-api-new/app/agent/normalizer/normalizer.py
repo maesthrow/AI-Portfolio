@@ -87,8 +87,13 @@ class FactNormalizer:
 
         # === Rule 2: Technology usage - only return projects with the technology ===
         if intent_str == "technology_usage":
-            # Filter to only technology_usage fact types
-            tech_facts = [f for f in filtered if f.type in ("technology_usage", "technology", "project")]
+            # Filter to only technology_usage fact types.
+            # experience and experience_project are included because technology usage
+            # is often described in job achievements and project descriptions.
+            tech_facts = [f for f in filtered if f.type in (
+                "technology_usage", "technology", "project",
+                "experience", "experience_project",
+            )]
             if tech_facts:
                 filtered = tech_facts
                 rules_applied.append("technology_usage_filter")

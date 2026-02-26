@@ -95,12 +95,16 @@ class AnswerLLM:
             logger.info("Answer deterministic_used=True preview=%r", truncate_text(deterministic, limit=800))
             return deterministic, None
 
-        # Pre-render facts for context
+        # Pre-render facts for context.
+        # For technology_overview, render all facts (portfolio has ~20 techs).
+        intents_values = [i.value for i in (payload.intents or [])]
+        _render_max_items = 20 if "technology_overview" in intents_values else 10
         if payload.items:
             rendered_facts = self.renderer.render(
                 facts=payload.items,
                 style=payload.render_style,
                 intents=payload.intents,
+                max_items=_render_max_items,
             )
         else:
             rendered_facts = evidence_text

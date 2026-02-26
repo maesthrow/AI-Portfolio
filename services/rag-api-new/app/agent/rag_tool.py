@@ -183,7 +183,7 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
 
                 if found2 and facts2:
                     merged_items = (payload.items or []) + facts2
-                    payload.items = merged_items[: plan.limits.max_items]
+                    payload.items = merged_items[: plan.limits.max_items]  # effective_max_items applied in normalizer below
 
                 # Merge sources (dedupe by id)
                 existing_ids = {src.id for src in (payload.sources or []) if src.id}
@@ -226,6 +226,12 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
         primary_intent = plan.intents[0] if plan.intents else None
         intent_str = primary_intent.value if primary_intent else "general_unstructured"
 
+        # For technology_overview, return the full technology set (~20 items).
+        # The planner default max_items (10–12) is too low for a complete overview.
+        _effective_max_items = plan.limits.max_items
+        if intent_str == "technology_overview":
+            _effective_max_items = max(_effective_max_items, 20)
+
         # Extract tech_filter from plan (QueryPlanV3 feature)
         tech_filter_for_normalizer = None
         if hasattr(plan, 'tech_filter') and plan.tech_filter:
@@ -235,7 +241,7 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
             facts=payload.items,
             intent=intent_str,
             tech_filter=tech_filter_for_normalizer,
-            max_items=plan.limits.max_items,
+            max_items=_effective_max_items,
         )
 
         # Update payload with normalized facts
@@ -276,7 +282,7 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
             facts=payload.items,
             style=payload.render_style,
             intents=payload.intents,
-            max_items=plan.limits.max_items,
+            max_items=_effective_max_items,
         )
 
         # 6. Answer (LLM)

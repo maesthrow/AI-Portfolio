@@ -166,7 +166,10 @@ async def chat_stream(req: ChatRequest, request: Request):
     created_at = datetime.now(timezone.utc).isoformat()
 
     thread_id = session_id
-    config = {"configurable": {"thread_id": thread_id, "_client_ip": client_ip}}
+    config = {
+        "recursion_limit": 8,  # Prevent ReAct agent loops (GigaChat re-calling tools)
+        "configurable": {"thread_id": thread_id, "_client_ip": client_ip},
+    }
 
     # === Input Length Validation (approximate tokens: ~4 chars per token) ===
     s = settings()

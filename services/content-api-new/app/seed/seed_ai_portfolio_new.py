@@ -248,7 +248,7 @@ PROJECTS_DATA = [
         "repo_url": None,
         "demo_url": None,
         "technologies": [
-            "Python 3.12",
+            "Python",
             "FastAPI",
             "PostgreSQL",
             "SQLAlchemy",
@@ -259,6 +259,7 @@ PROJECTS_DATA = [
             "Ultralytics",
             "YOLO",
             "Detectron2",
+            "Computer Vision",
             "vLLM",
             "LiteLLM",
             "LangChain",
@@ -285,7 +286,7 @@ PROJECTS_DATA = [
         "repo_url": None,
         "demo_url": None,
         "technologies": [
-            "Python 3.9",
+            "Python",
             "FastAPI",
             "PostgreSQL",
             "Pydantic",
@@ -317,7 +318,7 @@ PROJECTS_DATA = [
             ".NET Core",
             "ASP.NET Core",
             "MS SQL Server",
-            "Python 3.9",
+            "Python",
             "PostgreSQL",
             "APScheduler",
             "aiogram",
@@ -368,7 +369,7 @@ PROJECTS_DATA = [
         "repo_url": "https://github.com/maesthrow/HyperKeeperBot",
         "demo_url": "https://t.me/HyperKeeperBot",
         "technologies": [
-            "Python 3.12",
+            "Python",
             "aiogram",
             "aiogram-dialog",
             "MongoDB",
@@ -403,6 +404,7 @@ PROJECTS_DATA = [
         "repo_url": "https://github.com/maesthrow/AI-Portfolio",
         "demo_url": "https://ai-folio.ru",
         "technologies": [
+            "Python",
             "FastAPI",
             "LangChain",
             "LangGraph",
@@ -680,8 +682,7 @@ SECTION_META_DATA = [
 # Категории: language, database, vector_store, framework, ml_framework, concept, library, tool, message_broker
 TECHNOLOGIES_WITH_CATEGORIES = {
     # Programming Languages
-    "Python 3.9": "language",
-    "Python 3.12": "language",
+    "Python": "language",
     "TypeScript": "language",
     "C#": "language",
 
@@ -724,6 +725,7 @@ TECHNOLOGIES_WITH_CATEGORIES = {
     "RAG": "concept",
     "LLM": "concept",
     "ReAct": "concept",
+    "Computer Vision": "concept",
 
     # Libraries
     "Pydantic": "library",
