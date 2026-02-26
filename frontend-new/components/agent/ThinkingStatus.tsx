@@ -12,29 +12,22 @@ type ThinkingStatusProps = {
   status: StatusEntry | null;
 };
 
-/** Minimum time (ms) a status is displayed before the next one replaces it. */
-const MIN_DISPLAY_MS = 800;
-/** Duration (ms) of the CSS fade transition. */
-const FADE_MS = 200;
+/** Duration (ms) of the CSS fade transition between statuses. */
+const FADE_MS = 150;
 
 /**
  * Displays pipeline stage status below the agent message bubble.
  *
- * Features:
- * - Min-duration queue: fast statuses don't flicker (800 ms minimum).
- * - Crossfade animation between statuses.
- * - Fade-out when status is cleared (first delta or end).
+ * "Latest wins" strategy: always shows the most recent status immediately
+ * with a short crossfade. No queue, no minimum display time — ensures
+ * the user always sees the current pipeline stage, even when stages
+ * complete rapidly (e.g., deterministic answers).
  */
 export default function ThinkingStatus({ status }: ThinkingStatusProps) {
   // What is currently rendered on screen.
   const [visible, setVisible] = useState<StatusEntry | null>(null);
   // Is the text fading out (opacity 0)?
   const [fading, setFading] = useState(false);
-
-  // Queue of pending statuses not yet shown.
-  const queueRef = useRef<StatusEntry[]>([]);
-  // Timestamp when current status was shown.
-  const shownAtRef = useRef<number>(0);
   // Timer id for deferred transitions.
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -45,38 +38,11 @@ export default function ThinkingStatus({ status }: ThinkingStatusProps) {
     }
   };
 
-  /** Show next entry from the queue, or hide if empty. */
-  const showNext = () => {
-    clearTimer();
-    const next = queueRef.current.shift();
-    if (next) {
-      setFading(true);
-      timerRef.current = setTimeout(() => {
-        setVisible(next);
-        setFading(false);
-        shownAtRef.current = Date.now();
-        scheduleNext();
-      }, FADE_MS);
-    } else {
-      // Nothing queued — stay with current status until a new one or null.
-    }
-  };
-
-  /** Schedule transition to next status respecting MIN_DISPLAY_MS. */
-  const scheduleNext = () => {
-    if (queueRef.current.length === 0) return;
-    clearTimer();
-    const elapsed = Date.now() - shownAtRef.current;
-    const delay = Math.max(0, MIN_DISPLAY_MS - elapsed);
-    timerRef.current = setTimeout(showNext, delay);
-  };
-
   // React to new incoming status.
   useEffect(() => {
     if (status === null) {
-      // Backend signaled end — drain queue quickly and fade out.
+      // Backend signaled end — fade out current status.
       clearTimer();
-      queueRef.current = [];
       setFading(true);
       timerRef.current = setTimeout(() => {
         setVisible(null);
@@ -86,18 +52,18 @@ export default function ThinkingStatus({ status }: ThinkingStatusProps) {
     }
 
     if (visible === null) {
-      // Nothing displayed yet — show immediately.
+      // Nothing displayed yet — show immediately (no animation).
       clearTimer();
-      queueRef.current = [];
       setVisible(status);
       setFading(false);
-      shownAtRef.current = Date.now();
     } else {
-      // Already displaying something — enqueue and schedule.
-      queueRef.current.push(status);
-      if (timerRef.current === null) {
-        scheduleNext();
-      }
+      // Already displaying something — crossfade to the new status.
+      clearTimer();
+      setFading(true);
+      timerRef.current = setTimeout(() => {
+        setVisible(status);
+        setFading(false);
+      }, FADE_MS);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
