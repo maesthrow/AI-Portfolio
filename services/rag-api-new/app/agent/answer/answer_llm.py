@@ -403,16 +403,52 @@ class AnswerLLM:
                     unique.append(b)
             project_achievements[key] = unique
 
-        # Cross-project dedup: when the same achievement appears under different
-        # project keys (e.g. company-level "Aston" and project-level
-        # "t2 — Нейросети (Aston, 2024 — 2025)"), keep it only in the most
-        # specific entry.  More specific keys (containing year/period) are
-        # processed first so they retain the bullet.
+        # Same-project merge: the same project may appear from different data
+        # sources (experience_project vs standalone project) with different
+        # metadata suffixes, e.g. "t2 — Нейросети (Aston, 2024 — 2025)"
+        # and "t2 — Нейросети (t2 (проект в Aston))".
+        # Merge by base project name, keeping the most informative key.
+        if len(project_achievements) > 1:
+            base_groups: dict[str, list[str]] = {}
+            for key in project_achievements:
+                base = re.split(r"\s*\(", key, maxsplit=1)[0].strip()
+                base_groups.setdefault(base, []).append(key)
+
+            if any(len(keys) > 1 for keys in base_groups.values()):
+                merged: dict[str, list[str]] = {}
+                for base, keys in base_groups.items():
+                    if len(keys) == 1:
+                        merged[keys[0]] = project_achievements[keys[0]]
+                    else:
+                        # Pick the most informative key (with year/period)
+                        best = sorted(
+                            keys,
+                            key=lambda k: (
+                                0 if re.search(r"\d{4}", k) else 1,
+                                0 if "(" in k else 1,
+                                k,
+                            ),
+                        )[0]
+                        combined: list[str] = []
+                        for k in keys:
+                            combined.extend(project_achievements[k])
+                        # Dedupe within merged entry
+                        seen_m: set[str] = set()
+                        unique_m: list[str] = []
+                        for b in combined:
+                            if b not in seen_m:
+                                seen_m.add(b)
+                                unique_m.append(b)
+                        merged[best] = unique_m
+                project_achievements = merged
+
+        # Cross-project dedup: when the same achievement text appears under
+        # different project keys (e.g. company-level vs project-level), keep
+        # it only in the most specific entry.
         if len(project_achievements) > 1:
             def _key_specificity(k: str) -> tuple:
                 has_year = bool(re.search(r"\d{4}", k))
                 has_parens = "(" in k
-                # Lower = higher priority: year+parens > parens > plain
                 return (0 if has_year else 1, 0 if has_parens else 1, k)
 
             ordered_keys = sorted(project_achievements.keys(), key=_key_specificity)
@@ -426,7 +462,6 @@ class AnswerLLM:
                         filtered.append(b)
                 project_achievements[key] = filtered
 
-            # Remove projects left empty after cross-project dedup
             project_achievements = {
                 k: v for k, v in project_achievements.items() if v
             }

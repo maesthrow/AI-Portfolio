@@ -87,6 +87,7 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
     from .normalizer import FactNormalizer
     from .normalizer.fact_bundle import build_fact_bundle
     from .grounding import GroundingVerifier
+    from .planner.schemas_v3 import GroundingResult
 
     # Usage collector for rate limiting
     collector = TokenUsageCollector()
@@ -341,8 +342,13 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
             collector.add("answer", provider, model, answer_usage)
 
         # 7. Grounding verification - check for hallucinations
-        grounding_verifier = GroundingVerifier()
-        grounding_result = grounding_verifier.verify(answer, fact_bundle)
+        #    Skip for deterministic answers: they are built from fact data
+        #    and cannot hallucinate by definition.
+        if deterministic_used:
+            grounding_result = GroundingResult(grounded=True, confidence=1.0, action="accept")
+        else:
+            grounding_verifier = GroundingVerifier()
+            grounding_result = grounding_verifier.verify(answer, fact_bundle)
 
         if not grounding_result.grounded:
             logger.warning(

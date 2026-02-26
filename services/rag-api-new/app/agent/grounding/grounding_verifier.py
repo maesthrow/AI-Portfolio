@@ -88,6 +88,10 @@ _STOP_WORDS = frozenset({
 
     # Персона портфолио (всегда в scope)
     "дмитрий", "dmitry", "dmitrii",
+
+    # Платформы и сервисы (встречаются в URL/ссылках, не сущности портфолио)
+    "github", "gitlab", "habr", "leetcode", "linkedin", "telegram",
+    "youtube", "stackoverflow", "npm", "pypi", "dockerhub",
 })
 
 
