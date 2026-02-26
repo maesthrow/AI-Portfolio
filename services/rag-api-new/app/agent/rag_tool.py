@@ -93,13 +93,18 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
 
     try:
         # 1. Plan (shortcut -> cache -> LLM fallback)
-        _emit_status("planning", "Составляю план поиска...", config)
+        from ..cache import try_plan_fast, get_plan_with_cache
 
-        from ..cache import get_plan_with_cache
+        # Fast path: shortcut + cache (<5ms) — no "planning" status
+        plan, plan_source = await asyncio.to_thread(try_plan_fast, question)
+        planner_usage = None
 
-        plan, plan_source, planner_usage = await asyncio.to_thread(
-            get_plan_with_cache, question, planner_llm
-        )
+        if not plan:
+            # Slow path: LLM planner needed — show "planning" status
+            _emit_status("planning", "Составляю план поиска...", config)
+            plan, plan_source, planner_usage = await asyncio.to_thread(
+                get_plan_with_cache, question, planner_llm
+            )
 
         # Record planner usage if available (only for LLM path)
         if planner_usage:
