@@ -27,12 +27,12 @@ All paths relative to `services/rag-api-new/`.
 
 ### Implementation
 
-- [ ] T001 [P] [US1] Add anti-loop instruction to `AGENT_SYSTEM_PROMPT` in `app/agent/graph.py`: after line 77 add "НИКОГДА не вызывай portfolio_rag_tool повторно. ОДИН вызов — ОДИН ответ. После получения результата от инструмента — СРАЗУ отвечай пользователю."
-- [ ] T002 [P] [US3] Add `_emit_usage()` helper function in `app/agent/rag_tool.py` (analogous to existing `_emit_status()`): puts `{"stage": "_usage", "data": usage_dict}` onto `status_queue` from config
-- [ ] T003 [US3] Reduce tool_result return in `app/agent/rag_tool.py`: replace return dict (lines 384-395) with `{"answer": answer, "found": payload.found}`, call `_emit_usage(collector.to_dict(), config)` before return. Remove `deterministic_used` surface-reduction block (lines 376-382) as it's now unnecessary — ALL returns are reduced. Update the `except` block return (lines 399-409) identically.
-- [ ] T004 [US3] Update tool docstring in `app/agent/rag_tool.py` (lines 46-75): remove mentions of `rendered_facts`, `sources`, `confidence`, `intents` from Returns section, document only `answer` and `found`
-- [ ] T005 [US1] Add `_usage` event handler in `app/routers/chat.py`: in the `if tag == "status"` block (line 324), check for `stage == "_usage"` and aggregate usage into `collector` via `collector.add()` before continuing (do NOT yield this event to user)
-- [ ] T006 [US1] Remove old usage extraction from `on_tool_end` handler in `app/routers/chat.py` (lines 393-424): remove the `parsed_output` / `"usage" in parsed_output` logic. Keep tool_end logging and `yield tool_end` event
+- [x] T001 [P] [US1] Add anti-loop instruction to `AGENT_SYSTEM_PROMPT` in `app/agent/graph.py`: after line 77 add "НИКОГДА не вызывай portfolio_rag_tool повторно. ОДИН вызов — ОДИН ответ. После получения результата от инструмента — СРАЗУ отвечай пользователю."
+- [x] T002 [P] [US3] Add `_emit_usage()` helper function in `app/agent/rag_tool.py` (analogous to existing `_emit_status()`): puts `{"stage": "_usage", "data": usage_dict}` onto `status_queue` from config
+- [x] T003 [US3] Reduce tool_result return in `app/agent/rag_tool.py`: replace return dict (lines 384-395) with `{"answer": answer, "found": payload.found}`, call `_emit_usage(collector.to_dict(), config)` before return. Remove `deterministic_used` surface-reduction block (lines 376-382) as it's now unnecessary — ALL returns are reduced. Update the `except` block return (lines 399-409) identically.
+- [x] T004 [US3] Update tool docstring in `app/agent/rag_tool.py` (lines 46-75): remove mentions of `rendered_facts`, `sources`, `confidence`, `intents` from Returns section, document only `answer` and `found`
+- [x] T005 [US1] Add `_usage` event handler in `app/routers/chat.py`: in the `if tag == "status"` block (line 324), check for `stage == "_usage"` and aggregate usage into `collector` via `collector.add()` before continuing (do NOT yield this event to user)
+- [x] T006 [US1] Remove old usage extraction from `on_tool_end` handler in `app/routers/chat.py` (lines 393-424): remove the `parsed_output` / `"usage" in parsed_output` logic. Keep tool_end logging and `yield tool_end` event
 
 **Checkpoint**: Tool returns only `answer` + `found`. Prompt explicitly forbids re-invocation. Usage flows via side channel. Rate limiting works correctly.
 
@@ -46,10 +46,10 @@ All paths relative to `services/rag-api-new/`.
 
 ### Implementation
 
-- [ ] T007 [P] [US2] Add `agent_timeout` setting in `app/settings.py`: `agent_timeout: int = 90` with docstring "Таймаут выполнения агента в секундах. Защита от бесконечного зависания."
-- [ ] T008 [P] [US2] Change `recursion_limit` from 8 to 6 in `app/routers/chat.py` (line 170) and update comment to: `# Normal path=5 steps (router+model+tools+model+clear_pending) + 1 margin`
-- [ ] T009 [US2] Add timeout wrapper in `app/routers/chat.py`: extract agent event consumption into `_consume_agent_events()` coroutine, wrap it with `asyncio.wait_for(coro, timeout=settings().agent_timeout)` inside `_run_agent()`, catch `asyncio.TimeoutError` and put user-friendly error into unified queue
-- [ ] T010 [US2] Improve error handling in `app/routers/chat.py` except block (line 428): detect `GraphRecursionError` (by class name check) → "Обработка запроса заняла слишком много шагов. Попробуйте переформулировать вопрос."; detect `TimeoutError`/`asyncio.TimeoutError` → use error message from timeout; default → "Произошла ошибка при обработке запроса. Попробуйте позже."
+- [x] T007 [P] [US2] Add `agent_timeout` setting in `app/settings.py`: `agent_timeout: int = 90` with docstring "Таймаут выполнения агента в секундах. Защита от бесконечного зависания."
+- [x] T008 [P] [US2] Change `recursion_limit` from 8 to 6 in `app/routers/chat.py` (line 170) and update comment to: `# Normal path=5 steps (router+model+tools+model+clear_pending) + 1 margin`
+- [x] T009 [US2] Add timeout wrapper in `app/routers/chat.py`: extract agent event consumption into `_consume_agent_events()` coroutine, wrap it with `asyncio.wait_for(coro, timeout=settings().agent_timeout)` inside `_run_agent()`, catch `asyncio.TimeoutError` and put user-friendly error into unified queue
+- [x] T010 [US2] Improve error handling in `app/routers/chat.py` except block (line 428): detect `GraphRecursionError` (by class name check) → "Обработка запроса заняла слишком много шагов. Попробуйте переформулировать вопрос."; detect `TimeoutError`/`asyncio.TimeoutError` → use error message from timeout; default → "Произошла ошибка при обработке запроса. Попробуйте позже."
 
 **Checkpoint**: Recursion limit = 6, timeout = 90s, all errors produce user-friendly messages.
 
@@ -59,10 +59,10 @@ All paths relative to `services/rag-api-new/`.
 
 **Purpose**: Автоматизированная проверка всех anti-loop мер
 
-- [ ] T011 [P] Create test file `tests/test_agent_loop_guard.py` with `TestAgentSystemPrompt` class: test that `AGENT_SYSTEM_PROMPT` from `app.agent.graph` contains "НИКОГДА не вызывай portfolio_rag_tool повторно" and "СРАЗУ отвечай пользователю"
-- [ ] T012 [P] Add `TestSafetyNetSettings` class in `tests/test_agent_loop_guard.py`: test that `Settings().agent_timeout == 90` and that `recursion_limit == 6` (import config dict from `app/routers/chat.py` or verify the value at the call site)
-- [ ] T013 [P] Add `TestToolResultReduction` class in `tests/test_agent_loop_guard.py`: mock RAG pipeline internals, call `portfolio_rag_tool`, assert returned dict keys are exactly `{"answer", "found"}` — no extra fields (`rendered_facts`, `sources`, `confidence`, `usage`, etc.)
-- [ ] T014 Run existing tests to verify no regressions: `pytest tests/ -v` from `services/rag-api-new/`
+- [x] T011 [P] Create test file `tests/test_agent_loop_guard.py` with `TestAgentSystemPrompt` class: test that `AGENT_SYSTEM_PROMPT` from `app.agent.graph` contains "НИКОГДА не вызывай portfolio_rag_tool повторно" and "СРАЗУ отвечай пользователю"
+- [x] T012 [P] Add `TestSafetyNetSettings` class in `tests/test_agent_loop_guard.py`: test that `Settings().agent_timeout == 90` and that `recursion_limit == 6` (import config dict from `app/routers/chat.py` or verify the value at the call site)
+- [x] T013 [P] Add `TestToolResultReduction` class in `tests/test_agent_loop_guard.py`: mock RAG pipeline internals, call `portfolio_rag_tool`, assert returned dict keys are exactly `{"answer", "found"}` — no extra fields (`rendered_facts`, `sources`, `confidence`, `usage`, etc.)
+- [x] T014 Run existing tests to verify no regressions: `pytest tests/ -v` from `services/rag-api-new/`
 
 **Checkpoint**: All tests pass. No regressions in existing test suite.
 

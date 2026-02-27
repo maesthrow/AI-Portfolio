@@ -167,7 +167,7 @@ async def chat_stream(req: ChatRequest, request: Request):
 
     thread_id = session_id
     config = {
-        "recursion_limit": 8,  # Prevent ReAct agent loops (GigaChat re-calling tools)
+        "recursion_limit": 6,  # Normal path=5 steps (router+model+tools+model+clear_pending) + 1 margin
         "configurable": {"thread_id": thread_id, "_client_ip": client_ip},
     }
 
@@ -293,10 +293,19 @@ async def chat_stream(req: ChatRequest, request: Request):
         config["configurable"]["_status_queue"] = status_queue
         unified = asyncio.Queue()
 
+        async def _consume_agent_events():
+            async for ev in _iterate_agent_events(agent, state, config):
+                await unified.put(("event", ev))
+
         async def _run_agent():
             try:
-                async for ev in _iterate_agent_events(agent, state, config):
-                    await unified.put(("event", ev))
+                timeout = settings().agent_timeout
+                await asyncio.wait_for(_consume_agent_events(), timeout=timeout)
+            except asyncio.TimeoutError:
+                await unified.put(("error", TimeoutError(
+                    f"Превышено время обработки запроса ({settings().agent_timeout} сек). "
+                    "Попробуйте упростить вопрос."
+                )))
             except Exception as exc:
                 await unified.put(("error", exc))
             await unified.put(("done", None))
@@ -322,9 +331,23 @@ async def chat_stream(req: ChatRequest, request: Request):
                     raise q_data
 
                 if tag == "status":
+                    stage = q_data.get("stage", "")
+                    if stage == "_usage":
+                        # Internal: aggregate rag_tool usage into collector
+                        tool_usage = q_data.get("data") or {}
+                        by_role = tool_usage.get("by_role") or {}
+                        for role, role_data in by_role.items():
+                            if isinstance(role_data, dict):
+                                collector.add(
+                                    role,
+                                    role_data.get("provider", "unknown"),
+                                    role_data.get("model", "unknown"),
+                                    role_data,
+                                )
+                        continue
                     yield json.dumps({
                         "type": "status",
-                        "stage": q_data.get("stage", ""),
+                        "stage": stage,
                         "text": q_data.get("text", ""),
                     }, ensure_ascii=False) + "\n"
                     continue
@@ -389,45 +412,19 @@ async def chat_stream(req: ChatRequest, request: Request):
                         thread_id,
                         truncate_text(tool_output, limit=800),
                     )
-
-                    # Extract usage from rag_tool output
-                    # tool_output can be: dict, str (JSON), or LangChain message with .content
-                    parsed_output = None
-                    if isinstance(tool_output, dict):
-                        parsed_output = tool_output
-                    elif isinstance(tool_output, str):
-                        try:
-                            parsed_output = json.loads(tool_output)
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-                    elif hasattr(tool_output, "content"):
-                        # LangChain ToolMessage or similar
-                        content = tool_output.content
-                        if isinstance(content, dict):
-                            parsed_output = content
-                        elif isinstance(content, str):
-                            try:
-                                parsed_output = json.loads(content)
-                            except (json.JSONDecodeError, TypeError):
-                                pass
-
-                    if parsed_output and isinstance(parsed_output, dict) and "usage" in parsed_output:
-                        tool_usage = parsed_output.get("usage") or {}
-                        by_role = tool_usage.get("by_role") or {}
-                        for role, role_data in by_role.items():
-                            if isinstance(role_data, dict):
-                                collector.add(
-                                    role,
-                                    role_data.get("provider", "unknown"),
-                                    role_data.get("model", "unknown"),
-                                    role_data,
-                                )
-
                     yield json.dumps({"type": "tool_end"}, ensure_ascii=False) + "\n"
 
         except Exception as exc:
-            logger.exception("Agent streaming failed")
-            yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False) + "\n"
+            # User-friendly messages for known safety-net errors
+            exc_name = type(exc).__name__.lower()
+            if "recursion" in exc_name or "recursion" in str(exc).lower():
+                msg = "Обработка запроса заняла слишком много шагов. Попробуйте переформулировать вопрос."
+            elif isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+                msg = str(exc) if str(exc) else "Превышено время обработки запроса. Попробуйте упростить вопрос."
+            else:
+                logger.exception("Agent streaming failed")
+                msg = "Произошла ошибка при обработке запроса. Попробуйте позже."
+            yield json.dumps({"type": "error", "message": msg}, ensure_ascii=False) + "\n"
             return
         finally:
             status_queue.put_nowait(None)

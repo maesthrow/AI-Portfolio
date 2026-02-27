@@ -24,6 +24,22 @@ from ..utils.logging_utils import truncate_text
 logger = logging.getLogger(__name__)
 
 
+def _emit_usage(usage_data: dict, config: RunnableConfig) -> None:
+    """Emit usage data via status queue side channel.
+
+    Sends usage dict as a special ``_usage`` event so that ``chat.py``
+    can aggregate RAG-pipeline token counts for rate limiting without
+    polluting the tool_result returned to Agent LLM.
+    """
+    queue = (config.get("configurable") or {}).get("_status_queue")
+    if queue is None:
+        return
+    try:
+        queue.put_nowait({"stage": "_usage", "data": usage_data})
+    except Exception:
+        pass
+
+
 def _emit_status(stage: str, text: str, config: RunnableConfig) -> None:
     """Put a pipeline status event onto the queue from config.
 
@@ -66,12 +82,8 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
 
     Returns:
         Словарь с полями:
-        - answer: финальный ответ пользователю
-        - rendered_facts: отформатированные факты
-        - sources: источники информации
-        - confidence: уверенность
-        - found: найдены ли данные
-        - intents: определённые намерения
+        - answer: финальный готовый ответ пользователю (верни КАК ЕСТЬ)
+        - found: найдены ли данные в базе знаний
     """
     logger.info("portfolio_rag_tool: question=%r", question[:100])
 
@@ -370,40 +382,16 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
                 answer = grounding_result.suggested_rewrite
                 payload.warnings.append("Grounding: answer rewritten to remove ungrounded entities")
 
-        # Log usage summary
+        # Emit usage via side channel (before reducing tool result)
         collector.log_summary(f"rag_tool_{id(question)}")
+        _emit_usage(collector.to_dict(), config)
 
-        # Surface reduction: when deterministic answer was used, strip raw data
-        # to prevent agent LLM from re-synthesizing from rendered_facts/items.
-        if deterministic_used:
-            rendered = ""
-            serialized_items = []
-        else:
-            serialized_items = [item.model_dump() for item in payload.items]
-
-        return {
-            "answer": answer,
-            "rendered_facts": rendered,
-            "items": serialized_items,
-            "sources": [src.model_dump() for src in payload.sources],
-            "confidence": payload.meta.get("coverage", 0.0),
-            "found": payload.found,
-            "intents": [i.value for i in payload.intents],
-            "warnings": payload.warnings,
-            "grounded": grounding_result.grounded,
-            "usage": collector.to_dict(),
-        }
+        return {"answer": answer, "found": payload.found}
 
     except Exception as e:
         logger.error("portfolio_rag_tool failed: %s", e, exc_info=True)
+        _emit_usage(collector.to_dict(), config)
         return {
             "answer": "Произошла ошибка при обработке запроса. Попробуйте переформулировать вопрос.",
-            "rendered_facts": "",
-            "items": [],
-            "sources": [],
-            "confidence": 0.0,
             "found": False,
-            "intents": [],
-            "warnings": [str(e)],
-            "usage": collector.to_dict(),
         }

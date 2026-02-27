@@ -193,6 +193,10 @@ class Settings(BaseSettings):
     cv_send_limit_window_seconds: int = 3600
     """CV send rate limit window in seconds (1 hour)."""
 
+    # === Agent Execution ===
+    agent_timeout: int = 120
+    """Таймаут выполнения агента в секундах. Защита от бесконечного зависания."""
+
     # === Rerank settings ===
     max_rerank_candidates: int = 80
     """Максимум документов для reranker (ограничение CPU-времени).
