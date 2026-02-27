@@ -426,6 +426,26 @@ class AnswerLLM:
                 project_briefs[base] = line
                 break
 
+        # Also extract briefs from graph metadata (description_md field).
+        # Graph facts for technology_usage include description_md when available,
+        # but have no "type" in metadata and no bullet text — so the loop above skips them.
+        for fact in facts or []:
+            md = getattr(fact, "metadata", None) or {}
+            proj_name = md.get("project") or md.get("name") or ""
+            if not proj_name:
+                continue
+            base = re.split(r"\s*\(", proj_name, maxsplit=1)[0].strip().lower()
+            if base in project_briefs:
+                continue
+            desc = md.get("description_md") or ""
+            if not desc:
+                continue
+            for line in desc.split("\n"):
+                line = line.strip()
+                if line and len(line) >= 20:
+                    project_briefs[base] = line
+                    break
+
         # Dedupe achievements per project (exact match)
         for key in project_achievements:
             seen_bullets: set[str] = set()

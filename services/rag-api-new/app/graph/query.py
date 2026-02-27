@@ -389,6 +389,8 @@ def _technologies_query(entity_key: str | None) -> GraphQueryResult:
                     "project_slug": p.slug,
                     "company_name": p.data.get("company_name"),
                     "domain": p.data.get("domain"),
+                    "description_md": p.data.get("description_md"),
+                    "period": p.data.get("period"),
                 }
                 for p in projects
             ]
