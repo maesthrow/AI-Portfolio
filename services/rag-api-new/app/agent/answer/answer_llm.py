@@ -393,6 +393,39 @@ class AnswerLLM:
                     key = f"{proj_name} ({company})"
                 project_achievements.setdefault(key, []).extend(bullets)
 
+        # Build brief descriptions for projects without bullet achievements.
+        # Extract first meaningful description line from project/experience_project facts.
+        project_briefs: dict[str, str] = {}  # base_name_lower -> brief description
+        _brief_skip_prefixes = (
+            "- ", "\u2022 ", "Технологии:", "Проект:", "Компания:", "Период:",
+            "Описание:", "Достижения:", "Ключевые достижения:",
+        )
+        for fact in facts or []:
+            md = getattr(fact, "metadata", None) or {}
+            fact_type = md.get("type", "")
+            if fact_type not in ("project", "experience_project"):
+                continue
+            proj_name = md.get("name") or ""
+            if not proj_name:
+                continue
+            base = re.split(r"\s*\(", proj_name, maxsplit=1)[0].strip().lower()
+            if base in project_briefs:
+                continue
+            text = getattr(fact, "text", "") or ""
+            for line in text.split("\n"):
+                line = line.strip()
+                if not line or len(line) < 20:
+                    continue
+                if line.startswith(_brief_skip_prefixes):
+                    continue
+                if line.lower() == proj_name.lower():
+                    continue
+                # Skip domain/date headers like "Telecom • ML", "2024 — 2025"
+                if re.match(r"^\d{4}", line):
+                    continue
+                project_briefs[base] = line
+                break
+
         # Dedupe achievements per project (exact match)
         for key in project_achievements:
             seen_bullets: set[str] = set()
@@ -479,9 +512,22 @@ class AnswerLLM:
 
             if project_achievements:
                 # Rich answer: project names with achievements
+                covered_bases: set[str] = set()
                 for proj_key, achievements in project_achievements.items():
                     lines.append(f"\n**{proj_key}**:")
                     lines.extend(achievements)
+                    base = re.split(r"\s*\(", proj_key, maxsplit=1)[0].strip().lower()
+                    covered_bases.add(base)
+
+                # Also list remaining projects that have no bullet achievements
+                for p in projects:
+                    p_base = re.split(r"\s*\(", p, maxsplit=1)[0].strip().lower()
+                    if p_base not in covered_bases:
+                        brief = project_briefs.get(p_base, "")
+                        if brief:
+                            lines.append(f"- **{p}** — {brief}")
+                        else:
+                            lines.append(f"- {p}")
             else:
                 # Fallback: plain project name list (no filtered bullets available)
                 lines.extend([f"- {p}" for p in projects])
