@@ -32,6 +32,20 @@ CATEGORY_DISPLAY_NAMES = {
     "other": "технологии",
 }
 
+# Concept slug → TechCategory mapping for concept resolution fallback.
+# When entity_key is not found as a technology/project node in the graph,
+# check this mapping to resolve abstract concepts to their TechCategory.
+CONCEPT_TO_CATEGORY: dict[str, str] = {
+    "machine-learning": "ml_framework",
+    "ml": "ml_framework",
+    "ai-agents": "concept",
+    "ai-agent": "concept",
+    "rag": "concept",
+    "computer-vision": "ml_framework",
+    "cv": "ml_framework",
+    "nlp": "ml_framework",
+}
+
 
 def _node_to_source(node: GraphNode) -> Dict[str, Any]:
     """Преобразовать узел в формат source."""
@@ -441,8 +455,17 @@ def _technologies_query(entity_key: str | None) -> GraphQueryResult:
                 entity_key=entity_key,
             )
 
-        # CRITICAL FIX: If entity_key provided but not found, return empty result
-        # This allows fallback to vector search instead of returning all technologies
+        # Before returning empty, check if entity_key matches a known concept
+        mapped_category = CONCEPT_TO_CATEGORY.get(entity_key.lower())
+        if mapped_category:
+            logger.info(
+                "Concept resolution: entity_key '%s' mapped to tech_category '%s'",
+                entity_key,
+                mapped_category,
+            )
+            return _projects_by_tech_category_query(mapped_category, limit=20)
+
+        # Entity key not found as node, project, or concept — return empty for fallback
         logger.warning(
             "Entity key '%s' not found in graph for technology query, returning empty result for fallback",
             entity_key
