@@ -128,7 +128,7 @@
   - `prefetch_popular_plans()` - Прогревает Redis кэш после ingest (~60-70% cache hit rate)
 
 **API роутеры** (`app/routers/`):
-- `chat.py` - POST `/api/v1/agent/chat/stream` - Стриминговый чат с NDJSON (status-события через unified asyncio.Queue)
+- `chat.py` - POST `/api/v1/agent/chat/stream` - Стриминговый чат с NDJSON (status-события через unified asyncio.Queue, `recursion_limit=6`, `agent_timeout` safety)
 - `ingest.py` - POST `/api/v1/ingest` - Загрузка одного документа
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Пакетный импорт ExportPayload
 - `admin.py` - Админские эндпоинты:
@@ -157,6 +157,9 @@
   - `_emit_status(stage, text, config)` - Отправляет status-события на фронтенд через `asyncio.Queue` из `config["configurable"]["_status_queue"]`
   - Этапы: `planning`, `searching`, `verifying`, `answering`
   - Тяжёлые sync-операции обёрнуты в `asyncio.to_thread()` (planner, executor, critic, search, answer)
+  - Grounding verification пропускается для детерминированных ответов (`deterministic_used` flag)
+  - Принудительный hybrid search для `technology_usage` при отсутствии project/experience_project фактов
+  - Двухфазное получение плана: `try_plan_fast()` (shortcut+cache) → `get_plan_with_cache()` (LLM fallback)
   - **Важно**: Имя тулзы в LangChain — `portfolio_rag_tool` (не `portfolio_search_tool`)
 
 **Identity** (`app/agent/identity/`):
@@ -224,6 +227,9 @@
 
 **Normalizer** (`app/agent/normalizer/`):
 - `normalizer.py` - FactNormalizer с intent-специфичными правилами фильтрации
+  - `technology_usage` фильтр: включает типы `technology_usage`, `technology`, `project`, `experience`, `experience_project`, `profile`, `focus_area`, `tech_focus`, `catalog`
+  - Content-level bullet filtering по ключевым словам (entity_names + question)
+  - `TECH_ABBREVIATIONS` — словарь аббревиатур технологий для двунаправленного расширения ключевых слов
 - `fact_bundle.py` - Группировка фактов по типу/проекту
 
 **Генерация ответов** (`app/agent/answer/`):
@@ -231,6 +237,7 @@
   - Детерминированная (без LLM) генерация для: `contacts`, `publications`, `project_details`, `technology_usage`
   - `_deterministic_render()` - Общий метод для детерминированного рендеринга фактов с преамбулой
   - Fallback на LLM только когда детерминированный путь недоступен для интента
+  - `generate()` возвращает `tuple[str, Any, bool]` — третий элемент `deterministic_used` для пропуска grounding
 - `prompts.py` - Системные промпты и инструкции по стилю
 
 **Render** (`app/agent/render/`):
@@ -273,7 +280,10 @@
 - `builder.py` - Построение графа из ExportPayload (включает поле `kind` для проектов из опыта)
 - `query.py` - Выполнение запросов к графу:
   - Классифицирует проекты как "коммерческий" или "личный проект" по наличию company_name
-  - `_list_projects_query(kind, domain, tech_key)` — **НОВЫЙ** возвращает список всех проектов с фильтрами: `kind` ("personal"/"commercial"), `domain`, `technology_key`
+  - `_list_projects_query(kind, domain, tech_key)` — список проектов с фильтрами: `kind`, `domain`, `technology_key`
+  - `CONCEPT_TO_CATEGORY` — маппинг концепций на TechCategory (machine-learning→ml_framework, rag→concept и др.)
+  - `_projects_by_tech_category_query()` — поиск проектов по TechCategory (fallback при concept resolution)
+  - `_collect_projects_by_tech_category()` — общий хелпер для сбора проектов по категории
 - `store.py` - In-memory GraphStore singleton
 
 **Indexing** (`app/indexing/`):
@@ -284,7 +294,9 @@
 
 **Cache** (`app/cache/`):
 - `cache_service.py` - CacheService с graceful degradation для Redis
-- `plan_cache.py` - Кэширование планов (shortcut → cache → LLM)
+- `plan_cache.py` - Двухфазное получение плана:
+  - `try_plan_fast(question)` → `(plan, source)` — shortcut + cache (<5ms, без статуса "planning")
+  - `get_plan_with_cache(question, planner_llm_fn)` → `(plan, source, usage)` — LLM fallback (со статусом "planning")
 - `embedding_cache.py` - Кэширование embeddings запросов
 - Возможности:
   - Redis-кэширование с настраиваемым TTL (по умолчанию `0` = **бессрочно**, только ручная очистка)
@@ -340,11 +352,11 @@
 
 **Компоненты:**
 - `components/agent/` - чат с RAG-агентом:
-  - `AgentDock.tsx` - глобальный плавающий чат (управляет состоянием `thinkingStatus`)
+  - `AgentDock.tsx` - глобальный плавающий чат (управляет `thinkingStatus`, авто-ретрай стрима при возврате из фона на мобильном)
   - `AgentChatWindow.tsx` - UI окна чата (прокидывает thinkingStatus в список сообщений)
   - `AgentInput.tsx` - инпут сообщений
   - `AgentMessageList.tsx` - вывод сообщений со стримингом, авто-скроллом при thinking status, кликабельные markdown-ссылки (remark-gfm)
-  - `ThinkingStatus.tsx` - индикатор этапа пайплайна с очередью min-duration (800мс) и crossfade-анимацией (200мс)
+  - `ThinkingStatus.tsx` - индикатор этапа пайплайна (стратегия "latest wins", 150мс crossfade, без очереди)
   - `RateLimitWarning.tsx` - предупреждение при приближении к лимиту (анимация Framer Motion)
   - `RateLimitBlocked.tsx` - блокировка UI при превышении лимита или недоступности сервиса
 - `components/hero/` - Hero-секция:
@@ -396,7 +408,6 @@
   - `getWorkApproaches()` - подходы к работе
   - `getSectionMeta(key)` - метаданные секции
   - `getAllSectionMeta()` - метаданные всех секций
-  - `askAgent(question, sessionId)` - вопрос агенту
   - `callAgentStream(body, opts)` - стриминг чата (обрабатывает 429/503 как RateLimitError, `ChatStreamEvent` union включает тип `status`)
   - `getRateLimitStatus()` - текущий статус rate limit для IP
   - `isRateLimitError(error)` - type guard для RateLimitError
@@ -457,54 +468,20 @@ discource/
 
 ```
 specs/
-├── 001-migrate-pgvector/            # ChromaDB → pgvector миграция ✅ ВЫПОЛНЕНО
-│   ├── spec.md, plan.md, tasks.md, quickstart.md
-│   ├── known-issues.md              # Известные проблемы (ISSUE-001, ISSUE-002)
-│   └── checklists/
-├── 002-fix-project-list-query/      # Реализация PROJECT_LIST интента ✅ ВЫПОЛНЕНО
-│   ├── spec.md, plan.md, tasks.md, data-model.md, research.md
-│   └── checklists/
-└── 003-fix-planner-output-method/   # Provider-aware structured output ✅ ВЫПОЛНЕНО
-    ├── spec.md, plan.md, tasks.md, data-model.md, research.md
-    └── checklists/
+├── 001-migrate-pgvector/            # ChromaDB → pgvector миграция ✅
+├── 002-fix-project-list-query/      # PROJECT_LIST интент ✅
+├── 003-fix-planner-output-method/   # Provider-aware structured output ✅
+├── 004-fix-normalizer-tech-filter/  # Расширение фильтра типов нормализатора ✅
+├── 005-concept-resolution/          # Маппинг концепций на TechCategory ✅
+├── 006-agent-loop-guard/            # Защита от бесконечных циклов агента ✅
+├── 007-thinking-status-optimization/ # ThinkingStatus: latest wins стратегия ✅
+└── 008-mobile-stream-auto-retry/    # Авто-ретрай стрима на мобильном ✅
 ```
-
-**Содержание ключевых спецификаций:**
-- `001-migrate-pgvector`: Миграция ChromaDB → pgvector; `known-issues.md` документирует ISSUE-001 (GigaChat NoneType retry) и ISSUE-002 (confidence=0.0 форсировал hybrid search)
-- `002-fix-project-list-query`: Добавлен интент `PROJECT_LIST` для листинга проектов с фильтрами kind/domain/технология; исправлен planner, graph query, normalizer и answer слои
-- `003-fix-planner-output-method`: Исправлен хардкод `method="json_schema"` — GigaChat использует `json_schema`, DeepSeek/Qwen используют `json_mode`
-
-**Ключевые ТЗ в `discource/`:**
-
-1. **Мультипровайдерные LLM** (`TZ_MULTI_LLM_PROVIDERS.md`):
-   - Архитектура провайдеров GigaChat, DeepSeek, Qwen
-   - 5 ролей LLM задокументировано (identity, planner, answer, critic, agent); 6-я роль `router` добавлена позже
-   - LLMFactory с кэшированием и валидацией
-
-2. **Rate Limiting** (`TZ_RATE_LIMIT.md`):
-   - Токен-лимиты по IP
-   - Redis-хранилище с graceful degradation
-   - TokenUsageCollector для агрегации usage от всех ролей
-
-3. **Оптимизация RAG** (`TZ_RAG_OPTIMIZATION.md`):
-   - Гибридный поиск (dense + BM25 + rerank)
-   - Кэширование планов и шорткаты
-   - Стратегии embedding cache
-
-4. **Hardening агента** (`TZ_AI-Portfolio_RAG_Agent_Hardening.md`):
-   - Scope Guard для детекции off-topic
-   - Fact Normalizer для фильтрации по intent
-   - Grounding verification
-
-5. **Identity vs Profile** (`discource/specs/agent-identity-vs-profile-detection.md`):
-   - Лингвистический паттерн: местоимения 2-го лица → Identity вопросы
-   - 3-е лицо / имя → Profile вопросы
-   - Реализация intent PROFILE
 
 **Когда использовать:**
 - Перед реализацией новой фичи проверьте `specs/` (SpecKit workflow) — ищите активные спецификации
-- Используйте `discource/docs/` для legacy архитектурных решений
-- Создавайте новую спецификацию в `specs/` (нумерованную, напр. `004-название-фичи/`) для сложных задач
+- Используйте `discource/docs/` для legacy архитектурных решений (multi-LLM, rate limit, RAG, hardening)
+- Создавайте новую спецификацию в `specs/` (нумерованную, напр. `009-название-фичи/`) для сложных задач
 - Примечание: имя папки `discource/` — намеренная опечатка (сохраняется для совместимости)
 
 ---
@@ -879,30 +856,6 @@ PDF резюме должен находиться по пути `CV_FILE_PATH` 
 - `app/llm/validation.py` - `validate_llm_config()` для валидации при старте
 - `app/deps.py` - Функции для ролей: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`, `router_llm()`, `email_service()`
 
-**Конфигурация (переменные окружения):**
-```bash
-# Креды провайдеров
-GIGA_AUTH_DATA=base64_credentials      # GigaChat
-DEEPSEEK_API_KEY=sk-xxx                # DeepSeek
-LITELLM_BASE_URL=http://localhost:8005/v1  # Qwen через LiteLLM
-
-# Роли LLM (формат: "provider:model")
-IDENTITY_LLM=deepseek:deepseek-chat          # compose default
-PLANNER_LLM=gigachat:GigaChat-2              # compose default
-ANSWER_LLM=deepseek:deepseek-chat            # compose default
-CRITIC_LLM=deepseek:deepseek-reasoner        # compose default
-AGENT_LLM=gigachat:GigaChat-2                # compose default
-ROUTER_LLM=deepseek:deepseek-chat            # compose default
-
-# Температуры
-IDENTITY_TEMPERATURE=0.3
-PLANNER_TEMPERATURE=0.0
-ANSWER_TEMPERATURE=0.2
-CRITIC_TEMPERATURE=0.2
-AGENT_TEMPERATURE=0.2
-ROUTER_TEMPERATURE=0.0
-```
-
 **TokenUsageCollector (интеграция с Rate Limiting):**
 
 Система агрегирует usage токенов от ВСЕХ LLM-ролей для точного rate limiting:
@@ -969,129 +922,13 @@ BM25 индекс хранится на диске:
 - Сохраняется после индексации через `bm25_try_save()`
 - Сбрасывается при очистке коллекции
 
-### Анимации Hero
+### Анимации и оптимизации (frontend)
 
-**Нейросетевой фон** (`frontend-new/components/hero/ParticlesBackground.tsx`):
-- Канвас-визуализация нейронной сети с нейронами, синапсами и сигнальными импульсами
-- **Нейроны**: Светящиеся круглые узлы с концентрическими слоями (ореол свечения, мембранное кольцо, ядро, яркая центральная точка). 3 слоя глубины (далёкий/средний/ближний) для параллакса. 15% — крупные "хаб"-нейроны
-- **Синапсы**: Тонкие линии между ближайшими нейронами (макс 180px desktop, 120px mobile). Прозрачность зависит от расстояния и активации нейрона. Топология пересчитывается ~раз в секунду
-- **Сигнальные импульсы**: Яркие точки (80% зелёные, 20% фиолетовые), движущиеся по связям. При прибытии активируют целевой нейрон с 50% шансом каскада
-- **Система активации**: У нейронов уровень активации (0-1), управляющий яркостью/свечением. Затухает к базовому уровню, усиливается мышью и сигналами
-- Desktop: 60fps, 88-200 нейронов с glow, макс 31 сигнал, 5 связей на нейрон
-- Mobile: 30fps, 50-100 нейронов, без glow, макс 15 сигналов, 3 связи на нейрон
-- Реакция на мышь: курсор активирует ближайшие нейроны (ярче свечение) и запускает каскады сигналов; мягкая физика отталкивания
-- Объект `CONFIG` со всеми настраиваемыми параметрами (количество нейронов, дистанция связей, частота спауна сигналов и т.д.)
-- IntersectionObserver для паузы вне экрана
-- Постепенный спаун нейронов на загрузке
-- Обёртка по краям экрана
-
-**Hero Intro** (`frontend-new/components/hero/HeroIntro.tsx`):
-- Последовательные анимации Framer Motion:
-  1. Заголовок "AI-Portfolio" появляется снизу (0s)
-  2. Линия проходит слева направо (задержка 0.4s)
-  3. Теглайн появляется и запускается typing-эффект (0.8s, CSS typing с 1.1s)
-  4. Карточка появляется (0.5s)
-  5. Контент карточки (0.7s)
-  6. Аватар (0.85s)
-- Ширина линии подстраивается под текст теглайна
-- Используется `next/image` для оптимизации
-- `will-change` подсказки для GPU
-
-**Custom Cursor** (`frontend-new/components/ui/CustomCursor.tsx`):
-- Динамический хвост с затуханием
-- Ripple-эффекты по клику
-- Анимации, зависящие от скорости
-- Эффект "breathing"
-- Автоотключение на touch-устройствах
-- Учитывает `prefers-reduced-motion`
-- Использует requestAnimationFrame (60fps)
-
-**CSS анимации** (`frontend-new/app/globals.css`):
-- `hero-grid-pan` — движущаяся сетка
-- `hero-line-sweep` — пробегающий свет
-- `hero-typing` + `hero-caret` — печатающий эффект
-- `glowDrift` — плавающие градиентные пятна
-- `hero-bounce-slow` — прыгающая кнопка скролла
-- `cursor-breathe` — дыхание курсора
-- `animate-cursor-ripple` — ripple при клике
-- `breathe` — пульсирующее свечение индикатора thinking status (box-shadow с accent-soft)
-- `pulse-slow` — медленная пульсация (2s, 50-100% opacity)
-- `@media (prefers-reduced-motion)` — поддержка предпочтений
-- Мобильные оптимизации: меньше blur, медленнее анимации
-
-### Оптимизации производительности (frontend)
-- **React.memo** на карточках (ProjectCard, ExperienceCard, ContactCard, PublicationCard)
-- **useMemo/useCallback** в HeroIntro и AgentDock
-- **next/image** с корректными `sizes`
-- **IntersectionObserver** в ParticlesBackground и StatsGrid
-- **CountUp** в StatsGrid только при видимости
-- Троттлинг ресайза и мыши
-- Ограничение FPS на мобилках (30fps vs 60fps)
-- CSS `will-change` для GPU
-- Поддержка `prefers-reduced-motion`
-
-### Модели базы данных (`services/content-api-new/app/models/`)
-
-**Profile** (`profile.py`):
-- Одна запись с персональной информацией
-- Поля: full_name, title, subtitle, location, status, avatar_url, summary_md
-- Новые поля: hero_headline, hero_description, current_position
-
-**CompanyExperience** (`experience.py`):
-- Опыт работы в компаниях
-- Поля: role, company_name, company_slug, start_date, end_date, is_current
-- `kind`: "commercial" | "personal"
-- Markdown-поля: `company_summary_md`, `company_role_md`, `description_md`
-- One-to-many с `ExperienceProject`
-
-**ExperienceProject** (`experience_project.py`):
-- Проекты внутри опыта
-- Поля: name, slug, period, description_md, achievements_md, order_index
-- `technologies` - массив технологий
-- Many-to-one к CompanyExperience (CASCADE delete)
-
-**Project** (`project.py`):
-- Личные избранные проекты (не привязаны к опыту работы в компании)
-- Поля: name, slug, short_title, featured, is_active, period, company_name, company_website, order_index
-- Поля: domain ("cv" | "rag" | "backend" | "mlops" | "other"), repo_url, demo_url
-- Markdown: `description_md`, `long_description_md`
-- Many-to-many с Technology через `project_technology`
-
-**Technology** (`technology.py`):
-- Элементы стека (name, slug, category, order_index)
-- Many-to-many с Project
-
-**Publication** (`publication.py`):
-- Статьи/посты
-- Поля: title, year, source, url, badge, description_md, order_index
-- Источники: "Habr" | "GitHub" | "Blog" | "Other"
-
-**Contact** (`contact.py`):
-- Контакты
-- Типы: email, telegram, github, linkedin, hh, leetcode, other
-- Поля: label, value, url, order_index, is_primary
-
-**Stat** (`stats.py`):
-- Метрики для отображения (key, label, value, hint, group_name, order_index)
-
-**TechFocus** (`tech_focus.py`):
-- Технологические направления (label, description, order_index)
-- One-to-many с `TechFocusTag` (name, order_index)
-
-**HeroTag** (`hero_tag.py`):
-- Теги hero (name, url, icon, order_index)
-
-**FocusArea** (`focus_area.py`):
-- Фокусные области с буллетами (`FocusAreaBullet`)
-- Поля: title, is_primary, order_index
-
-**WorkApproach** (`work_approach.py`):
-- Подходы к работе с буллетами (`WorkApproachBullet`)
-- Поля: title, icon, order_index
-
-**SectionMeta** (`section_meta.py`):
-- Метаданные секций (section_key, title, subtitle)
-- Используются для заголовков в UI
+- **ParticlesBackground.tsx**: Канвас-нейросеть (нейроны, синапсы, сигнальные импульсы). Desktop: 60fps/glow, Mobile: 30fps/без glow. IntersectionObserver для паузы вне экрана
+- **HeroIntro.tsx**: Последовательные Framer Motion анимации (заголовок → линия → typing → карточка → аватар)
+- **CustomCursor.tsx**: Trail + ripple + breathing эффекты, авто-отключение на touch, `prefers-reduced-motion`
+- **CSS** (`globals.css`): hero-grid-pan, hero-typing, glowDrift, breathe (ThinkingStatus), cursor-breathe
+- **Производительность**: React.memo на карточках, useMemo/useCallback, IntersectionObserver, CountUp при видимости, 30fps mobile
 
 ---
 
@@ -1123,21 +960,9 @@ BM25 индекс хранится на диске:
 - `DEEPSEEK_BASE_URL` - URL DeepSeek API (по умолчанию: `https://api.deepseek.com/v1`)
 - `HF_TOKEN` - токен HuggingFace для загрузки моделей
 
-**Роли LLM (мультипровайдерная архитектура):**
-- `IDENTITY_LLM` - LLM для identity-вопросов (формат: `provider:model`, compose default: `deepseek:deepseek-chat`)
-- `PLANNER_LLM` - LLM для планирования запросов (compose default: `gigachat:GigaChat-2`)
-- `ANSWER_LLM` - LLM для генерации ответов (compose default: `deepseek:deepseek-chat`)
-- `CRITIC_LLM` - LLM для оценки фактов (compose default: `deepseek:deepseek-reasoner`)
-- `AGENT_LLM` - LLM для ReAct-агента (compose default: `gigachat:GigaChat-2`)
-- `ROUTER_LLM` - LLM для классификации интентов в роутере (default: `deepseek:deepseek-chat`, max_tokens=32)
-
-**Температуры LLM:**
-- `IDENTITY_TEMPERATURE` - температура Identity LLM (по умолчанию: 0.3)
-- `PLANNER_TEMPERATURE` - температура Planner LLM (по умолчанию: 0.0)
-- `ANSWER_TEMPERATURE` - температура Answer LLM (по умолчанию: 0.2)
-- `CRITIC_TEMPERATURE` - температура Critic LLM (по умолчанию: 0.2)
-- `AGENT_TEMPERATURE` - температура Agent LLM (по умолчанию: 0.2)
-- `ROUTER_TEMPERATURE` - температура Router LLM (по умолчанию: 0.0)
+**Роли и температуры LLM:**
+- `{IDENTITY,PLANNER,ANSWER,CRITIC,AGENT,ROUTER}_LLM` — формат `provider:model` (см. таблицу ролей выше)
+- `{IDENTITY,PLANNER,ANSWER,CRITIC,AGENT,ROUTER}_TEMPERATURE` — температуры (planner/router: 0.0, identity: 0.3, остальные: 0.2)
 
 **RAG API:**
 - `reranker_model` - модель реранкера (по умолчанию `BAAI/bge-reranker-base`)
@@ -1147,6 +972,7 @@ BM25 индекс хранится на диске:
 - `embedding_batch_size` - размер батча для embeddings (по умолчанию 4)
 - `max_rerank_candidates` - макс. кандидатов для реранкинга (по умолчанию 80)
 - `max_user_input_tokens` - макс. длина сообщения пользователя в токенах (по умолчанию 250)
+- `agent_timeout` - таймаут выполнения агента в секундах (по умолчанию 120)
 
 **Rate Limiting:**
 - `rate_limit_enabled` - включить/выключить rate limiting (по умолчанию true)
@@ -1181,11 +1007,6 @@ BM25 индекс хранится на диске:
 - `CV_SEND_LIMIT_PER_IP` - макс. отправок с одного IP за окно (по умолчанию 3)
 - `CV_SEND_LIMIT_PER_EMAIL` - макс. отправок на один email за окно (по умолчанию 2)
 - `CV_SEND_LIMIT_WINDOW_SECONDS` - окно лимита отправок (по умолчанию 3600 = 1 час)
-
-**Векторная БД:**
-- pgvector работает внутри общего инстанса PostgreSQL (отдельного сервиса нет)
-- `DATABASE_URL` - та же строка подключения, что и для content-api (см. секцию "База данных" выше)
-- `COLLECTION_NAME` - имя коллекции pgvector (по умолчанию `portfolio_new`)
 
 **Порты сервисов (docker-compose.local.yaml):**
 - `frontend` - 3000 (Next.js)
@@ -1224,8 +1045,7 @@ BM25 индекс хранится на диске:
    - Все API строго проверяют CORS
 
 8. **Сетевое взаимодействие Docker**:
-   - PostgreSQL доступен через `postgres:5432` (внутренний Docker-сервис)
-   - PostgreSQL доступен через `postgres:5432` (общий для content-api и rag-api, pgvector)
+   - PostgreSQL доступен через `postgres:5432` (внутренний Docker-сервис, общий для content-api и rag-api, pgvector)
    - Внутри Docker используйте имена сервисов (`litellm:4000`, `tei:80`)
 
 9. **Алиасы моделей LiteLLM**:
@@ -1275,7 +1095,7 @@ BM25 индекс хранится на диске:
     - `specs/` (корень проекта) — SpecKit workflow для активных спецификаций фич. Проверяйте **в первую очередь**
     - `discource/docs/` — legacy ТЗ для архитектурных решений (multi-LLM, rate limit, RAG, hardening)
     - `discource/specs/` — legacy спецификации (identity vs profile detection)
-    - Новые фичи: создавайте нумерованную спецификацию в `specs/` (напр. `004-название/`)
+    - Новые фичи: создавайте нумерованную спецификацию в `specs/` (напр. `009-название/`)
     - Примечание: папка `discource/` — намеренная опечатка (сохраняется для совместимости)
 
 18. **Structured Output планировщика** (критично для совместимости провайдеров):
@@ -1288,6 +1108,21 @@ BM25 индекс хранится на диске:
     - `confidence < 0.5` (не `== 0.0`) запускает обязательный hybrid search вне зависимости от настроек critic
     - `confidence >= critic_confidence_threshold` (по умолчанию 0.7) пропускает critic полностью (lazy critic)
     - Если GigaChat вернул `confidence=0.0` после retry при валидном плане — hybrid search триггерится (намеренно, гарантирует покрытие для low-confidence планов)
+
+20. **Защита от зацикливания агента**:
+    - `recursion_limit=6` в конфиге LangGraph (chat.py) — ограничивает число оборотов ReAct-цикла
+    - `agent_timeout=120s` (настройка в settings.py) — `asyncio.wait_for()` прерывает зависший агент
+    - При превышении лимитов пользователь получает понятное сообщение, а не трейсбек
+
+21. **Concept Resolution (граф знаний)**:
+    - `CONCEPT_TO_CATEGORY` в `query.py` маппит концепции (rag, machine-learning, llm, nlp, cv) на TechCategory
+    - При отсутствии прямого узла технологии (`technology_usage_query`) выполняется fallback на поиск проектов по категории
+    - Это позволяет правильно отвечать на вопросы типа "где использовался RAG" даже если нет узла "RAG" в графе
+
+22. **Принудительный hybrid search для technology_usage**:
+    - Если `technology_usage` интент получил только graph-факты (без project/experience_project) — принудительно триггерится hybrid search
+    - Формируется entity-focused запрос вида `"Computer Vision проекты достижения"` вместо сырого вопроса пользователя
+    - Это гарантирует наличие achievement bullets для формирования содержательного ответа
 
 ---
 
@@ -1418,6 +1253,8 @@ AI-Portfolio/
 │   │   │   ├── test_llm_factory.py       # Тесты LLM фабрики
 │   │   │   ├── test_project_list.py      # Тесты интента PROJECT_LIST
 │   │   │   ├── test_usage_collector.py   # Тесты TokenUsageCollector
+│   │   │   ├── test_agent_loop_guard.py  # Тесты защиты от зацикливания агента
+│   │   │   ├── test_concept_resolution.py # Тесты concept resolution в графе
 │   │   │   └── llm/test_providers.py     # Тесты провайдеров
 │   │   ├── pyproject.toml
 │   │   ├── Dockerfile
@@ -1446,14 +1283,13 @@ AI-Portfolio/
 │
 ├── specs/                           # 🆕 SpecKit спецификации фич
 │   ├── 001-migrate-pgvector/        # ChromaDB → pgvector миграция ✅
-│   │   ├── spec.md, plan.md, tasks.md, quickstart.md, known-issues.md
-│   │   └── checklists/
 │   ├── 002-fix-project-list-query/  # Интент PROJECT_LIST ✅
-│   │   ├── spec.md, plan.md, tasks.md, data-model.md, research.md
-│   │   └── checklists/
-│   └── 003-fix-planner-output-method/ # Provider-aware structured output ✅
-│       ├── spec.md, plan.md, tasks.md, data-model.md, research.md
-│       └── checklists/
+│   ├── 003-fix-planner-output-method/ # Provider-aware structured output ✅
+│   ├── 004-fix-normalizer-tech-filter/ # Фильтр типов нормализатора ✅
+│   ├── 005-concept-resolution/      # Маппинг концепций на TechCategory ✅
+│   ├── 006-agent-loop-guard/        # Защита от зацикливания агента ✅
+│   ├── 007-thinking-status-optimization/ # ThinkingStatus latest wins ✅
+│   └── 008-mobile-stream-auto-retry/ # Авто-ретрай стрима на мобильном ✅
 │
 ├── discource/                       # 📋 Legacy ТЗ и спецификации
 │   ├── docs/                        # Технические задания (ТЗ)

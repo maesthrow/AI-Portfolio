@@ -128,7 +128,7 @@ User Message
   - `prefetch_popular_plans()` - Warms up Redis cache after ingest (~60-70% cache hit rate)
 
 **API Routers** (`app/routers/`):
-- `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON (status events via unified asyncio.Queue)
+- `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON (status events via unified asyncio.Queue, `recursion_limit=6`, `agent_timeout` safety)
 - `ingest.py` - POST `/api/v1/ingest` - Single document ingestion
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Batch import from ExportPayload
 - `admin.py` - Admin and utility endpoints:
@@ -155,8 +155,10 @@ User Message
 - `offtopic_node.py` - Deterministic off-topic refusal with suggested on-topic questions (no LLM calls)
 - `rag_tool.py` - `@tool("portfolio_rag_tool")` — Async RAG tool for ReAct subgraph with pipeline status emission
   - `_emit_status(stage, text, config)` - Sends status events to frontend via `asyncio.Queue` from `config["configurable"]["_status_queue"]`
-  - Stages emitted: `planning`, `searching`, `verifying`, `answering`
+  - Stages emitted: `planning` (only on LLM path, skipped for shortcut/cache hits), `searching`, `verifying`, `answering`
   - Heavy sync operations wrapped in `asyncio.to_thread()` (planner, executor, critic, search, answer)
+  - Grounding verification skipped for deterministic answers (`deterministic_used=True` from AnswerLLM)
+  - Forces hybrid search for `technology_usage` intent when no project/experience_project facts found
   - **Note**: Tool name in LangChain is `portfolio_rag_tool` (not `portfolio_search_tool`)
 
 **Identity** (`app/agent/identity/`):
@@ -224,10 +226,15 @@ User Message
 
 **Normalizer** (`app/agent/normalizer/`):
 - `normalizer.py` - FactNormalizer with intent-specific filtering rules
+  - `technology_usage` filter: allows types `technology_usage`, `technology`, `project`, `experience`, `experience_project`, `profile`, `focus_area`, `tech_focus`, `catalog`
+  - Content-level bullet filtering: `_filter_fact_bullets()` keeps only keyword-matching bullets
+  - `TECH_ABBREVIATIONS` mapping for bidirectional keyword expansion (e.g., "ML" ↔ "Machine Learning")
+  - `_build_content_keywords()` combines entity names + abbreviations + question tokens
 - `fact_bundle.py` - Fact grouping by type/project
 
 **Answer Generation** (`app/agent/answer/`):
 - `answer_llm.py` - AnswerLLM with strict prompting to prevent hallucinations
+  - `generate()` returns `tuple[str, usage, deterministic_used]` — third element signals if deterministic path was used (skips grounding)
   - Deterministic (non-LLM) answering for: `contacts`, `publications`, `project_details`, `technology_usage`
   - `_deterministic_render()` - Shared method for deterministic fact rendering with optional preamble
   - Falls back to LLM only when deterministic path is not available for the intent
@@ -273,7 +280,10 @@ User Message
 - `builder.py` - Build graph from ExportPayload (includes `kind` field for experience projects)
 - `query.py` - Graph query execution:
   - Classifies projects as "коммерческий" or "личный проект" based on company_name
-  - `_list_projects_query(kind, domain, tech_key)` — **NEW** lists all projects with optional filters: `kind` ("personal"/"commercial"), `domain`, `technology_key`
+  - `_list_projects_query(kind, domain, tech_key)` — lists all projects with optional filters
+  - `CONCEPT_TO_CATEGORY` mapping: resolves abstract concepts (e.g., `machine-learning` → `ml_framework`, `rag` → `concept`) to TechCategory for graph queries when entity_key not found as node
+  - `_projects_by_tech_category_query()` — returns projects using technologies from a given category
+  - `_collect_projects_by_tech_category()` — shared helper for filtering projects by tech category
 - `store.py` - In-memory GraphStore singleton
 
 **Indexing** (`app/indexing/`):
@@ -284,7 +294,10 @@ User Message
 
 **Cache** (`app/cache/`):
 - `cache_service.py` - CacheService with Redis graceful degradation
-- `plan_cache.py` - Plan caching with shortcuts and LLM fallback
+- `plan_cache.py` - Two-phase plan retrieval:
+  - `try_plan_fast(question)` → `(plan, source)` — shortcut + cache only (<5ms), no status emission
+  - `get_plan_with_cache(question, planner_llm_fn)` → `(plan, source, usage)` — includes LLM fallback
+  - Sources: `"shortcut"` | `"cache"` | `"llm"`
 - `embedding_cache.py` - Embedding caching for query vectors
 - Features:
   - Redis-based caching with configurable TTL (default: `0` = **infinite**, manual clear only)
@@ -340,11 +353,11 @@ User Message
 
 **Components:**
 - `components/agent/` - RAG agent chat:
-  - `AgentDock.tsx` - Global floating chat with RAG agent (manages `thinkingStatus` state)
+  - `AgentDock.tsx` - Global floating chat with RAG agent (manages `thinkingStatus` state, auto-retry on mobile background)
   - `AgentChatWindow.tsx` - Chat window UI (passes thinkingStatus to message list)
   - `AgentInput.tsx` - Message input
   - `AgentMessageList.tsx` - Message display with streaming, auto-scroll on thinking status, clickable markdown links (remark-gfm)
-  - `ThinkingStatus.tsx` - Pipeline stage indicator with min-duration queue (800ms) and crossfade animation (200ms)
+  - `ThinkingStatus.tsx` - Pipeline stage indicator ("latest wins" strategy, 150ms crossfade, no queue)
   - `RateLimitWarning.tsx` - Warning banner when approaching rate limit (Framer Motion animated)
   - `RateLimitBlocked.tsx` - Block UI when rate limit exceeded or service unavailable
 - `components/hero/` - Hero section:
@@ -396,7 +409,6 @@ User Message
   - `getWorkApproaches()` - Fetch work approaches
   - `getSectionMeta(key)` - Fetch section metadata
   - `getAllSectionMeta()` - Fetch all section metadata
-  - `askAgent(question, sessionId)` - Ask agent question
   - `callAgentStream(body, opts)` - Streaming chat with agent (handles 429/503 as RateLimitError, `ChatStreamEvent` union includes `status` type)
   - `getRateLimitStatus()` - Get current rate limit status for IP
   - `isRateLimitError(error)` - Type guard for RateLimitError
@@ -454,53 +466,19 @@ discource/
 ```
 specs/
 ├── 001-migrate-pgvector/            # ChromaDB → pgvector migration ✅ COMPLETED
-│   ├── spec.md, plan.md, tasks.md, quickstart.md
-│   ├── known-issues.md              # Known issues from migration (ISSUE-001, ISSUE-002)
-│   └── checklists/
-├── 002-fix-project-list-query/      # PROJECT_LIST intent implementation ✅ COMPLETED
-│   ├── spec.md, plan.md, tasks.md, data-model.md, research.md, quickstart.md
-│   └── checklists/
-└── 003-fix-planner-output-method/   # Provider-aware planner structured output ✅ COMPLETED
-    ├── spec.md, plan.md, tasks.md, data-model.md, research.md, quickstart.md
-    └── checklists/
+├── 002-fix-project-list-query/      # PROJECT_LIST intent ✅ COMPLETED
+├── 003-fix-planner-output-method/   # Provider-aware structured output ✅ COMPLETED
+├── 004-fix-normalizer-technology-filter/  # Normalizer type filter for technology_usage ✅ COMPLETED
+├── 005-fix-agent-answer-relevance/  # Improved technology_usage answers ✅ COMPLETED
+├── 006-fix-agent-loop/              # Agent loop guard (recursion_limit + timeout) ✅ COMPLETED
+├── 007-fix-normalizer-tech-filter/  # Content-level bullet filtering ✅ COMPLETED
+└── 008-improve-concept-queries/     # Concept resolution in graph queries ✅ COMPLETED
 ```
-
-**Key specs content:**
-- `001-migrate-pgvector`: ChromaDB → pgvector migration; `known-issues.md` tracks ISSUE-001 (GigaChat NoneType retry) and ISSUE-002 (confidence=0.0 forced hybrid search)
-- `002-fix-project-list-query`: Added `PROJECT_LIST` intent for listing projects by kind/domain/technology; fixed planner, graph query, normalizer, and answer layers
-- `003-fix-planner-output-method`: Fixed `method="json_schema"` hardcode — GigaChat uses `json_schema`, DeepSeek/Qwen use `json_mode`
-
-**Key ТЗ documents in `discource/`:**
-
-1. **Multi-LLM Providers** (`TZ_MULTI_LLM_PROVIDERS.md`):
-   - GigaChat, DeepSeek, Qwen provider architecture
-   - 5 LLM roles documented (identity, planner, answer, critic, agent); 6th role `router` added later
-   - LLMFactory with caching and validation
-
-2. **Rate Limiting** (`TZ_RATE_LIMIT.md`):
-   - Token-based IP rate limiting
-   - Redis-based storage with graceful degradation
-   - TokenUsageCollector for multi-role aggregation
-
-3. **RAG Optimization** (`TZ_RAG_OPTIMIZATION.md`):
-   - Hybrid retrieval (dense + BM25 + rerank)
-   - Plan caching and shortcuts
-   - Embedding cache strategies
-
-4. **Agent Hardening** (`TZ_AI-Portfolio_RAG_Agent_Hardening.md`):
-   - Scope Guard for off-topic detection
-   - Fact Normalizer for intent-based filtering
-   - Grounding verification
-
-5. **Identity vs Profile Detection** (`discource/specs/agent-identity-vs-profile-detection.md`):
-   - Linguistic pattern for 2nd person pronouns → Identity questions
-   - 3rd person / name → Profile questions
-   - PROFILE intent implementation
 
 **When to Use:**
 - Before implementing a new feature, check `specs/` for active feature specs (SpecKit workflow)
-- Check `discource/docs/` for legacy ТЗ architectural decisions
-- Create a new spec in `specs/` (numbered, e.g. `004-feature-name/`) for complex implementations
+- Check `discource/docs/` for legacy ТЗ (multi-LLM, rate limit, RAG optimization, agent hardening)
+- Create a new spec in `specs/` (numbered, e.g. `009-feature-name/`) for complex implementations
 - Note: `discource/` folder name is intentional typo (preserved for consistency)
 
 ---
@@ -717,7 +695,7 @@ pytest tests/
 7. **CV Cancel Flow**: User refuses in CV flow → RouterNode (3-way LLM: YES/CANCEL/CHANGE) → "cv_cancel" → CvCancelNode (adaptive LLM response via answer_llm, resets pending_action)
 8. **Smalltalk Flow**: User says greeting/thanks/farewell → RouterNode → SmallTalkNode → canned response (no LLM)
 9. **Off-topic Flow**: User asks off-topic (fairy tales, code generation, etc.) → RouterNode (LLM classify_intent → off_topic) → OffTopicNode → deterministic refusal with suggested questions
-8. **Thinking Status Events**: rag_tool.py / cv_nodes.py `_emit_status()` → `asyncio.Queue` via config → chat.py unified queue → NDJSON `status` event → frontend ThinkingStatus component
+10. **Thinking Status Events**: rag_tool.py / cv_nodes.py `_emit_status()` → `asyncio.Queue` via config → chat.py unified queue → NDJSON `status` event → frontend ThinkingStatus component
 
 ### NDJSON Streaming Events (`/api/v1/agent/chat/stream`)
 
@@ -868,30 +846,6 @@ The system supports multiple LLM providers with role-based model selection:
 - `app/llm/validation.py` - `validate_llm_config()` for startup validation
 - `app/deps.py` - Role-specific LLM getters: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`, `router_llm()`, `email_service()`
 
-**Configuration (environment variables):**
-```bash
-# Provider credentials
-GIGA_AUTH_DATA=base64_credentials      # GigaChat
-DEEPSEEK_API_KEY=sk-xxx                # DeepSeek
-LITELLM_BASE_URL=http://localhost:8005/v1  # Qwen via LiteLLM
-
-# LLM roles (format: "provider:model") — compose defaults:
-IDENTITY_LLM=deepseek:deepseek-chat
-PLANNER_LLM=gigachat:GigaChat-2
-ANSWER_LLM=deepseek:deepseek-chat
-CRITIC_LLM=deepseek:deepseek-reasoner
-AGENT_LLM=gigachat:GigaChat-2
-ROUTER_LLM=deepseek:deepseek-chat
-
-# Temperatures
-IDENTITY_TEMPERATURE=0.3
-PLANNER_TEMPERATURE=0.0
-ANSWER_TEMPERATURE=0.2
-CRITIC_TEMPERATURE=0.2
-AGENT_TEMPERATURE=0.2
-ROUTER_TEMPERATURE=0.0
-```
-
 **TokenUsageCollector (Rate Limiting Integration):**
 
 The system aggregates token usage from ALL LLM roles for accurate rate limiting:
@@ -956,138 +910,11 @@ The BM25 index is persisted to disk:
 - Saved after ingestion via `bm25_try_save()`
 - Reset when collection is cleared
 
-### Hero Section Animations
+### Frontend Animations & Performance
 
-The hero section includes sophisticated animations:
+**Hero Section** — Sophisticated canvas-based neural network visualization (`ParticlesBackground.tsx`) with neurons, synapses, and signal pulses. Desktop: 60fps with glow effects; Mobile: 30fps, reduced effects. Sequential entrance animations via Framer Motion (`HeroIntro.tsx`). Custom cursor with trail/ripple effects, auto-disabled on mobile. All animations respect `prefers-reduced-motion`.
 
-**Neural Network Background** (`frontend-new/components/hero/ParticlesBackground.tsx`):
-- Canvas-based neural network visualization with neurons, synapses, and signal pulses
-- **Neurons**: Glowing circular nodes with concentric layers (glow halo, membrane ring, filled core, bright center dot). 3 depth layers (far/mid/near) for parallax. 15% are larger "hub" neurons
-- **Synapses**: Thin lines connecting nearby neurons (max 180px desktop, 120px mobile). Opacity scales with distance and neuron activation. Topology rebuilt every ~1 second
-- **Signal pulses**: Bright dots (80% green, 20% purple) traveling along connections. On arrival activate target neuron with 50% cascade chance, creating chain reactions
-- **Activation system**: Neurons have activation level (0-1) controlling brightness/glow. Decays toward base level, boosted by mouse proximity and signal arrival
-- Desktop: 60fps, 88-200 neurons with glow effects, max 31 signals, 5 connections per neuron
-- Mobile: 30fps, 50-100 neurons, no glow, max 15 signals, 3 connections per neuron
-- Mouse interaction: cursor activates nearby neurons (glow brighter) and triggers signal cascades; gentle push/repulsion physics
-- `CONFIG` object with all tunable parameters (neuron count, connection distance, signal spawn rate, etc.)
-- IntersectionObserver for visibility detection (pauses when scrolled away)
-- Gradual neuron spawn on page load
-- Edge wrapping for neurons
-
-**Hero Intro Animations** (`frontend-new/components/hero/HeroIntro.tsx`):
-- Sequential entrance animations using Framer Motion:
-  1. "AI-Portfolio" title fades in from below (0s)
-  2. Animated line sweeps across (0.4s delay)
-  3. Tagline appears and typing animation starts (0.8s delay, CSS typing at 1.1s)
-  4. Main card fades in (0.5s delay)
-  5. Card content appears (0.7s delay)
-  6. Avatar image appears (0.85s delay)
-- Line width auto-adjusts to match tagline text width
-- Uses `next/image` for optimized avatar loading
-- `will-change` hints for GPU acceleration
-
-**Custom Cursor** (`frontend-new/components/ui/CustomCursor.tsx`):
-- Dynamic trail with fade effect
-- Click ripple effects
-- Velocity-based animations
-- Breathing animation effect
-- Touch device detection with auto-disable on mobile
-- Respects `prefers-reduced-motion`
-- Uses requestAnimationFrame for smooth 60fps
-
-**CSS Animations** (`frontend-new/app/globals.css`):
-- `hero-grid-pan` - Moving grid background
-- `hero-line-sweep` - Running light effect on line
-- `hero-typing` + `hero-caret` - Typewriter effect for tagline
-- `glowDrift` - Floating gradient blobs
-- `hero-bounce-slow` - Scroll button bounce
-- `cursor-breathe` - Cursor breathing animation
-- `animate-cursor-ripple` - Click ripple effect
-- `pulse-slow` - Slow pulse opacity animation (2.5s)
-- `breathe` - Thinking status indicator glow pulse (box-shadow with accent-soft color)
-- `@media (prefers-reduced-motion)` - Respects user preferences
-- Mobile optimizations: reduced blur, slower animations
-
-### Performance Optimizations
-
-The frontend includes several performance optimizations:
-- **React.memo** on card components (ProjectCard, ExperienceCard, ContactCard, PublicationCard)
-- **useMemo/useCallback** in HeroIntro and AgentDock for memoized values and callbacks
-- **next/image** for optimized image loading with proper sizes attribute
-- **IntersectionObserver** in ParticlesBackground and StatsGrid for visibility-based behavior
-- **CountUp animation** in StatsGrid triggered only when visible
-- **Throttled event handlers** for resize and mouse events
-- **Frame rate limiting** on mobile devices (30fps vs 60fps)
-- **will-change CSS hints** for GPU-accelerated animations
-- **prefers-reduced-motion** media query support
-
-### Database Models
-
-Key models and relationships (`services/content-api-new/app/models/`):
-
-**Profile** (`profile.py`):
-- Single instance storing personal info
-- Fields: full_name, title, subtitle, location, status, avatar_url, summary_md
-- New fields: hero_headline, hero_description, current_position
-
-**CompanyExperience** (`experience.py`):
-- Work experience at companies
-- Fields: role, company_name, company_slug, start_date, end_date, is_current
-- `kind` field: "commercial" | "personal"
-- Markdown fields: `company_summary_md`, `company_role_md`, `description_md`
-- One-to-many relationship with `ExperienceProject`
-
-**ExperienceProject** (`experience_project.py`):
-- Projects within a specific company experience
-- Fields: name, slug, period, description_md, achievements_md, order_index
-- Field `technologies` - array of technology names
-- Many-to-one with CompanyExperience (CASCADE delete)
-
-**Project** (`project.py`):
-- Personal featured projects (not tied to company experience)
-- Fields: name, slug, short_title, featured, is_active, period, company_name, company_website, order_index
-- Fields: domain ("cv" | "rag" | "backend" | "mlops" | "other"), repo_url, demo_url
-- Markdown fields: description_md, long_description_md
-- Many-to-many with Technology via `project_technology` junction table
-
-**Technology** (`technology.py`):
-- Tech stack items (name, slug, category, order_index)
-- Many-to-many with Project
-
-**Publication** (`publication.py`):
-- Articles, blog posts
-- Fields: title, year, source, url, badge, description_md, order_index
-- Source types: "Habr" | "GitHub" | "Blog" | "Other"
-
-**Contact** (`contact.py`):
-- Contact methods
-- Kind types: email, telegram, github, linkedin, hh, leetcode, other
-- Fields: label, value, url, order_index, is_primary
-
-**Stat** (`stats.py`):
-- Key metrics for display (key, label, value, hint, group_name, order_index)
-
-**TechFocus** (`tech_focus.py`):
-- Technology focus areas grouping (label, description, order_index)
-- One-to-many with `TechFocusTag` (name, order_index)
-
-**HeroTag** (`hero_tag.py`):
-- Tags displayed in hero section
-- Fields: name, url, icon, order_index
-
-**FocusArea** (`focus_area.py`):
-- Focus areas with nested bullet points
-- Fields: title, is_primary, order_index
-- One-to-many with `FocusAreaBullet`
-
-**WorkApproach** (`work_approach.py`):
-- Work approaches with nested bullet points
-- Fields: title, icon, order_index
-- One-to-many with `WorkApproachBullet`
-
-**SectionMeta** (`section_meta.py`):
-- Metadata for sections (section_key, title, subtitle)
-- Used for customizing section headers throughout the UI
+**Performance**: React.memo on card components, useMemo/useCallback in AgentDock/HeroIntro, IntersectionObserver for visibility-based behavior, throttled event handlers, mobile frame rate limiting (30fps).
 
 ---
 
@@ -1119,21 +946,7 @@ Key variables (see `infra/.env.dev`):
 - `DEEPSEEK_BASE_URL` - DeepSeek API URL (default: `https://api.deepseek.com/v1`)
 - `HF_TOKEN` - HuggingFace token for model downloads
 
-**LLM Roles (Multi-Provider Architecture):**
-- `IDENTITY_LLM` - LLM for identity questions (format: `provider:model`, compose default: `deepseek:deepseek-chat`)
-- `PLANNER_LLM` - LLM for query planning (compose default: `gigachat:GigaChat-2`)
-- `ANSWER_LLM` - LLM for answer generation (compose default: `deepseek:deepseek-chat`)
-- `CRITIC_LLM` - LLM for fact evaluation (compose default: `deepseek:deepseek-reasoner`)
-- `AGENT_LLM` - LLM for ReAct agent (compose default: `gigachat:GigaChat-2`)
-- `ROUTER_LLM` - LLM for intent classification in router (default: `deepseek:deepseek-chat`, max_tokens=32)
-
-**LLM Temperatures:**
-- `IDENTITY_TEMPERATURE` - Identity LLM temperature (default: 0.3)
-- `PLANNER_TEMPERATURE` - Planner LLM temperature (default: 0.0)
-- `ANSWER_TEMPERATURE` - Answer LLM temperature (default: 0.2)
-- `CRITIC_TEMPERATURE` - Critic LLM temperature (default: 0.2)
-- `AGENT_TEMPERATURE` - Agent LLM temperature (default: 0.2)
-- `ROUTER_TEMPERATURE` - Router LLM temperature (default: 0.0)
+**LLM Roles & Temperatures:** See "Multi-Provider LLM Architecture" section for full details. Format: `provider:model` (e.g., `gigachat:GigaChat-2`, `deepseek:deepseek-chat`). 6 roles: `IDENTITY_LLM`, `PLANNER_LLM`, `ANSWER_LLM`, `CRITIC_LLM`, `AGENT_LLM`, `ROUTER_LLM`. Each has a corresponding `*_TEMPERATURE` env var.
 
 **RAG API Specific:**
 - `DATABASE_URL` - PostgreSQL connection string for pgvector (shared with content-api, e.g., `postgresql+psycopg://user:pass@host:5433/db`)
@@ -1164,6 +977,9 @@ Key variables (see `infra/.env.dev`):
 - `PLAN_CACHE_TTL` - Plan cache TTL in seconds (default: `0` = **infinite**, manual clear only)
 - `EMBEDDING_CACHE_TTL` - Embedding cache TTL in seconds (default: `0` = **infinite**, manual clear only)
 
+**Agent Execution:**
+- `AGENT_TIMEOUT` - Agent execution timeout in seconds (default: 120)
+
 **CV Sending (Email):**
 - `SMTP_HOST` - SMTP server host
 - `SMTP_PORT` - SMTP port (default: 587, STARTTLS)
@@ -1178,11 +994,6 @@ Key variables (see `infra/.env.dev`):
 - `CV_SEND_LIMIT_PER_IP` - Max CV sends per IP per window (default: 3)
 - `CV_SEND_LIMIT_PER_EMAIL` - Max CV sends per email per window (default: 2)
 - `CV_SEND_LIMIT_WINDOW_SECONDS` - CV rate limit window (default: 3600 = 1 hour)
-
-**Vector Database:**
-- pgvector runs inside the shared PostgreSQL instance (no separate service)
-- `DATABASE_URL` - Same connection string as content-api (see Database section above)
-- `COLLECTION_NAME` - pgvector collection name (default: `portfolio_new`)
 
 **Service Ports (docker-compose.local.yaml defaults):**
 - Frontend - 3000
@@ -1285,6 +1096,21 @@ Key variables (see `infra/.env.dev`):
     - `confidence < 0.5` (not `== 0.0`) triggers mandatory hybrid search regardless of critic skip settings
     - `confidence >= critic_confidence_threshold` (default 0.7) skips critic entirely (lazy critic)
     - After retry, if GigaChat returns `confidence=0.0` but plan is otherwise valid — hybrid search IS triggered (intentional, ensures coverage for low-confidence plans)
+
+20. **Agent Loop Guard** (recursion_limit + timeout):
+    - `chat.py` sets `recursion_limit: 6` (normal path = 5 steps: router + model + tools + model + clear_pending, +1 margin)
+    - `agent_timeout` setting (default 120s) wraps agent execution in `asyncio.wait_for()`
+    - Both produce user-friendly error messages (not raw exceptions)
+    - **AGENT_SYSTEM_PROMPT** instructs agent: "НИКОГДА не вызывай portfolio_rag_tool повторно. ОДИН вызов — ОДИН ответ."
+
+21. **Concept Resolution in Graph Queries**:
+    - `CONCEPT_TO_CATEGORY` in `graph/query.py` maps abstract concepts (e.g., `machine-learning`, `rag`, `nlp`, `ai-agents`) to TechCategory
+    - When `entity_key` is not found as a technology/project node, falls back to concept resolution
+    - Returns projects using technologies from the resolved category
+
+22. **Technology Usage Forced Search**:
+    - For `technology_usage` intent: if graph returns only `technology_usage`-type facts (no `project`/`experience_project` facts), forces hybrid search
+    - Builds entity-focused query from planner entities (e.g., "Computer Vision проекты достижения") for better retrieval
 
 ---
 
@@ -1415,6 +1241,8 @@ AI-Portfolio/
 │   │   │   ├── test_llm_factory.py       # LLM factory tests
 │   │   │   ├── test_project_list.py      # PROJECT_LIST intent tests
 │   │   │   ├── test_usage_collector.py   # TokenUsageCollector tests
+│   │   │   ├── test_agent_loop_guard.py  # Agent loop/timeout guard tests
+│   │   │   ├── test_concept_resolution.py # Concept resolution tests
 │   │   │   └── llm/test_providers.py     # Provider-specific tests
 │   │   ├── pyproject.toml
 │   │   ├── Dockerfile
@@ -1441,16 +1269,15 @@ AI-Portfolio/
 │   └── models/
 │       └── intfloat/multilingual-e5-base/  # TEI embedding model
 │
-├── specs/                           # 🆕 SpecKit feature implementation specs
-│   ├── 001-migrate-pgvector/        # ChromaDB → pgvector migration ✅ DONE
-│   │   ├── spec.md, plan.md, tasks.md, quickstart.md, known-issues.md
-│   │   └── checklists/
-│   ├── 002-fix-project-list-query/  # PROJECT_LIST intent ✅ DONE
-│   │   ├── spec.md, plan.md, tasks.md, data-model.md, research.md
-│   │   └── checklists/
-│   └── 003-fix-planner-output-method/ # Provider-aware structured output ✅ DONE
-│       ├── spec.md, plan.md, tasks.md, data-model.md, research.md
-│       └── checklists/
+├── specs/                           # SpecKit feature implementation specs
+│   ├── 001-migrate-pgvector/        # ChromaDB → pgvector migration ✅
+│   ├── 002-fix-project-list-query/  # PROJECT_LIST intent ✅
+│   ├── 003-fix-planner-output-method/ # Provider-aware structured output ✅
+│   ├── 004-fix-normalizer-technology-filter/ # Normalizer type filter ✅
+│   ├── 005-fix-agent-answer-relevance/ # Technology_usage answers ✅
+│   ├── 006-fix-agent-loop/          # Agent loop guard ✅
+│   ├── 007-fix-normalizer-tech-filter/ # Content-level bullet filtering ✅
+│   └── 008-improve-concept-queries/ # Concept resolution ✅
 │
 ├── discource/                       # 📋 Legacy ТЗ and specs
 │   ├── docs/                        # Technical requirements (ТЗ)
