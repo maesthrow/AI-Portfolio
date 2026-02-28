@@ -303,6 +303,206 @@ class TestNormalizer:
 
         assert len(result.rules_applied) > 0
 
+    # --- T004: Profile + focus_area retention with matching keyword ---
+
+    def test_technology_usage_retains_profile_and_focus_area_with_keyword(self):
+        """Profile and focus_area facts with matching tech keyword should be retained.
+
+        Covers US1-scenario-2: focus_area with AI-agent keywords is preserved.
+        Profile with 'AI-агенты для Сбера' is preserved.
+        Irrelevant experience facts are filtered out by Rule 2b.
+        """
+        facts = self._make_facts([
+            {
+                "type": "profile",
+                "text": (
+                    "Дмитрий Каргин\n"
+                    "AI-инженер • LLM-специалист • Python-разработчик\n"
+                    "AI-агенты • LLM • RAG • CV • Backend\n"
+                    "AI-агенты для Сбера (аутстаффинг)\n"
+                    "Строю надежные AI-системы — от идеи до запуска."
+                ),
+            },
+            {
+                "type": "focus_area",
+                "text": "LLM / AI-Agents / RAG\n- Разработка агентных сценариев",
+            },
+            {
+                "type": "experience",
+                "text": (
+                    "Backend Developer @ АО «РКЦ «Прогресс»\n"
+                    "Система контроля испытательного оборудования."
+                ),
+            },
+            {
+                "type": "experience",
+                "text": (
+                    ".NET/Python Backend Developer @ АО «Спарго Технологии»\n"
+                    "Сервисы автоматизации аптек."
+                ),
+            },
+        ])
+
+        result = self.normalizer.normalize(
+            facts=facts,
+            intent="technology_usage",
+            entity_names=["AI agents"],
+            question="опыт с ИИ агентами",
+            max_items=20,
+        )
+
+        result_types = [f.type for f in result.filtered_facts]
+
+        # Profile with AI-agent keywords must be retained
+        assert "profile" in result_types, "Profile with AI-agent keyword must be retained"
+
+        # Focus_area with AI-Agents keyword must be retained
+        assert "focus_area" in result_types, "Focus_area with AI-Agents keyword must be retained"
+
+        # Irrelevant experience facts should be filtered out by Rule 2b
+        assert "experience" not in result_types, "Experience without AI-agent keyword should be filtered"
+
+        assert "technology_usage_filter" in result.rules_applied
+        assert "technology_usage_content_filter" in result.rules_applied
+
+    # --- T005: Profile rejection without keyword ---
+
+    def test_technology_usage_rejects_profile_without_keyword(self):
+        """Profile fact without queried technology keyword should be filtered out.
+
+        Covers SC-003: no false positives.
+        """
+        facts = self._make_facts([
+            {
+                "type": "profile",
+                "text": (
+                    "Дмитрий Каргин\n"
+                    "Python-разработчик\n"
+                    "Backend • API • Docker\n"
+                    "Строю надежные системы."
+                ),
+            },
+            {
+                "type": "technology",
+                "text": "PostgreSQL — реляционная СУБД",
+                "metadata": {"name": "PostgreSQL", "category": "database"},
+            },
+        ])
+
+        result = self.normalizer.normalize(
+            facts=facts,
+            intent="technology_usage",
+            entity_names=["PostgreSQL"],
+            question="где используется PostgreSQL",
+            max_items=20,
+        )
+
+        result_types = [f.type for f in result.filtered_facts]
+
+        # Profile does NOT mention PostgreSQL → must be filtered out
+        assert "profile" not in result_types, "Profile without queried keyword must be filtered"
+
+        # Technology fact about PostgreSQL must be retained
+        assert "technology" in result_types, "Technology fact with keyword must be retained"
+
+    # --- T006: TECH_ABBREVIATIONS AI agents mapping ---
+
+    def test_tech_abbreviations_ai_agents_mapping(self):
+        """TECH_ABBREVIATIONS should map 'AI agents' to Russian equivalents.
+
+        Covers FR-004: bidirectional mapping for AI agent terms.
+        """
+        keywords = FactNormalizer._build_content_keywords(
+            entity_names=["AI agents"],
+        )
+
+        # Forward mapping: canonical → abbreviations
+        assert "ai agents" in keywords
+        assert "ai-агенты" in keywords, "Must include Russian AI-агенты"
+
+        # Reverse: abbreviations should also map back
+        keywords_reverse = FactNormalizer._build_content_keywords(
+            entity_names=["AI-агенты"],
+        )
+        assert "ai agents" in keywords_reverse, "Reverse mapping must include canonical 'ai agents'"
+        assert "ии-агенты" in keywords_reverse, "Reverse mapping must include ИИ-агенты"
+
+    # --- T007: tech_focus, focus_area, and catalog retention ---
+
+    def test_technology_usage_retains_tech_focus_focus_area_and_catalog(self):
+        """tech_focus and catalog facts with ML keywords retained; focus_area without ML filtered.
+
+        Covers FR-005 (catalog type) and US3 (tech_focus retention).
+        """
+        facts = self._make_facts([
+            {
+                "type": "tech_focus",
+                "text": "ML и CV — PyTorch, YOLO, Detectron2",
+            },
+            {
+                "type": "focus_area",
+                "text": "LLM / AI-Agents / RAG\n- Разработка агентных сценариев",
+            },
+            {
+                "type": "catalog",
+                "text": "technologies_all: Python, Machine Learning, PyTorch, Docker",
+            },
+            {
+                "type": "experience",
+                "text": (
+                    "Backend Developer @ АО «РКЦ «Прогресс»\n"
+                    "Система контроля испытательного оборудования."
+                ),
+            },
+        ])
+
+        result = self.normalizer.normalize(
+            facts=facts,
+            intent="technology_usage",
+            entity_names=["Machine Learning"],
+            question="опыт с машинным обучением",
+            max_items=20,
+        )
+
+        result_types = [f.type for f in result.filtered_facts]
+
+        # tech_focus with ML keywords must be retained
+        assert "tech_focus" in result_types, "tech_focus with ML keywords must be retained"
+
+        # catalog with Machine Learning keyword must be retained (FR-005)
+        assert "catalog" in result_types, "catalog with ML keyword must be retained (FR-005)"
+
+        # focus_area without ML keyword should be filtered by Rule 2b
+        assert "focus_area" not in result_types, "focus_area without ML keyword should be filtered"
+
+        # Irrelevant experience should be filtered
+        assert "experience" not in result_types, "Experience without ML keyword should be filtered"
+
+    # --- T008: Zero-result fallback ---
+
+    def test_technology_usage_zero_result_fallback(self):
+        """When type filter removes all facts, fallback returns unfiltered facts.
+
+        Covers FR-003: zero-result safety fallback.
+        """
+        facts = self._make_facts([
+            {"type": "stat", "text": "Опыт в разработке\n5+ лет\nPython/.NET • Backend • ML"},
+            {"type": "stat", "text": "Проектов выполнено\n10+\nКоммерческие и личные"},
+            {"type": "work_approach", "text": "Продуктовый подход\nНачинаю с бизнес-задачи"},
+        ])
+
+        result = self.normalizer.normalize(
+            facts=facts,
+            intent="technology_usage",
+            max_items=20,
+        )
+
+        # All facts have types NOT in the expanded whitelist → fallback
+        assert len(result.filtered_facts) == 3, "Fallback must return all unfiltered facts"
+        assert "technology_usage_filter_fallback" in result.rules_applied, (
+            "Fallback rule must be recorded"
+        )
+
 
 class TestFactBundle:
     """Tests for FactBundle building and entity extraction."""

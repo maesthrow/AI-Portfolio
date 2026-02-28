@@ -34,6 +34,7 @@ TECH_ABBREVIATIONS: dict[str, list[str]] = {
     "Named Entity Recognition": ["NER"],
     "Optical Character Recognition": ["OCR"],
     "Large Language Model": ["LLM", "языковая модель"],
+    "AI Agents": ["AI-агенты", "AI агенты", "ИИ-агенты", "ии агенты", "агенты", "агентные системы", "агентн"],
 }
 
 
@@ -112,10 +113,17 @@ class FactNormalizer:
             tech_facts = [f for f in filtered if f.type in (
                 "technology_usage", "technology", "project",
                 "experience", "experience_project",
+                "profile", "focus_area", "tech_focus", "catalog",
             )]
             if tech_facts:
                 filtered = tech_facts
                 rules_applied.append("technology_usage_filter")
+            else:
+                logger.warning(
+                    "technology_usage_filter: type filter removed all %d facts, keeping unfiltered",
+                    len(filtered),
+                )
+                rules_applied.append("technology_usage_filter_fallback")
 
             # === Rule 2b: Content-level bullet filtering ===
             if entity_names:
