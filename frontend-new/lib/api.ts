@@ -131,22 +131,6 @@ export async function getFeaturedProjects(): Promise<Project[]> {
   return getJson("/projects?featured=true");
 }
 
-export async function askAgent(question: string, sessionId: string) {
-  const base = AGENT_API_BASE;
-  if (!base) {
-    throw new Error("AGENT_API_BASE is missing");
-  }
-  const res = await fetch(`${base}/ask`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, session_id: sessionId })
-  });
-  if (!res.ok) {
-    throw new Error("Agent request failed");
-  }
-  return res.json() as Promise<{ answer: string; sources?: string[] }>;
-}
-
 export async function callAgentStream(
   body: Record<string, unknown>,
   opts?: { signal?: AbortSignal }

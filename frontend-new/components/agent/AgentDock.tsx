@@ -5,7 +5,7 @@ import clsx from "clsx";
 
 import AgentChatWindow from "@/components/agent/AgentChatWindow";
 import { StatusEntry } from "@/components/agent/ThinkingStatus";
-import { askAgent, callAgentStream, ChatStreamEvent, getRateLimitStatus, isRateLimitError } from "@/lib/api";
+import { callAgentStream, ChatStreamEvent, getRateLimitStatus, isRateLimitError } from "@/lib/api";
 import { AgentMessage, RateLimitInfo, RateLimitError } from "@/lib/types";
 
 const HINT_KEY = "hasSeenAgentHint_v2";
@@ -74,6 +74,8 @@ export default function AgentDock() {
   const currentOutputIdRef = useRef<string | null>(null);
   const lastTickRef = useRef<number>(performance.now());
   const releasePendingRef = useRef<boolean>(false);
+  const wasBackgroundedRef = useRef<boolean>(false);
+  const autoRetryCountRef = useRef<number>(0);
   const [streamingStarted, setStreamingStarted] = useState(false);
   const [thinkingStatus, setThinkingStatus] = useState<StatusEntry | null>(null);
   // Counter incremented on every status event — immune to React batching
@@ -157,6 +159,17 @@ export default function AgentDock() {
       if (hintHideTimerRef.current) clearTimeout(hintHideTimerRef.current);
     };
   }, [hintShown]);
+
+  // Отслеживание ухода страницы в фон во время стриминга
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && streamControllerRef.current) {
+        wasBackgroundedRef.current = true;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
 
   // Проверить rate limit статус при открытии dock
   useEffect(() => {
@@ -279,6 +292,8 @@ export default function AgentDock() {
     setStreamingStarted(false);
     setThinkingStatus(null);
     releasePendingRef.current = false;
+    autoRetryCountRef.current = 0;
+    wasBackgroundedRef.current = false;
 
     const controller = new AbortController();
     streamControllerRef.current = controller;
@@ -357,6 +372,7 @@ export default function AgentDock() {
       // Ensure scroll after stream completes (especially for short CV responses
       // where the entire answer arrives as a single delta).
       setScrollKick(c => c + 1);
+      wasBackgroundedRef.current = false;
       releasePendingRef.current = true;
       tryReleaseLoading();
     } catch (err: any) {
@@ -379,25 +395,23 @@ export default function AgentDock() {
         setLoading(false);
         setStreamingStarted(false);
         releasePendingRef.current = false;
+      } else if (wasBackgroundedRef.current && autoRetryCountRef.current < 1) {
+        // Стрим умер из-за ухода мобильного браузера в фон — повторяем автоматически (1 раз)
+        console.warn("Stream lost during background, auto-retrying");
+        autoRetryCountRef.current++;
+        wasBackgroundedRef.current = false;
+        setMessages(prev => prev.filter(m => m.tempId !== tempId));
+        stopCharPump();
+        charQueueRef.current = [];
+        setLoading(false);
+        setStreamingStarted(false);
+        releasePendingRef.current = false;
+        const q = question;
+        queueMicrotask(() => handleMessageRetry(q));
       } else {
-        console.error("Streaming agent failed, falling back to sync", err);
-        try {
-          const fallback = await askAgent(question, sessionId);
-          stopCharPump();
-          charQueueRef.current = [];
-          updateAgentMessage(tempId, (m) => ({
-            ...m,
-            content: fallback.answer,
-            status: "done"
-          }));
-          releasePendingRef.current = true;
-          tryReleaseLoading();
-        } catch (fallbackErr) {
-          console.error("Fallback agent failed", fallbackErr);
-          applyError("Не получилось связаться с агентом. Попробуй позже.");
-          releasePendingRef.current = true;
-          tryReleaseLoading();
-        }
+        applyError(getUserFriendlyErrorMessage(err?.message || "unknown error"));
+        releasePendingRef.current = true;
+        tryReleaseLoading();
       }
     } finally {
       streamControllerRef.current = null;
@@ -575,6 +589,7 @@ export default function AgentDock() {
       // Ensure scroll after stream completes (especially for short CV responses
       // where the entire answer arrives as a single delta).
       setScrollKick(c => c + 1);
+      wasBackgroundedRef.current = false;
       releasePendingRef.current = true;
       tryReleaseLoading();
     } catch (err: any) {
@@ -586,18 +601,35 @@ export default function AgentDock() {
           content: m.content || "Ответ остановлен.",
           status: "stopped"
         }));
+        releasePendingRef.current = true;
+        tryReleaseLoading();
       } else if (isRateLimitError(err)) {
         setRateLimitError(err);
         setMessages(prev => prev.filter(m => m.id !== tempId && m.tempId !== tempId));
+        releasePendingRef.current = true;
+        tryReleaseLoading();
+      } else if (wasBackgroundedRef.current && autoRetryCountRef.current < 1) {
+        // Стрим умер из-за ухода мобильного браузера в фон — повторяем автоматически (1 раз)
+        console.warn("Stream lost during background (retry), auto-retrying");
+        autoRetryCountRef.current++;
+        wasBackgroundedRef.current = false;
+        setMessages(prev => prev.filter(m => m.tempId !== tempId));
+        stopCharPump();
+        charQueueRef.current = [];
+        setLoading(false);
+        setStreamingStarted(false);
+        releasePendingRef.current = false;
+        const q = question;
+        queueMicrotask(() => handleMessageRetry(q));
       } else {
         updateAgentMessage(tempId, (m) => ({
           ...m,
-          content: "Не получилось связаться с агентом. Попробуйте позже.",
+          content: getUserFriendlyErrorMessage(err?.message || "unknown error"),
           status: "error"
         }));
+        releasePendingRef.current = true;
+        tryReleaseLoading();
       }
-      releasePendingRef.current = true;
-      tryReleaseLoading();
     } finally {
       streamControllerRef.current = null;
       activeAgentIdRef.current = null;
