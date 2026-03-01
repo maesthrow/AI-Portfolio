@@ -59,6 +59,36 @@ def _node_to_source(node: GraphNode) -> Dict[str, Any]:
     }
 
 
+def _get_project_achievements(project: GraphNode) -> list[str]:
+    """
+    Получить достижения проекта через BELONGS_TO рёбра от ACHIEVEMENT нод.
+
+    Эффективнее полного скана: O(edges) для конкретного проекта.
+    """
+    store = get_graph_store()
+    incoming = store.get_incoming_edges(project.id, EdgeType.BELONGS_TO)
+    achievements = []
+    for edge in incoming:
+        node = store.get_node(edge.source_id)
+        if node and node.type == NodeType.ACHIEVEMENT:
+            achievements.append(node.data.get("text", node.name))
+    return achievements
+
+
+def _build_tech_category_text(
+    project_name: str,
+    company_str: str,
+    category: str,
+    tech_list: str,
+    achievements: list[str],
+) -> str:
+    """Build text for tech category query items, including achievement bullets."""
+    text = f"{project_name} ({company_str}) — использует {CATEGORY_DISPLAY_NAMES.get(category, 'технологии')}: {tech_list}"
+    if achievements:
+        text += "\n" + "\n".join(f"- {a}" for a in achievements)
+    return text
+
+
 def _achievements_query(entity_key: str | None) -> GraphQueryResult:
     """
     Запрос достижений.
@@ -406,6 +436,7 @@ def _technologies_query(entity_key: str | None) -> GraphQueryResult:
                     "domain": p.data.get("domain"),
                     "description_md": p.data.get("description_md"),
                     "period": p.data.get("period"),
+                    "achievements": _get_project_achievements(p),
                 }
                 for p in projects
             ]
@@ -977,6 +1008,7 @@ def _projects_by_tech_category_query(
         if len(techs_used) > 3:
             tech_list += f" и ещё {len(techs_used) - 3}"
 
+        achievements = _get_project_achievements(project)
         items.append({
             "name": project.name,
             "project": project.name,
@@ -989,7 +1021,8 @@ def _projects_by_tech_category_query(
             "technologies": techs_used,
             "tech_count": len(techs_used),
             "category": category,
-            "text": f"{project.name} ({company_str}) — использует {CATEGORY_DISPLAY_NAMES.get(category, 'технологии')}: {tech_list}",
+            "achievements": achievements,
+            "text": _build_tech_category_text(project.name, company_str, category, tech_list, achievements),
         })
         sources.append(_node_to_source(project))
 

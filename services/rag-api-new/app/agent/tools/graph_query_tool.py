@@ -149,6 +149,10 @@ def _item_to_fact(item: Any, intent: Any) -> FactItem | None:
                 comp = item.get("company_name")
                 suffix = f" ({comp})" if comp else ""
                 text = f"{tech} используется в проекте {proj}{suffix}"
+                # Append achievements as bullet lines for richer deterministic answers
+                achievements = item.get("achievements") or []
+                if achievements:
+                    text += "\n" + "\n".join(f"- {a}" for a in achievements)
             elif item.get("name") and any(k in item for k in ("description", "long_description", "domain", "period")):
                 name = item.get("name")
                 desc = item.get("description") or item.get("long_description") or ""
