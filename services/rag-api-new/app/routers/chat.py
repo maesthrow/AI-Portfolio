@@ -279,6 +279,7 @@ async def chat_stream(req: ChatRequest, request: Request):
         agent_usage = None
         sent_delta = False
         final_text = ""
+        tool_depth = 0  # Track nested tool execution to suppress internal LLM output
         yield json.dumps(
             {"type": "start", "message_id": message_id, "created_at": created_at},
             ensure_ascii=False,
@@ -363,6 +364,10 @@ async def chat_stream(req: ChatRequest, request: Request):
                     continue
 
                 if kind == "on_chat_model_stream":
+                    # Suppress LLM output from inside tools (critic, answer, planner)
+                    # — only stream the agent's own final response (tool_depth == 0)
+                    if tool_depth > 0:
+                        continue
                     chunk = (event.get("data") or {}).get("chunk")
                     content = _extract_text(chunk)
                     if hasattr(chunk, "usage_metadata") and getattr(chunk, "usage_metadata", None):
@@ -373,6 +378,10 @@ async def chat_stream(req: ChatRequest, request: Request):
                         yield json.dumps({"type": "delta", "content": content}, ensure_ascii=False) + "\n"
 
                 elif kind in ("on_chat_model_end", "on_chain_end"):
+                    # Suppress tool-internal events to avoid polluting
+                    # final_text / agent_usage with critic/answer LLM data
+                    if tool_depth > 0:
+                        continue
                     data = event.get("data") or {}
                     output = data.get("output") if isinstance(data, dict) else None
                     text = _extract_text(output or data)
@@ -391,6 +400,7 @@ async def chat_stream(req: ChatRequest, request: Request):
                                 agent_usage = rm["usage"]
 
                 elif kind == "on_tool_start":
+                    tool_depth += 1
                     tool_name = event.get("name") or (event.get("data") or {}).get("name") or "tool"
                     data = event.get("data") or {}
                     tool_input = data.get("input") or data.get("inputs") or data.get("tool_input")
@@ -404,6 +414,7 @@ async def chat_stream(req: ChatRequest, request: Request):
                     yield json.dumps({"type": "tool_start", "tool": tool_name}, ensure_ascii=False) + "\n"
 
                 elif kind == "on_tool_end":
+                    tool_depth = max(0, tool_depth - 1)
                     data = event.get("data") or {}
                     tool_output = data.get("output") or data.get("result")
                     logger.info(
