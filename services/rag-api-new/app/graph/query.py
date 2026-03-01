@@ -40,6 +40,7 @@ CONCEPT_TO_CATEGORY: dict[str, str] = {
     "ml": "ml_framework",
     "ai-agents": "concept",
     "ai-agent": "concept",
+    "agents": "concept",
     "rag": "concept",
     "computer-vision": "ml_framework",
     "cv": "ml_framework",
