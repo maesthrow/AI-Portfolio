@@ -27,7 +27,7 @@ If you accidentally work with deprecated directories, **STOP** and switch to the
 **AI-Portfolio** is a microservices-based cyberpunk-themed portfolio application with RAG (Retrieval-Augmented Generation) capabilities. The system consists of a Next.js frontend, PostgreSQL database with pgvector extension for semantic search, FastAPI backend services, and a LangGraph-powered agent.
 
 **Tech Stack:**
-- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown, remark-gfm, lucide-react
+- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown, remark-gfm, lucide-react, clsx
 - Backend: Python 3.12+, FastAPI, SQLAlchemy 2.0, Alembic
 - RAG: LangChain 1.x, LangGraph 1.x, pgvector (PostgreSQL extension), sentence-transformers, rank-bm25
 - LLM Infrastructure: LiteLLM proxy, vLLM (Qwen2.5-7B-Instruct-AWQ), TEI (multilingual-e5-base embeddings)
@@ -51,15 +51,15 @@ The project follows a microservices architecture with these key services:
 
 Key modules:
 - `app/models/` - SQLAlchemy models:
-  - `profile.py` - Profile (full_name, title, subtitle, summary_md, hero_headline, hero_description, current_position)
-  - `experience.py` - CompanyExperience (role, company, dates, kind, company_summary_md, company_role_md)
-  - `experience_project.py` - ExperienceProject (projects within company experience with achievements_md)
-  - `project.py` - Project (personal/featured projects with slug, technologies, featured, domain, repo_url, demo_url, long_description_md)
-  - `publication.py` - Publication (articles, blog posts; title, year, source, url, badge, description_md, order_index)
-  - `contact.py` - Contact (email, telegram, github, linkedin, hh, leetcode; label, value, url, order_index, is_primary)
-  - `stats.py` - Stat (key metrics for display)
-  - `tech_focus.py` - TechFocus (technology focus areas)
-  - `technology.py` - Technology (tech stack items)
+  - `profile.py` - Profile (full_name, title, subtitle, location, status, avatar_url, summary_md, hero_headline, hero_description, current_position)
+  - `experience.py` - CompanyExperience (role, company_name, company_slug, company_url, start_date, end_date, is_current, kind, company_summary_md, company_role_md, description_md [deprecated], order_index; legacy fields: project_name, project_slug, project_url, summary_md, achievements_md)
+  - `experience_project.py` - ExperienceProject (name, slug, period, description_md, achievements_md, order_index; FK to CompanyExperience)
+  - `project.py` - Project (name, slug, short_title, description_md, long_description_md, period, company_name, company_website, domain, featured, repo_url, demo_url, is_active, order_index; M2M technologies via project_technology)
+  - `publication.py` - Publication (title, year, source, url, badge, description_md, order_index)
+  - `contact.py` - Contact (kind, label, value, url, order_index, is_primary) — generic key-value model, `kind` values: email, telegram, github, linkedin, hh, leetcode, other
+  - `stats.py` - Stat (key [unique], label, value, hint, group_name, order_index)
+  - `tech_focus.py` - TechFocus + TechFocusTag (label, description, order_index; tags with name)
+  - `technology.py` - Technology (name [unique], slug [unique], category, order_index)
   - `hero_tag.py` - HeroTag (tags displayed in hero section)
   - `focus_area.py` - FocusArea, FocusAreaBullet (focus areas with bullet points)
   - `work_approach.py` - WorkApproach, WorkApproachBullet (work approaches with bullets and icons)
@@ -78,8 +78,9 @@ Key modules:
   - `work_approaches.py` - GET `/api/v1/work-approaches`
   - `section_meta.py` - GET `/api/v1/section-meta`, GET `/api/v1/section-meta/{section_key}`
 - `app/schemas/` - Pydantic schemas for each model (includes `rag_export.py` for comprehensive RAG export structures)
-- `app/settings.py` - Application settings
-- `alembic/` - Database migrations
+- `app/settings.py` - Application settings (used by seed script; walks up directories to find `infra/.env.dev`)
+- `app/core/config.py` - Core settings (used by `main.py` and `db.py`; simpler, reads from `.env`)
+- `alembic/` - Database migrations (latest: `0006_add_icon_to_work_approach`)
 
 ### 2. **RAG API New** (`services/rag-api-new/`) ⭐ RECOMMENDED
 **Multi-layer RAG pipeline with LLM-based planning and deterministic answer generation**
@@ -120,20 +121,20 @@ User Message
 ```
 
 **Core Modules:**
-- `app/main.py` - FastAPI app with routers, health endpoints (`/healthz`, `/meta`)
+- `app/main.py` - FastAPI app with routers, health endpoints (`/healthz` returns ok/env/log_level/collection/planner_llm/answer_llm/agent_llm/embedding_provider/embedding_model, `/meta` returns all LLM roles + embedding_model)
 - `app/settings.py` - Pydantic settings with LLM temperatures
-- `app/deps.py` - Shared dependencies (LLM instances, switchable embedding factory via `embeddings()`, PGVectorStore via `pg_engine()` with dimension auto-detection, reranker)
+- `app/deps.py` - Shared dependencies (LLM instances, switchable embedding factory via `embeddings()`, PGVectorStore via `pg_engine()` with dimension auto-detection and table recreation on mismatch, reranker, `email_service()`, `rate_limiter()`)
 - `app/prefetch.py` - Cache warmup for popular questions
   - `POPULAR_QUESTIONS` - List of common questions in both user-style and agent-style
   - `prefetch_popular_plans()` - Warms up Redis cache after ingest (~60-70% cache hit rate)
 
 **API Routers** (`app/routers/`):
-- `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON (status events via unified asyncio.Queue, `recursion_limit=6`, `agent_timeout` safety)
+- `chat.py` - POST `/api/v1/agent/chat/stream` - Streaming chat with NDJSON (status events via unified asyncio.Queue, `recursion_limit=6`, `agent_timeout` safety, `tool_depth` tracking to suppress internal LLM streaming, identity fast-path before LangGraph)
 - `ingest.py` - POST `/api/v1/ingest` - Single document ingestion
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Batch import from ExportPayload
 - `admin.py` - Admin and utility endpoints:
   - DELETE `/api/v1/admin/collection` - Clear pgvector collection
-  - GET `/api/v1/admin/stats` - Collection and graph statistics
+  - GET `/api/v1/admin/stats` - Collection and graph statistics, embedding_provider, embedding_model, vector_dimension
   - GET `/api/v1/admin/cache/stats` - Cache statistics
   - DELETE `/api/v1/admin/cache/plans` - Clear plan cache
   - DELETE `/api/v1/admin/cache/embeddings` - Clear embedding cache
@@ -141,20 +142,21 @@ User Message
   - GET `/api/v1/rate-limit/status` - Rate limit status for current IP
 
 **Agent System** (`app/agent/`):
-- `graph.py` - Top-level `StateGraph` with hybrid router dispatching to branches (RAG subgraph, CV, smalltalk, off-topic)
+- `graph.py` - Top-level `StateGraph` with hybrid router dispatching to branches (RAG subgraph, CV, smalltalk, off-topic); uses `MemorySaver` checkpointer for multi-turn state persistence
 - `graph_state.py` - `AgentState` TypedDict: `messages`, `pending_action` (`""` | `"cv_awaiting_email"`), `_route_intent`
-- `router.py` - `router_node(state, config)`: regex fast-path → LLM fallback; `route_edge(state)` conditional edge
+- `router.py` - `router_node(state, config)`: regex fast-path (greeting/thanks/farewell only match messages ≤60 chars) → LLM fallback; `route_edge(state)` conditional edge
 - `router_llm.py` - `classify_intent(text, llm)` → `greeting/thanks/farewell/cv_request/off_topic/rag`; `is_cv_continuation(text, llm)` → `"yes"/"cancel"/"change"` for multi-turn CV flow
 - `cv_nodes.py` - CV send graph nodes:
   - `cv_start_node(state, config)` - starts CV send: extracts email or asks for it, sets `pending_action="cv_awaiting_email"`
   - `cv_process_node(state, config)` - processes email input in multi-turn flow
-  - `_check_cv_rate_limit(ip, email)` / `_record_cv_send(ip, email)` - per-IP and per-email Redis rate limiting
+  - `_check_cv_rate_limit(ip, email)` / `_record_cv_send(ip, email)` - per-IP and per-email Redis rate limiting (graceful degradation: allows send if Redis down)
   - `_emit_status("sending_cv", "Отправляю резюме...", config)`
 - `cv_cancel_node.py` - Adaptive LLM response (via `answer_llm`) when user cancels CV sending; resets `pending_action`
 - `smalltalk_node.py` - Deterministic canned responses for `greeting`, `thanks`, `farewell` (no LLM calls)
 - `offtopic_node.py` - Deterministic off-topic refusal with suggested on-topic questions (no LLM calls)
 - `rag_tool.py` - `@tool("portfolio_rag_tool")` — Async RAG tool for ReAct subgraph with pipeline status emission
   - `_emit_status(stage, text, config)` - Sends status events to frontend via `asyncio.Queue` from `config["configurable"]["_status_queue"]`
+  - `_emit_usage(usage_data, config)` - Side-channel usage reporting (stage `"_usage"`) for rate limiting aggregation
   - Stages emitted: `planning` (only on LLM path, skipped for shortcut/cache hits), `searching`, `verifying`, `answering`
   - Heavy sync operations wrapped in `asyncio.to_thread()` (planner, executor, critic, search, answer)
   - Grounding verification skipped for deterministic answers (`deterministic_used=True` from AnswerLLM)
@@ -169,8 +171,8 @@ User Message
   - `is_identity_question(question)` returns `(is_identity, max_similarity)`
   - `generate_identity_response(question)` generates LLM response about agent capabilities
 - `prompts.py` - Identity prompts and capabilities list
-  - `CAPABILITIES` - List of agent capabilities (easily extensible)
-  - `IDENTITY_REFERENCE_QUESTIONS` - Reference questions for semantic matching (curated to avoid false positives with project questions)
+  - `CAPABILITIES` - List of 5 agent capabilities (portfolio queries, project details, tech stack, experience, CV sending)
+  - `IDENTITY_REFERENCE_QUESTIONS` - 19 reference questions for semantic matching (curated to avoid false positives with project questions; "расскажи о себе как об агенте" deliberately excluded)
   - `get_identity_system_prompt()` - Generates system prompt with current capabilities
 
 **Planner** (`app/agent/planner/`):
@@ -228,14 +230,14 @@ User Message
 - `normalizer.py` - FactNormalizer with intent-specific filtering rules
   - `technology_usage` filter: allows types `technology_usage`, `technology`, `project`, `experience`, `experience_project`, `profile`, `focus_area`, `tech_focus`, `catalog`
   - Content-level bullet filtering: `_filter_fact_bullets()` keeps only keyword-matching bullets
-  - `TECH_ABBREVIATIONS` mapping for bidirectional keyword expansion (e.g., "ML" ↔ "Machine Learning")
+  - `TECH_ABBREVIATIONS` mapping (8 entries) for bidirectional keyword expansion (e.g., "ML" ↔ "Machine Learning", "NLP", "AI", "OCR", "NER", "LLM", "AI Agents")
   - `_build_content_keywords()` combines entity names + abbreviations + question tokens
 - `fact_bundle.py` - Fact grouping by type/project
 
 **Answer Generation** (`app/agent/answer/`):
 - `answer_llm.py` - AnswerLLM with strict prompting to prevent hallucinations
   - `generate()` returns `tuple[str, usage, deterministic_used]` — third element signals if deterministic path was used (skips grounding)
-  - Deterministic (non-LLM) answering for: `contacts`, `publications`, `project_details`, `technology_usage`
+  - Deterministic (non-LLM) answering for: `contacts`, `publications`, `project_details`, `technology_usage`, `project_list`
   - `_deterministic_render()` - Shared method for deterministic fact rendering with optional preamble
   - Falls back to LLM only when deterministic path is not available for the intent
 - `prompts.py` - Answer system prompts and style instructions
@@ -281,7 +283,7 @@ User Message
 - `query.py` - Graph query execution:
   - Classifies projects as "коммерческий" or "личный проект" based on company_name
   - `_list_projects_query(kind, domain, tech_key)` — lists all projects with optional filters
-  - `CONCEPT_TO_CATEGORY` mapping: resolves abstract concepts (e.g., `machine-learning` → `ml_framework`, `rag` → `concept`) to TechCategory for graph queries when entity_key not found as node
+  - `CONCEPT_TO_CATEGORY` mapping (8 entries): resolves abstract concepts to TechCategory for graph queries when entity_key not found as node: `machine-learning`/`ml` → `ml_framework`, `ai-agents`/`ai-agent`/`agents` → `concept`, `rag` → `concept`, `computer-vision`/`cv` → `ml_framework`, `nlp` → `ml_framework`
   - `_projects_by_tech_category_query()` — returns projects using technologies from a given category
   - `_collect_projects_by_tech_category()` — shared helper for filtering projects by tech category
 - `store.py` - In-memory GraphStore singleton
@@ -320,7 +322,7 @@ User Message
 - `factory.py` - `LLMFactory` class, `parse_llm_id()`, `get_llm_factory()`, `get_provider_info()`
 - `providers.py` - `LLMProvider` enum (GIGACHAT, DEEPSEEK, QWEN), `ProviderConfig`
 - `exceptions.py` - `LLMConfigError`, `LLMProviderError`
-- `validation.py` - `validate_llm_config()` for startup validation (validates 5 roles: identity, planner, answer, critic, agent; excludes router_llm)
+- `validation.py` - `validate_llm_config()` for startup validation (validates 5 roles: identity, planner, answer, critic, agent; excludes router_llm); checks provider credentials availability
 - `gigachat_adapter.py` - GigaChat adapter for LangChain (legacy, not used by LLMFactory)
 
 **Schemas** (`app/schemas/`):
@@ -479,7 +481,7 @@ specs/
 **When to Use:**
 - Before implementing a new feature, check `specs/` for active feature specs (SpecKit workflow)
 - Check `discource/docs/` for legacy ТЗ (multi-LLM, rate limit, RAG optimization, agent hardening)
-- Create a new spec in `specs/` (numbered, e.g. `009-feature-name/`) for complex implementations
+- Create a new spec in `specs/` (numbered, e.g. `010-feature-name/`) for complex implementations
 - Note: `discource/` folder name is intentional typo (preserved for consistency)
 
 ---
@@ -783,7 +785,7 @@ The RAG system (triggered via "rag" routing branch) uses a sophisticated multi-l
    - See `app/agent/normalizer/normalizer.py:FactNormalizer.normalize()`
 
 5. **Answer LLM**: Generates response with strict prompting
-   - Deterministic (non-LLM) answers for: contacts, publications, project_details, technology_usage
+   - Deterministic (non-LLM) answers for: contacts, publications, project_details, technology_usage, project_list
    - LLM-based answers for remaining intents with strict prompting (no hallucinations)
    - Recovery mechanism: falls back to deterministic generation if LLM produces "not found" but evidence exists
    - See `app/agent/answer/answer_llm.py:AnswerLLM.generate()`
@@ -845,7 +847,7 @@ The system supports multiple LLM providers with role-based model selection:
 - `app/llm/providers.py` - `LLMProvider` enum, `ProviderConfig`
 - `app/llm/exceptions.py` - `LLMConfigError`, `LLMProviderError`
 - `app/llm/validation.py` - `validate_llm_config()` for startup validation
-- `app/deps.py` - Switchable `embeddings()` factory (TEI / GigaChat), `pg_engine()` with dimension auto-detection, role-specific LLM getters: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`, `router_llm()`, `email_service()`
+- `app/deps.py` - Switchable `embeddings()` factory (TEI / GigaChat), `pg_engine()` with dimension auto-detection and table recreation on mismatch, `reranker()` (CUDA-aware), role-specific LLM getters: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`, `router_llm()`, `email_service()`, `rate_limiter()`, `agent_app()`, `graph_store()`
 
 **TokenUsageCollector (Rate Limiting Integration):**
 
@@ -941,8 +943,8 @@ Key variables (see `infra/.env.dev`):
 - `LITELLM_MASTER_KEY` - LiteLLM authentication key
 - `LITELLM_API_KEY` - LiteLLM API key for authentication
 - `CHAT_MODEL` - Chat model alias (legacy, e.g., `Qwen2.5` or `GigaChat`)
-- `EMBEDDING_PROVIDER` - Embedding provider: `tei` (local TEI) or `gigachat` (cloud GigaChat API) (default: `tei`)
-- `EMBEDDING_MODEL` - Embedding model alias (e.g., `embedding-default` for TEI, `Embeddings` for GigaChat)
+- `EMBEDDING_PROVIDER` - Embedding provider: `tei` (local TEI, 768-dim) or `gigachat` (cloud GigaChat API, 1024-dim) (default: `tei`)
+- `EMBEDDING_MODEL` - Embedding model alias (e.g., `text-embedding-3-large` for TEI, `Embeddings` or `Embeddings-2` for GigaChat)
 - `GIGA_AUTH_DATA` - GigaChat base64 credentials (required when `EMBEDDING_PROVIDER=gigachat`)
 - `DEEPSEEK_API_KEY` - DeepSeek API key (if using DeepSeek)
 - `DEEPSEEK_BASE_URL` - DeepSeek API URL (default: `https://api.deepseek.com/v1`)
@@ -969,8 +971,8 @@ Key variables (see `infra/.env.dev`):
 
 **Rate Limiting:**
 - `RATE_LIMIT_ENABLED` - Enable/disable rate limiting (default: true)
-- `RATE_LIMIT_IP_TOKENS` - Token limit per IP per window (compose default: 50000)
-- `RATE_LIMIT_WINDOW_SECONDS` - Rate limit window in seconds (compose default: 3600 = 1 hour)
+- `RATE_LIMIT_IP_TOKENS` - Token limit per IP per window (code default: 15000 for local dev; compose/env override: 50000 for production)
+- `RATE_LIMIT_WINDOW_SECONDS` - Rate limit window in seconds (code default: 60 for local dev; compose/env override: 3600 = 1 hour for production)
 - `RATE_LIMIT_WARNING_THRESHOLD` - Warning threshold as decimal (default: 0.8 = 80%)
 - `RATE_LIMIT_LOG_IP_MODE` - IP logging mode: `masked` or `full` (default: `masked`)
 
@@ -1005,7 +1007,7 @@ Key variables (see `infra/.env.dev`):
 - `TEI_PORT` - 8006 (Text Embeddings Inference)
 - `LITELLM_PORT` - 8005 (LiteLLM proxy)
 - `REDIS_PORT` - 6379 (Redis)
-- `RAG_NEW_PORT` - 8014 (rag-api, builds from rag-api-new/; compose YAML fallback is `:-8004` but `.env.dev`/`.env.example` set it to `8014`)
+- `RAG_NEW_PORT` - 8014 (rag-api, builds from rag-api-new/; compose YAML fallback is `:-8004`; `.env.dev`/`.env.example` set it to `8014`; `.env.local` does NOT set it, so falls back to `8004`)
 
 ---
 
@@ -1086,7 +1088,7 @@ Key variables (see `infra/.env.dev`):
     - `specs/` (project root) — SpecKit workflow for active feature specs. Check here **first** for new features
     - `discource/docs/` — legacy ТЗ for architectural decisions (multi-LLM, rate limit, RAG optimization, hardening)
     - `discource/specs/` — legacy implementation specs (identity vs profile detection)
-    - New features: create numbered spec in `specs/` (e.g. `004-feature-name/`)
+    - New features: create numbered spec in `specs/` (e.g. `010-feature-name/`)
     - Note: `discource/` folder name is intentional typo (preserved for consistency)
 
 18. **Planner Structured Output** (critical for provider compatibility):
@@ -1107,7 +1109,7 @@ Key variables (see `infra/.env.dev`):
     - **AGENT_SYSTEM_PROMPT** instructs agent: "НИКОГДА не вызывай portfolio_rag_tool повторно. ОДИН вызов — ОДИН ответ."
 
 21. **Concept Resolution in Graph Queries**:
-    - `CONCEPT_TO_CATEGORY` in `graph/query.py` maps abstract concepts (e.g., `machine-learning`, `rag`, `nlp`, `ai-agents`) to TechCategory
+    - `CONCEPT_TO_CATEGORY` in `graph/query.py` maps 8 abstract concepts to TechCategory: `machine-learning`/`ml` → `ml_framework`, `ai-agents`/`ai-agent`/`agents` → `concept`, `rag` → `concept`, `computer-vision`/`cv` → `ml_framework`, `nlp` → `ml_framework`
     - When `entity_key` is not found as a technology/project node, falls back to concept resolution
     - Returns projects using technologies from the resolved category
 
@@ -1115,12 +1117,18 @@ Key variables (see `infra/.env.dev`):
     - For `technology_usage` intent: if graph returns only `technology_usage`-type facts (no `project`/`experience_project` facts), forces hybrid search
     - Builds entity-focused query from planner entities (e.g., "Computer Vision проекты достижения") for better retrieval
 
-23. **Switchable Embedding Provider**:
+23. **Content API Dual Settings**:
+    - `app/core/config.py` is used by `main.py` and `db.py` (simple `BaseSettings`, reads `.env`)
+    - `app/settings.py` is used by the seed script (walks up directory tree to find `infra/.env.dev`)
+    - When modifying settings, check which settings class is relevant to your change
+
+24. **Switchable Embedding Provider**:
     - `EMBEDDING_PROVIDER` env var switches between `tei` (local TEI, 768-dim multilingual-e5-base) and `gigachat` (cloud GigaChat API, 1024-dim)
     - `deps.py:embeddings()` returns `OpenAIEmbeddings` for TEI or `GigaChatEmbeddings` (from `langchain_gigachat`) for GigaChat
     - `EMBEDDING_PROVIDER=gigachat` requires `GIGA_AUTH_DATA` to be set (raises `RuntimeError` otherwise)
     - Vector dimension is auto-detected at startup via test embed (`embed_query("test")` → `len(result)`)
-    - On dimension mismatch (e.g., switching from 768→1024), pgvector table is automatically dropped and recreated; embedding cache is cleared; reingest is required
+    - On dimension mismatch (e.g., switching from 768→1024), pgvector table is automatically dropped and recreated via `overwrite_existing=True`; embedding cache is cleared; reingest is required
+    - Dimension detection uses `pg_attribute` catalog query to check existing table before test embed
     - `EMBEDDING_MODEL` is reused for both providers: `text-embedding-3-large` for TEI, `Embeddings` or `Embeddings-2` for GigaChat
     - `GigaChatEmbeddings` uses `verify_ssl_certs=False` and `timeout=60`
 
@@ -1164,7 +1172,7 @@ AI-Portfolio/
 │   │   │   ├── models/             # SQLAlchemy models (all listed above)
 │   │   │   ├── routers/            # API endpoints (/api/v1/*)
 │   │   │   ├── schemas/            # Pydantic schemas
-│   │   │   ├── core/config.py      # Core settings
+│   │   │   ├── core/config.py      # Core settings (used by main.py/db.py)
 │   │   │   └── seed/               # Database seeding (seed_ai_portfolio_new.py)
 │   │   ├── alembic/                # Database migrations
 │   │   │   └── versions/
@@ -1305,7 +1313,7 @@ AI-Portfolio/
 │
 ├── CLAUDE.md                       # This file (EN)
 ├── CLAUDE_RU.md                    # This file (RU)
-├── AGENTS.md                       # Agent-related documentation
+├── AGENTS.md                       # Agent-related documentation (⚠️ OUTDATED — references non-existent compose.apps.yaml)
 └── tech-task-rag-api-new-develop.md  # RAG API new technical task specification
 ```
 

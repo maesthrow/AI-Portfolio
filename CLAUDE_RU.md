@@ -27,7 +27,7 @@
 **AI-Portfolio** — микросервисное киберпанк-портфолио с возможностями RAG (Retrieval-Augmented Generation). Система состоит из фронтенда на Next.js, базы данных PostgreSQL с расширением pgvector для семантического поиска, бэкенд-сервисов на FastAPI и агента на LangGraph.
 
 **Технологический стек:**
-- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown, remark-gfm, lucide-react
+- Frontend: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, react-markdown, remark-gfm, lucide-react, clsx
 - Backend: Python 3.12+, FastAPI, SQLAlchemy 2.0, Alembic
 - RAG: LangChain 1.x, LangGraph 1.x, pgvector (расширение PostgreSQL), sentence-transformers, rank-bm25
 - LLM-инфраструктура: LiteLLM proxy, vLLM (Qwen2.5-7B-Instruct-AWQ), TEI (multilingual-e5-base embeddings)
@@ -51,15 +51,15 @@
 
 Основные модули:
 - `app/models/` - модели SQLAlchemy:
-  - `profile.py` - Profile (full_name, title, subtitle, summary_md, hero_headline, hero_description, current_position)
-  - `experience.py` - CompanyExperience (role, company_name, company_slug, start_date, end_date, is_current, kind, company_summary_md, company_role_md, description_md)
-  - `experience_project.py` - ExperienceProject (проекты внутри опыта с achievements_md)
-  - `project.py` - Project (личные/featured проекты; slug, technologies, featured, domain, repo_url, demo_url, long_description_md)
-  - `publication.py` - Publication (статьи/посты; title, year, source, url, badge, description_md, order_index)
-  - `contact.py` - Contact (email, telegram, github, linkedin, hh, leetcode; label, value, url, order_index, is_primary)
-  - `stats.py` - Stat (ключевые метрики)
-  - `tech_focus.py` - TechFocus (технологические направления)
-  - `technology.py` - Technology (элементы стека)
+  - `profile.py` - Profile (full_name, title, subtitle, location, status, avatar_url, summary_md, hero_headline, hero_description, current_position)
+  - `experience.py` - CompanyExperience (role, company_name, company_slug, company_url, start_date, end_date, is_current, kind, company_summary_md, company_role_md, description_md [deprecated], order_index; legacy поля: project_name, project_slug, project_url, summary_md, achievements_md)
+  - `experience_project.py` - ExperienceProject (name, slug, period, description_md, achievements_md, order_index; FK к CompanyExperience)
+  - `project.py` - Project (name, slug, short_title, description_md, long_description_md, period, company_name, company_website, domain, featured, repo_url, demo_url, is_active, order_index; M2M technologies через project_technology)
+  - `publication.py` - Publication (title, year, source, url, badge, description_md, order_index)
+  - `contact.py` - Contact (kind, label, value, url, order_index, is_primary) — универсальная key-value модель, `kind`: email, telegram, github, linkedin, hh, leetcode, other
+  - `stats.py` - Stat (key [unique], label, value, hint, group_name, order_index)
+  - `tech_focus.py` - TechFocus + TechFocusTag (label, description, order_index; теги с name)
+  - `technology.py` - Technology (name [unique], slug [unique], category, order_index)
   - `hero_tag.py` - HeroTag (теги в hero-секции)
   - `focus_area.py` - FocusArea, FocusAreaBullet (фокусные направления с буллетами)
   - `work_approach.py` - WorkApproach, WorkApproachBullet (подходы к работе с буллетами и иконками)
@@ -78,15 +78,16 @@
   - `work_approaches.py` - GET `/api/v1/work-approaches`
   - `section_meta.py` - GET `/api/v1/section-meta`, GET `/api/v1/section-meta/{section_key}`
 - `app/schemas/` - Pydantic-схемы (включая `rag_export.py` — ExportPayload для RAG)
-- `app/settings.py` - настройки приложения
-- `alembic/` - миграции базы данных
+- `app/settings.py` - настройки приложения (используется seed-скриптом; ищет `infra/.env.dev` по дереву каталогов)
+- `app/core/config.py` - базовые настройки (используется `main.py` и `db.py`; проще, читает `.env`)
+- `alembic/` - миграции базы данных (последняя: `0006_add_icon_to_work_approach`)
 
 ### 2. **RAG API New** (`services/rag-api-new/`) ⭐ РЕКОМЕНДУЕТСЯ
 **Многослойный RAG пайплайн с LLM-планировщиком и детерминированной генерацией ответов**
 
 - Продвинутый семантический поиск с LLM-планированием запросов
 - Knowledge Graph для структурированных запросов
-- Off-topic guard на уровне роутера (LLM-классификатор + детерминированный отказ)
+- Off-topic guard на уровне роутера (regex быстрый путь + LLM-классификатор, детерминированный отказ)
 - Детерминированная нормализация фактов и генерация ответов
 - Точка входа: `app/main.py`
 - Порт: 8014 (Docker compose local через `RAG_NEW_PORT`), 8000 (default uvicorn)
@@ -120,20 +121,20 @@
 ```
 
 **Основные модули:**
-- `app/main.py` - FastAPI приложение с роутерами, health endpoints (`/healthz`, `/meta`)
+- `app/main.py` - FastAPI приложение с роутерами, health endpoints (`/healthz` возвращает ok/env/log_level/collection/planner_llm/answer_llm/agent_llm/embedding_provider/embedding_model, `/meta` возвращает все роли LLM + embedding_model)
 - `app/settings.py` - Pydantic настройки с температурами LLM
-- `app/deps.py` - Общие зависимости (инстансы LLM, PGVectorStore через `pg_engine()`, reranker)
+- `app/deps.py` - Общие зависимости (инстансы LLM, переключаемая фабрика embeddings через `embeddings()`, PGVectorStore через `pg_engine()` с авто-определением размерности и пересозданием таблицы при несоответствии, reranker, `email_service()`, `rate_limiter()`)
 - `app/prefetch.py` - Прогрев кэша для популярных вопросов
   - `POPULAR_QUESTIONS` - Список частых вопросов в user-style и agent-style формулировках
   - `prefetch_popular_plans()` - Прогревает Redis кэш после ingest (~60-70% cache hit rate)
 
 **API роутеры** (`app/routers/`):
-- `chat.py` - POST `/api/v1/agent/chat/stream` - Стриминговый чат с NDJSON (status-события через unified asyncio.Queue, `recursion_limit=6`, `agent_timeout` safety)
+- `chat.py` - POST `/api/v1/agent/chat/stream` - Стриминговый чат с NDJSON (status-события через unified asyncio.Queue, `recursion_limit=6`, `agent_timeout` safety, `tool_depth` трекинг для подавления внутреннего LLM стриминга, identity fast-path перед LangGraph)
 - `ingest.py` - POST `/api/v1/ingest` - Загрузка одного документа
 - `ingest_batch.py` - POST `/api/v1/ingest/batch` - Пакетный импорт ExportPayload
 - `admin.py` - Админские эндпоинты:
   - DELETE `/api/v1/admin/collection` - Очистка коллекции pgvector
-  - GET `/api/v1/admin/stats` - Статистика коллекции и графа
+  - GET `/api/v1/admin/stats` - Статистика коллекции и графа, embedding_provider, embedding_model, vector_dimension
   - GET `/api/v1/admin/cache/stats` - Статистика кэша (Redis)
   - DELETE `/api/v1/admin/cache/plans` - Очистка plan cache
   - DELETE `/api/v1/admin/cache/embeddings` - Очистка embedding cache
@@ -141,20 +142,21 @@
   - GET `/api/v1/rate-limit/status` - Статус rate limit для текущего IP
 
 **Агентная система** (`app/agent/`):
-- `graph.py` - Верхний `StateGraph` с гибридным роутером, ветвящимся на RAG подграф, CV, смолток, off-topic
+- `graph.py` - Верхний `StateGraph` с гибридным роутером, ветвящимся на RAG подграф, CV, смолток, off-topic; использует `MemorySaver` checkpointer для персистентности multi-turn состояния
 - `graph_state.py` - `AgentState` TypedDict: `messages`, `pending_action` (`""` | `"cv_awaiting_email"`), `_route_intent`
-- `router.py` - `router_node(state, config)`: regex → LLM fallback; `route_edge(state)` условное ребро
+- `router.py` - `router_node(state, config)`: regex (greeting/thanks/farewell только для сообщений ≤60 символов) → LLM fallback; `route_edge(state)` условное ребро
 - `router_llm.py` - `classify_intent(text, llm)` → `greeting/thanks/farewell/cv_request/off_topic/rag`; `is_cv_continuation(text, llm)` → `"yes"/"cancel"/"change"` для multi-turn CV
 - `cv_nodes.py` - Узлы графа для отправки резюме:
   - `cv_start_node` - начинает флоу: извлекает email из текста или запрашивает, устанавливает `pending_action="cv_awaiting_email"`
   - `cv_process_node` - обрабатывает email в multi-turn флоу
-  - `_check_cv_rate_limit(ip, email)` / `_record_cv_send(ip, email)` - Redis-лимиты по IP и email
+  - `_check_cv_rate_limit(ip, email)` / `_record_cv_send(ip, email)` - Redis-лимиты по IP и email (graceful degradation: разрешает отправку если Redis недоступен)
   - `_emit_status("sending_cv", "Отправляю резюме...", config)`
 - `cv_cancel_node.py` - Адаптивный LLM-ответ (через `answer_llm`) при отказе от отправки CV; сбрасывает `pending_action`
 - `smalltalk_node.py` - Детерминированные ответы для `greeting`, `thanks`, `farewell` (без вызовов LLM)
 - `offtopic_node.py` - Детерминированный отказ на off-topic с подсказками (без вызовов LLM)
 - `rag_tool.py` - `@tool("portfolio_rag_tool")` — Async RAG тулза для ReAct подграфа с эмиссией статусов пайплайна
   - `_emit_status(stage, text, config)` - Отправляет status-события на фронтенд через `asyncio.Queue` из `config["configurable"]["_status_queue"]`
+  - `_emit_usage(usage_data, config)` - Side-channel для отчёта usage (stage `"_usage"`) для агрегации rate limiting
   - Этапы: `planning`, `searching`, `verifying`, `answering`
   - Тяжёлые sync-операции обёрнуты в `asyncio.to_thread()` (planner, executor, critic, search, answer)
   - Grounding verification пропускается для детерминированных ответов (`deterministic_used` flag)
@@ -170,8 +172,8 @@
   - `is_identity_question(question)` возвращает `(is_identity, max_similarity)`
   - `generate_identity_response(question)` генерирует LLM-ответ о возможностях агента
 - `prompts.py` - Промпты и список возможностей
-  - `CAPABILITIES` - Список возможностей агента (легко расширяемый)
-  - `IDENTITY_REFERENCE_QUESTIONS` - Референсные вопросы для semantic matching (курированы для избежания false positive с вопросами о проектах)
+  - `CAPABILITIES` - Список из 5 возможностей агента (запросы о портфолио, детали проектов, тех. стек, опыт, отправка CV)
+  - `IDENTITY_REFERENCE_QUESTIONS` - 19 референсных вопросов для semantic matching (курированы для избежания false positive; "расскажи о себе как об агенте" намеренно исключён)
   - `get_identity_system_prompt()` - Генерирует системный промпт с актуальными возможностями
 
 **Планировщик** (`app/agent/planner/`):
@@ -229,12 +231,12 @@
 - `normalizer.py` - FactNormalizer с intent-специфичными правилами фильтрации
   - `technology_usage` фильтр: включает типы `technology_usage`, `technology`, `project`, `experience`, `experience_project`, `profile`, `focus_area`, `tech_focus`, `catalog`
   - Content-level bullet filtering по ключевым словам (entity_names + question)
-  - `TECH_ABBREVIATIONS` — словарь аббревиатур технологий для двунаправленного расширения ключевых слов
+  - `TECH_ABBREVIATIONS` — словарь из 8 аббревиатур для двунаправленного расширения ключевых слов (ML ↔ Machine Learning, NLP, AI, OCR, NER, LLM, AI Agents)
 - `fact_bundle.py` - Группировка фактов по типу/проекту
 
 **Генерация ответов** (`app/agent/answer/`):
 - `answer_llm.py` - AnswerLLM со строгим промптингом для предотвращения галлюцинаций
-  - Детерминированная (без LLM) генерация для: `contacts`, `publications`, `project_details`, `technology_usage`
+  - Детерминированная (без LLM) генерация для: `contacts`, `publications`, `project_details`, `technology_usage`, `project_list`
   - `_deterministic_render()` - Общий метод для детерминированного рендеринга фактов с преамбулой
   - Fallback на LLM только когда детерминированный путь недоступен для интента
   - `generate()` возвращает `tuple[str, Any, bool]` — третий элемент `deterministic_used` для пропуска grounding
@@ -281,7 +283,7 @@
 - `query.py` - Выполнение запросов к графу:
   - Классифицирует проекты как "коммерческий" или "личный проект" по наличию company_name
   - `_list_projects_query(kind, domain, tech_key)` — список проектов с фильтрами: `kind`, `domain`, `technology_key`
-  - `CONCEPT_TO_CATEGORY` — маппинг концепций на TechCategory (machine-learning→ml_framework, rag→concept и др.)
+  - `CONCEPT_TO_CATEGORY` — 8 маппингов: `machine-learning`/`ml` → `ml_framework`, `ai-agents`/`ai-agent`/`agents` → `concept`, `rag` → `concept`, `computer-vision`/`cv` → `ml_framework`, `nlp` → `ml_framework`
   - `_projects_by_tech_category_query()` — поиск проектов по TechCategory (fallback при concept resolution)
   - `_collect_projects_by_tech_category()` — общий хелпер для сбора проектов по категории
 - `store.py` - In-memory GraphStore singleton
@@ -319,7 +321,7 @@
 - `factory.py` - класс `LLMFactory`, `parse_llm_id()`, `get_llm_factory()`, `get_provider_info()`
 - `providers.py` - `LLMProvider` enum (GIGACHAT, DEEPSEEK, QWEN), `ProviderConfig`
 - `exceptions.py` - `LLMConfigError`, `LLMProviderError`
-- `validation.py` - `validate_llm_config()` для валидации при старте (валидирует 5 ролей: identity, planner, answer, critic, agent; исключает router_llm)
+- `validation.py` - `validate_llm_config()` для валидации при старте (валидирует 5 ролей: identity, planner, answer, critic, agent; исключает router_llm); проверяет наличие кредов провайдеров
 - `gigachat_adapter.py` - GigaChat адаптер для LangChain (legacy, не используется LLMFactory)
 
 **Schemas** (`app/schemas/`):
@@ -471,17 +473,18 @@ specs/
 ├── 001-migrate-pgvector/            # ChromaDB → pgvector миграция ✅
 ├── 002-fix-project-list-query/      # PROJECT_LIST интент ✅
 ├── 003-fix-planner-output-method/   # Provider-aware structured output ✅
-├── 004-fix-normalizer-tech-filter/  # Расширение фильтра типов нормализатора ✅
-├── 005-concept-resolution/          # Маппинг концепций на TechCategory ✅
-├── 006-agent-loop-guard/            # Защита от бесконечных циклов агента ✅
-├── 007-thinking-status-optimization/ # ThinkingStatus: latest wins стратегия ✅
-└── 008-mobile-stream-auto-retry/    # Авто-ретрай стрима на мобильном ✅
+├── 004-fix-normalizer-technology-filter/ # Расширение фильтра типов нормализатора ✅
+├── 005-fix-agent-answer-relevance/  # Улучшение ответов по technology_usage ✅
+├── 006-fix-agent-loop/              # Защита от бесконечных циклов агента ✅
+├── 007-fix-normalizer-tech-filter/  # Content-level bullet фильтрация ✅
+├── 008-improve-concept-queries/     # Concept resolution в графе ✅
+└── 009-switchable-embedding-provider/ # Переключаемый TEI/GigaChat embedding провайдер ✅
 ```
 
 **Когда использовать:**
 - Перед реализацией новой фичи проверьте `specs/` (SpecKit workflow) — ищите активные спецификации
 - Используйте `discource/docs/` для legacy архитектурных решений (multi-LLM, rate limit, RAG, hardening)
-- Создавайте новую спецификацию в `specs/` (нумерованную, напр. `009-название-фичи/`) для сложных задач
+- Создавайте новую спецификацию в `specs/` (нумерованную, напр. `010-название-фичи/`) для сложных задач
 - Примечание: имя папки `discource/` — намеренная опечатка (сохраняется для совместимости)
 
 ---
@@ -790,7 +793,7 @@ PDF резюме должен находиться по пути `CV_FILE_PATH` 
    - См. `app/agent/normalizer/normalizer.py:FactNormalizer.normalize()`
 
 5. **Answer LLM**: Генерирует ответ со строгим промптингом
-   - Детерминированные (без LLM) ответы для: contacts, publications, project_details, technology_usage
+   - Детерминированные (без LLM) ответы для: contacts, publications, project_details, technology_usage, project_list
    - LLM-генерация для остальных интентов со строгим промптингом (без галлюцинаций)
    - Механизм восстановления: fallback на детерминированную генерацию, если LLM выдал "не найдено", но evidence есть
    - См. `app/agent/answer/answer_llm.py:AnswerLLM.generate()`
@@ -854,7 +857,7 @@ PDF резюме должен находиться по пути `CV_FILE_PATH` 
 - `app/llm/providers.py` - `LLMProvider` enum, `ProviderConfig`
 - `app/llm/exceptions.py` - `LLMConfigError`, `LLMProviderError`
 - `app/llm/validation.py` - `validate_llm_config()` для валидации при старте
-- `app/deps.py` - Функции для ролей: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`, `router_llm()`, `email_service()`
+- `app/deps.py` - Переключаемая фабрика `embeddings()` (TEI / GigaChat), `pg_engine()` с авто-определением размерности и пересозданием таблицы при несоответствии, `reranker()` (CUDA-aware), функции для ролей: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`, `router_llm()`, `email_service()`, `rate_limiter()`, `agent_app()`, `graph_store()`
 
 **TokenUsageCollector (интеграция с Rate Limiting):**
 
@@ -1095,7 +1098,7 @@ BM25 индекс хранится на диске:
     - `specs/` (корень проекта) — SpecKit workflow для активных спецификаций фич. Проверяйте **в первую очередь**
     - `discource/docs/` — legacy ТЗ для архитектурных решений (multi-LLM, rate limit, RAG, hardening)
     - `discource/specs/` — legacy спецификации (identity vs profile detection)
-    - Новые фичи: создавайте нумерованную спецификацию в `specs/` (напр. `009-название/`)
+    - Новые фичи: создавайте нумерованную спецификацию в `specs/` (напр. `010-название/`)
     - Примечание: папка `discource/` — намеренная опечатка (сохраняется для совместимости)
 
 18. **Structured Output планировщика** (критично для совместимости провайдеров):
@@ -1115,7 +1118,7 @@ BM25 индекс хранится на диске:
     - При превышении лимитов пользователь получает понятное сообщение, а не трейсбек
 
 21. **Concept Resolution (граф знаний)**:
-    - `CONCEPT_TO_CATEGORY` в `query.py` маппит концепции (rag, machine-learning, llm, nlp, cv) на TechCategory
+    - `CONCEPT_TO_CATEGORY` в `query.py` маппит 8 концепций на TechCategory: `machine-learning`/`ml` → `ml_framework`, `ai-agents`/`ai-agent`/`agents` → `concept`, `rag` → `concept`, `computer-vision`/`cv` → `ml_framework`, `nlp` → `ml_framework`
     - При отсутствии прямого узла технологии (`technology_usage_query`) выполняется fallback на поиск проектов по категории
     - Это позволяет правильно отвечать на вопросы типа "где использовался RAG" даже если нет узла "RAG" в графе
 
@@ -1123,6 +1126,18 @@ BM25 индекс хранится на диске:
     - Если `technology_usage` интент получил только graph-факты (без project/experience_project) — принудительно триггерится hybrid search
     - Формируется entity-focused запрос вида `"Computer Vision проекты достижения"` вместо сырого вопроса пользователя
     - Это гарантирует наличие achievement bullets для формирования содержательного ответа
+
+23. **Двойная система настроек в Content API**:
+    - `app/core/config.py` используется `main.py` и `db.py` (простой `BaseSettings`, читает `.env`)
+    - `app/settings.py` используется seed-скриптом (ищет `infra/.env.dev` по дереву каталогов)
+    - При модификации настроек проверяйте, какой класс настроек релевантен для вашего изменения
+
+24. **Переключаемый Embedding провайдер**:
+    - `EMBEDDING_PROVIDER` переключает между `tei` (локальный TEI, 768-dim multilingual-e5-base) и `gigachat` (облачный GigaChat API, 1024-dim)
+    - `deps.py:embeddings()` возвращает `OpenAIEmbeddings` для TEI или `GigaChatEmbeddings` для GigaChat
+    - `EMBEDDING_PROVIDER=gigachat` требует `GIGA_AUTH_DATA` (иначе `RuntimeError`)
+    - Размерность вектора определяется автоматически при старте через тестовый embed
+    - При несовпадении размерности (напр., 768→1024) таблица pgvector пересоздаётся через `overwrite_existing=True`; embedding cache очищается; нужен reingest
 
 ---
 
@@ -1164,7 +1179,7 @@ AI-Portfolio/
 │   │   │   ├── models/             # Модели SQLAlchemy (см. выше)
 │   │   │   ├── routers/            # Эндпоинты (/api/v1/*)
 │   │   │   ├── schemas/            # Pydantic-схемы (включая rag_export.py)
-│   │   │   ├── core/config.py      # Базовые настройки
+│   │   │   ├── core/config.py      # Базовые настройки (используется main.py/db.py)
 │   │   │   └── seed/               # Наполнение БД (seed_ai_portfolio_new.py)
 │   │   ├── alembic/                # Миграции
 │   │   │   └── versions/
@@ -1255,6 +1270,7 @@ AI-Portfolio/
 │   │   │   ├── test_usage_collector.py   # Тесты TokenUsageCollector
 │   │   │   ├── test_agent_loop_guard.py  # Тесты защиты от зацикливания агента
 │   │   │   ├── test_concept_resolution.py # Тесты concept resolution в графе
+│   │   │   ├── test_embedding_provider.py # Тесты переключаемого embedding провайдера
 │   │   │   └── llm/test_providers.py     # Тесты провайдеров
 │   │   ├── pyproject.toml
 │   │   ├── Dockerfile
@@ -1285,11 +1301,12 @@ AI-Portfolio/
 │   ├── 001-migrate-pgvector/        # ChromaDB → pgvector миграция ✅
 │   ├── 002-fix-project-list-query/  # Интент PROJECT_LIST ✅
 │   ├── 003-fix-planner-output-method/ # Provider-aware structured output ✅
-│   ├── 004-fix-normalizer-tech-filter/ # Фильтр типов нормализатора ✅
-│   ├── 005-concept-resolution/      # Маппинг концепций на TechCategory ✅
-│   ├── 006-agent-loop-guard/        # Защита от зацикливания агента ✅
-│   ├── 007-thinking-status-optimization/ # ThinkingStatus latest wins ✅
-│   └── 008-mobile-stream-auto-retry/ # Авто-ретрай стрима на мобильном ✅
+│   ├── 004-fix-normalizer-technology-filter/ # Фильтр типов нормализатора ✅
+│   ├── 005-fix-agent-answer-relevance/ # Улучшение ответов technology_usage ✅
+│   ├── 006-fix-agent-loop/          # Защита от зацикливания агента ✅
+│   ├── 007-fix-normalizer-tech-filter/ # Content-level bullet фильтрация ✅
+│   ├── 008-improve-concept-queries/ # Concept resolution в графе ✅
+│   └── 009-switchable-embedding-provider/ # TEI/GigaChat embedding провайдер ✅
 │
 ├── discource/                       # 📋 Legacy ТЗ и спецификации
 │   ├── docs/                        # Технические задания (ТЗ)
@@ -1303,7 +1320,7 @@ AI-Portfolio/
 │
 ├── CLAUDE.md                       # Эта инструкция (EN)
 ├── CLAUDE_RU.md                    # Эта инструкция (RU)
-├── AGENTS.md                       # Документация по агентам
+├── AGENTS.md                       # Документация по агентам (⚠️ УСТАРЕЛ — ссылается на несуществующий compose.apps.yaml)
 └── tech-task-rag-api-new-develop.md  # Техническое задание на RAG API new
 ```
 
