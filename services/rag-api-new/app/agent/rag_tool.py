@@ -218,6 +218,20 @@ async def portfolio_rag_tool(question: str, *, config: RunnableConfig) -> dict:
                         "(only %d graph-type facts), query=%r", facts_count, focused_query
                     )
 
+            # Safety net: if graph returned zero facts, always try hybrid search.
+            # Covers: planner intent errors, wrong entity_key, missing graph data.
+            if facts_count == 0 and not decision.need_search:
+                decision = CriticDecision(
+                    sufficient=False,
+                    need_search=True,
+                    query=question,
+                    reason="zero_facts_safety_net",
+                )
+                logger.info(
+                    "Safety net: 0 facts from graph, forcing hybrid search for query=%r",
+                    truncate_text(question, limit=200),
+                )
+
             search_already_used = any(tc.tool == "portfolio_search_tool" for tc in (plan.tool_calls or []))
             if decision.need_search and not search_already_used:
                 search_query = (decision.query or "").strip() or question

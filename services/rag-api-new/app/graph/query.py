@@ -566,6 +566,17 @@ def _project_details_query(entity_key: str) -> GraphQueryResult:
         )
 
     node = store.get_node_by_slug(entity_key)
+
+    # If slug matched a COMPANY node, redirect to experience query.
+    # Handles planner misclassification (project_details instead of experience_summary).
+    if node and node.type == NodeType.COMPANY:
+        logger.info(
+            "project_details redirect: entity_key '%s' is COMPANY node, "
+            "redirecting to _experience_query",
+            entity_key,
+        )
+        return _experience_query(entity_key)
+
     project = node if (node and node.type == NodeType.PROJECT) else None
 
     if not project:
