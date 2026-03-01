@@ -2,7 +2,7 @@
 Embedding Cache - кэширование embeddings запросов в Redis.
 
 Ключи: rag:emb:{model}:{hash16}
-Значение: JSON-сериализованный list[float] (768 элементов)
+Значение: JSON-сериализованный list[float]
 TTL: 24 часа (embedding_cache_ttl)
 
 NOTE: Embedding cache НЕ инвалидируется при изменении контента (ingest),
@@ -31,11 +31,11 @@ def get_embedding_with_cache(
 
     Args:
         text: Текст для embedding
-        embed_fn: Функция получения embedding (TEI вызов)
+        embed_fn: Функция получения embedding (TEI или GigaChat)
         model_name: Название модели (для разделения кэшей)
 
     Returns:
-        tuple[embedding, source] где source = "cache" | "tei"
+        tuple[embedding, source] где source = "cache" | "api"
     """
     cache = get_cache_service()
 
@@ -59,7 +59,7 @@ def get_embedding_with_cache(
             except json.JSONDecodeError:
                 logger.warning("Invalid JSON in embedding cache: key=%s", cache_key)
 
-    # 2. TEI fallback
+    # 2. API fallback (TEI or GigaChat depending on EMBEDDING_PROVIDER)
     embedding = embed_fn(text)
 
     # 3. Cache result
@@ -78,7 +78,7 @@ def get_embedding_with_cache(
         except Exception as e:
             logger.warning("Failed to cache embedding: %s", e)
 
-    return embedding, "tei"
+    return embedding, "api"
 
 
 def invalidate_embedding_cache() -> int:

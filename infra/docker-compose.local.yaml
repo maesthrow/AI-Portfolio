@@ -130,6 +130,7 @@ services:
       litellm_api_key: ${LITELLM_MASTER_KEY}
       chat_model: ${CHAT_MODEL}
       embedding_model: ${EMBEDDING_MODEL}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-tei}
       # === Provider Credentials ===
       giga_auth_data: ${GIGA_AUTH_DATA}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}

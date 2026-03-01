@@ -122,7 +122,7 @@ User Message
 **Core Modules:**
 - `app/main.py` - FastAPI app with routers, health endpoints (`/healthz`, `/meta`)
 - `app/settings.py` - Pydantic settings with LLM temperatures
-- `app/deps.py` - Shared dependencies (LLM instances, PGVectorStore via `pg_engine()`, reranker)
+- `app/deps.py` - Shared dependencies (LLM instances, switchable embedding factory via `embeddings()`, PGVectorStore via `pg_engine()` with dimension auto-detection, reranker)
 - `app/prefetch.py` - Cache warmup for popular questions
   - `POPULAR_QUESTIONS` - List of common questions in both user-style and agent-style
   - `prefetch_popular_plans()` - Warms up Redis cache after ingest (~60-70% cache hit rate)
@@ -472,7 +472,8 @@ specs/
 ├── 005-fix-agent-answer-relevance/  # Improved technology_usage answers ✅ COMPLETED
 ├── 006-fix-agent-loop/              # Agent loop guard (recursion_limit + timeout) ✅ COMPLETED
 ├── 007-fix-normalizer-tech-filter/  # Content-level bullet filtering ✅ COMPLETED
-└── 008-improve-concept-queries/     # Concept resolution in graph queries ✅ COMPLETED
+├── 008-improve-concept-queries/     # Concept resolution in graph queries ✅ COMPLETED
+└── 009-switchable-embedding-provider/ # Switchable TEI/GigaChat embedding provider ✅ COMPLETED
 ```
 
 **When to Use:**
@@ -844,7 +845,7 @@ The system supports multiple LLM providers with role-based model selection:
 - `app/llm/providers.py` - `LLMProvider` enum, `ProviderConfig`
 - `app/llm/exceptions.py` - `LLMConfigError`, `LLMProviderError`
 - `app/llm/validation.py` - `validate_llm_config()` for startup validation
-- `app/deps.py` - Role-specific LLM getters: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`, `router_llm()`, `email_service()`
+- `app/deps.py` - Switchable `embeddings()` factory (TEI / GigaChat), `pg_engine()` with dimension auto-detection, role-specific LLM getters: `identity_llm()`, `planner_llm()`, `answer_llm()`, `critic_llm()`, `agent_llm()`, `router_llm()`, `email_service()`
 
 **TokenUsageCollector (Rate Limiting Integration):**
 
@@ -940,8 +941,9 @@ Key variables (see `infra/.env.dev`):
 - `LITELLM_MASTER_KEY` - LiteLLM authentication key
 - `LITELLM_API_KEY` - LiteLLM API key for authentication
 - `CHAT_MODEL` - Chat model alias (legacy, e.g., `Qwen2.5` or `GigaChat`)
-- `EMBEDDING_MODEL` - Embedding model alias (e.g., `embedding-default`)
-- `GIGA_AUTH_DATA` - GigaChat base64 credentials (if using GigaChat)
+- `EMBEDDING_PROVIDER` - Embedding provider: `tei` (local TEI) or `gigachat` (cloud GigaChat API) (default: `tei`)
+- `EMBEDDING_MODEL` - Embedding model alias (e.g., `embedding-default` for TEI, `Embeddings` for GigaChat)
+- `GIGA_AUTH_DATA` - GigaChat base64 credentials (required when `EMBEDDING_PROVIDER=gigachat`)
 - `DEEPSEEK_API_KEY` - DeepSeek API key (if using DeepSeek)
 - `DEEPSEEK_BASE_URL` - DeepSeek API URL (default: `https://api.deepseek.com/v1`)
 - `HF_TOKEN` - HuggingFace token for model downloads
@@ -952,7 +954,8 @@ Key variables (see `infra/.env.dev`):
 - `DATABASE_URL` - PostgreSQL connection string for pgvector (shared with content-api, e.g., `postgresql+psycopg://user:pass@host:5433/db`)
 - `COLLECTION_NAME` - pgvector collection name (default: `portfolio_new`)
 - `TEI_BASE_URL` - Direct TEI access URL (default: `http://tei:80/v1`)
-- `EMBEDDING_MODEL` - Embedding model (default: `text-embedding-3-large`)
+- `EMBEDDING_PROVIDER` - Embedding provider: `tei` or `gigachat` (default: `tei`)
+- `EMBEDDING_MODEL` - Embedding model (default: `text-embedding-3-large`; use `Embeddings` or `Embeddings-2` for GigaChat)
 - `EMBEDDING_BATCH_SIZE` - Batch size for embeddings (default: 4, small to avoid TEI 413)
 - `reranker_model` - Reranker model (default: `BAAI/bge-reranker-base`)
 - `MAX_RERANK_CANDIDATES` - Max docs for reranker (default: 80, limits CPU to ~1.3s)
@@ -1112,6 +1115,15 @@ Key variables (see `infra/.env.dev`):
     - For `technology_usage` intent: if graph returns only `technology_usage`-type facts (no `project`/`experience_project` facts), forces hybrid search
     - Builds entity-focused query from planner entities (e.g., "Computer Vision проекты достижения") for better retrieval
 
+23. **Switchable Embedding Provider**:
+    - `EMBEDDING_PROVIDER` env var switches between `tei` (local TEI, 768-dim multilingual-e5-base) and `gigachat` (cloud GigaChat API, 1024-dim)
+    - `deps.py:embeddings()` returns `OpenAIEmbeddings` for TEI or `GigaChatEmbeddings` (from `langchain_gigachat`) for GigaChat
+    - `EMBEDDING_PROVIDER=gigachat` requires `GIGA_AUTH_DATA` to be set (raises `RuntimeError` otherwise)
+    - Vector dimension is auto-detected at startup via test embed (`embed_query("test")` → `len(result)`)
+    - On dimension mismatch (e.g., switching from 768→1024), pgvector table is automatically dropped and recreated; embedding cache is cleared; reingest is required
+    - `EMBEDDING_MODEL` is reused for both providers: `text-embedding-3-large` for TEI, `Embeddings` or `Embeddings-2` for GigaChat
+    - `GigaChatEmbeddings` uses `verify_ssl_certs=False` and `timeout=60`
+
 ---
 
 ## File Structure Reference
@@ -1163,7 +1175,7 @@ AI-Portfolio/
 │   │   ├── app/
 │   │   │   ├── main.py             # FastAPI app with routers
 │   │   │   ├── settings.py         # Pydantic settings (temperatures, etc.)
-│   │   │   ├── deps.py             # Shared dependencies (LLMs, PGVectorStore, reranker)
+│   │   │   ├── deps.py             # Shared dependencies (LLMs, switchable embeddings, PGVectorStore, reranker)
 │   │   │   ├── prefetch.py         # Cache warmup for popular questions
 │   │   │   ├── agent/              # Agent system
 │   │   │   │   ├── graph.py        # StateGraph: hybrid router + ReAct subgraph + CV + smalltalk + off-topic
@@ -1243,6 +1255,7 @@ AI-Portfolio/
 │   │   │   ├── test_usage_collector.py   # TokenUsageCollector tests
 │   │   │   ├── test_agent_loop_guard.py  # Agent loop/timeout guard tests
 │   │   │   ├── test_concept_resolution.py # Concept resolution tests
+│   │   │   ├── test_embedding_provider.py # Switchable embedding provider tests
 │   │   │   └── llm/test_providers.py     # Provider-specific tests
 │   │   ├── pyproject.toml
 │   │   ├── Dockerfile
@@ -1277,7 +1290,8 @@ AI-Portfolio/
 │   ├── 005-fix-agent-answer-relevance/ # Technology_usage answers ✅
 │   ├── 006-fix-agent-loop/          # Agent loop guard ✅
 │   ├── 007-fix-normalizer-tech-filter/ # Content-level bullet filtering ✅
-│   └── 008-improve-concept-queries/ # Concept resolution ✅
+│   ├── 008-improve-concept-queries/ # Concept resolution ✅
+│   └── 009-switchable-embedding-provider/ # Switchable TEI/GigaChat embedding provider ✅
 │
 ├── discource/                       # 📋 Legacy ТЗ and specs
 │   ├── docs/                        # Technical requirements (ТЗ)

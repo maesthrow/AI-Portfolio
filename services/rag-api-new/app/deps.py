@@ -7,6 +7,9 @@ import threading
 import torch
 from sentence_transformers import CrossEncoder
 
+from sqlalchemy import text as sa_text
+
+from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import OpenAIEmbeddings
 from langchain_postgres import PGEngine, PGVectorStore, Column
@@ -26,9 +29,23 @@ def settings():
 
 
 @lru_cache()
-def embeddings() -> OpenAIEmbeddings:
+def embeddings() -> Embeddings:
     s = settings()
-    # Use TEI directly (bypassing LiteLLM which adds unsupported encoding_format)
+    if s.embedding_provider == "gigachat":
+        if not s.giga_auth_data:
+            raise RuntimeError(
+                "EMBEDDING_PROVIDER=gigachat requires GIGA_AUTH_DATA to be set"
+            )
+        from langchain_gigachat import GigaChatEmbeddings
+        logger.info("Embedding provider: gigachat (model=%s)", s.embedding_model)
+        return GigaChatEmbeddings(
+            credentials=s.giga_auth_data,
+            model=s.embedding_model,
+            verify_ssl_certs=False,
+            timeout=60,
+        )
+    # Default: TEI (bypassing LiteLLM which adds unsupported encoding_format)
+    logger.info("Embedding provider: tei (url=%s)", s.tei_base_url)
     return OpenAIEmbeddings(
         api_key="dummy",
         base_url=str(s.tei_base_url),
@@ -48,6 +65,45 @@ _METADATA_COLUMN_NAMES = ["type", "project_id", "ref_id", "doc_id"]
 
 _pg_engine_instance: PGEngine | None = None
 _pg_engine_lock = threading.Lock()
+_embedding_dim: int | None = None
+
+
+def _detect_embedding_dim() -> int:
+    """Determine vector dimension by running a test embedding."""
+    global _embedding_dim
+    if _embedding_dim is not None:
+        return _embedding_dim
+    vec = embeddings().embed_query("test")
+    _embedding_dim = len(vec)
+    logger.info("Detected embedding dimension: %d", _embedding_dim)
+    return _embedding_dim
+
+
+def get_embedding_dim() -> int | None:
+    """Return cached embedding dimension (None if not yet detected)."""
+    return _embedding_dim
+
+
+def _get_table_vector_dim(engine: PGEngine, table_name: str) -> int | None:
+    """Query existing pgvector column dimension from pg_attribute catalog."""
+    async def _query():
+        async with engine._pool.connect() as conn:
+            result = await conn.execute(
+                sa_text(
+                    "SELECT atttypmod - 4 FROM pg_attribute "
+                    "WHERE attrelid = CAST(:tbl AS regclass) AND attname = 'embedding' "
+                    "AND atttypmod > 0"
+                ),
+                {"tbl": table_name},
+            )
+            row = result.fetchone()
+            return row[0] if row else None
+
+    try:
+        return engine._run_as_sync(_query())
+    except Exception as exc:
+        logger.debug("_get_table_vector_dim failed: %s", exc)
+        return None  # Table doesn't exist yet
 
 
 def pg_engine() -> PGEngine:
@@ -59,20 +115,56 @@ def pg_engine() -> PGEngine:
             return _pg_engine_instance
         s = settings()
         engine = PGEngine.from_connection_string(url=s.database_url)
-        try:
+
+        detected_dim = _detect_embedding_dim()
+        existing_dim = _get_table_vector_dim(engine, s.collection_name)
+
+        if existing_dim is not None and existing_dim != detected_dim:
+            logger.warning(
+                "Dimension mismatch: table '%s' has %d-dim vectors, "
+                "but current embedding provider produces %d-dim. "
+                "Recreating table...",
+                s.collection_name, existing_dim, detected_dim,
+            )
             engine.init_vectorstore_table(
                 table_name=s.collection_name,
-                vector_size=768,
+                vector_size=detected_dim,
                 metadata_columns=_METADATA_COLUMNS,
-                overwrite_existing=False,
+                overwrite_existing=True,
                 store_metadata=True,
             )
-            logger.info("pgvector table '%s' created", s.collection_name)
-        except Exception as exc:
-            if "DuplicateTable" in type(exc).__name__ or "already exists" in str(exc):
-                logger.info("pgvector table '%s' already exists, skipping init", s.collection_name)
-            else:
-                raise
+            try:
+                from .cache import invalidate_embedding_cache
+                deleted = invalidate_embedding_cache()
+                logger.info("Cleared %d embedding cache entries", deleted)
+            except Exception as exc:
+                logger.warning("Failed to clear embedding cache: %s", exc)
+            logger.info(
+                "Table '%s' recreated with vector_size=%d, reingest required",
+                s.collection_name, detected_dim,
+            )
+        else:
+            try:
+                engine.init_vectorstore_table(
+                    table_name=s.collection_name,
+                    vector_size=detected_dim,
+                    metadata_columns=_METADATA_COLUMNS,
+                    overwrite_existing=False,
+                    store_metadata=True,
+                )
+                logger.info(
+                    "pgvector table '%s' created (vector_size=%d)",
+                    s.collection_name, detected_dim,
+                )
+            except Exception as exc:
+                if "DuplicateTable" in type(exc).__name__ or "already exists" in str(exc):
+                    logger.info(
+                        "pgvector table '%s' already exists (vector_size=%s), skipping init",
+                        s.collection_name, existing_dim or "unknown",
+                    )
+                else:
+                    raise
+
         _pg_engine_instance = engine
         return engine
 

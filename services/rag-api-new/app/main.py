@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.deps import settings
+from app.deps import settings, pg_engine
 from app.llm import validate_llm_config
 from app.routers import admin, chat, ingest, ingest_batch
 
@@ -14,6 +14,10 @@ logging.basicConfig(
 
 # Валидация LLM конфигурации при старте
 validate_llm_config()
+
+# Инициализация pgvector: определение размерности эмбеддингов,
+# проверка совпадения с существующей таблицей, пересоздание при mismatch
+pg_engine()
 
 app = FastAPI(title="RAG API (new)", docs_url="/api/swagger")
 
@@ -37,6 +41,7 @@ def healthz():
         "planner_llm": s.planner_llm,
         "answer_llm": s.answer_llm,
         "agent_llm": s.agent_llm,
+        "embedding_provider": s.embedding_provider,
         "embedding_model": s.embedding_model,
     }
 

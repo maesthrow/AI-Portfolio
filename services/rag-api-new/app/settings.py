@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     """LLM для классификации интентов в роутере (дешёвая модель, ~300ms)."""
 
     # === Embedding ===
+    embedding_provider: Literal["tei", "gigachat"] = "tei"
+    """Embedding provider: 'tei' (local TEI) or 'gigachat' (cloud GigaChat API)."""
+
     embedding_model: str = "text-embedding-3-large"
     embedding_batch_size: int = 4  # Small batch to avoid TEI 413 Payload Too Large
 

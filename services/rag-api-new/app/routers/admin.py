@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 
 from sqlalchemy import text
 
-from app.deps import pg_engine, settings, vectorstore, rate_limiter
+from app.deps import pg_engine, settings, vectorstore, rate_limiter, get_embedding_dim
 from app.rate_limit import RateLimitStatus
 from app.indexing import bm25
 from app.schemas.admin import (
@@ -85,6 +85,9 @@ def collection_stats():
         total=total,
         by_type=by_type,
         graph_stats=graph_stats,
+        embedding_provider=cfg.embedding_provider,
+        embedding_model=cfg.embedding_model,
+        vector_dimension=get_embedding_dim(),
     )
 
 

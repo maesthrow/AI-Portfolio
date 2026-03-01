@@ -23,6 +23,9 @@ class StatsResult(BaseModel):
     total: int
     by_type: dict[str, Any] | None = None
     graph_stats: GraphStats | None = None
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
+    vector_dimension: int | None = None
 
 
 class EmbeddingCacheClearResult(BaseModel):
