@@ -224,6 +224,28 @@ EXPERIENCE_DATA = [
         "description_md": None,
         "order_index": 40,
     },
+    # СберТех — AI Agents
+    {
+        "role": "Senior AI Agent Developer",
+        "company_name": "СберТех",
+        "company_slug": "sbertech",
+        "company_url": "https://sbertech.ru",
+        "project_name": None,
+        "project_slug": None,
+        "project_url": None,
+        "start_date": date(2026, 1, 26),
+        "end_date": None,
+        "is_current": True,
+        "kind": "commercial",
+        "company_role_md": (
+            "Разрабатываю AI-агентов: проектирую архитектуру, "
+            "реализую навыки и инструменты, интегрирую решения в продуктовые сценарии."
+        ),
+        "summary_md": None,
+        "achievements_md": None,
+        "description_md": None,
+        "order_index": 5,
+    },
 ]
 
 PROJECTS_DATA = [
@@ -835,8 +857,13 @@ def seed_experience(session):
 
         company: CompanyExperience = upsert_one(session, CompanyExperience, identity, payload)
 
-        # Create/update single project per company experience for now
-        proj_name = data.get("project_name") or (data.get("company_name") or f"Project {idx}")
+        # Create/update single project per company experience only when explicitly named.
+        # Without project_name we'd otherwise auto-fill name/description with company_name,
+        # producing a duplicate-looking card on the experience page.
+        if not data.get("project_name"):
+            continue
+
+        proj_name = data["project_name"]
         proj_slug = data.get("project_slug") or slug
         if data.get("start_date"):
             start_year = data["start_date"].year

@@ -100,38 +100,40 @@ export default async function ExperienceCompanyPage({ params }: PageProps) {
           ) : null}
         </div>
 
-        <div className="flex flex-col gap-6">
-          <h2 className="text-xl font-semibold text-slate-50 sm:text-2xl">Проекты и достижения в компании</h2>
+        {projects.length > 0 ? (
           <div className="flex flex-col gap-6">
-            {projects.map((proj) => (
-              <div
-                key={proj.id}
-                className="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-6 shadow-[0_0_18px_rgba(0,0,0,0.4)]"
-              >
-                <div className="flex flex-col gap-1">
-                  <h3 className="text-lg font-semibold text-emerald-300">{proj.name}</h3>
+            <h2 className="text-xl font-semibold text-slate-50 sm:text-2xl">Проекты и достижения в компании</h2>
+            <div className="flex flex-col gap-6">
+              {projects.map((proj) => (
+                <div
+                  key={proj.id}
+                  className="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-6 shadow-[0_0_18px_rgba(0,0,0,0.4)]"
+                >
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-lg font-semibold text-emerald-300">{proj.name}</h3>
+                  </div>
+                  <div className="mt-4 prose prose-invert max-w-none text-lg text-slate-100">
+                    <ReactMarkdown>{proj.description_md}</ReactMarkdown>
+                  </div>
+                  <div className="mt-5 h-px bg-emerald-400/15" />
+                  <div className="mt-4">
+                    <ReactMarkdown
+                      className="prose prose-invert max-w-none text-slate-100"
+                      components={{
+                        ul: ({ ...props }) => (
+                          <ul className="ml-5 list-disc space-y-4 marker:text-emerald-300" {...props} />
+                        ),
+                        li: ({ ...props }) => <li className="text-slate-100/90" {...props} />,
+                      }}
+                    >
+                      {proj.achievements_md}
+                    </ReactMarkdown>
+                  </div>
                 </div>
-                <div className="mt-4 prose prose-invert max-w-none text-lg text-slate-100">
-                  <ReactMarkdown>{proj.description_md}</ReactMarkdown>
-                </div>
-                <div className="mt-5 h-px bg-emerald-400/15" />
-                <div className="mt-4">
-                  <ReactMarkdown
-                    className="prose prose-invert max-w-none text-slate-100"
-                    components={{
-                      ul: ({ ...props }) => (
-                        <ul className="ml-5 list-disc space-y-4 marker:text-emerald-300" {...props} />
-                      ),
-                      li: ({ ...props }) => <li className="text-slate-100/90" {...props} />,
-                    }}
-                  >
-                    {proj.achievements_md}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
 
         {companyTechs.length > 0 ? (
           <div className="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-6 shadow-[0_0_18px_rgba(0,0,0,0.4)]">
