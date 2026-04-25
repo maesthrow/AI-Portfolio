@@ -61,7 +61,17 @@ type StatsGridProps = {
 export default function StatsGrid({ stats }: StatsGridProps) {
   if (!stats?.length) return null;
   return (
-    <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+    <div
+      className={
+        "grid gap-8 sm:grid-cols-2 lg:grid-cols-3 " +
+        // 2-col: center lone last when total is odd (3, 5, 7…)
+        "sm:[&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:mx-auto sm:[&>*:last-child:nth-child(odd)]:w-[calc(50%-1rem)] " +
+        // 3-col: reset md rule (lone-in-2-col differs from lone-in-3-col)
+        "lg:[&>*:last-child:nth-child(odd)]:col-span-1 lg:[&>*:last-child:nth-child(odd)]:mx-0 lg:[&>*:last-child:nth-child(odd)]:w-auto " +
+        // 3-col: center lone last when total = 3n+1 (4, 7, 10…)
+        "lg:[&>*:last-child:nth-child(3n+1)]:col-span-3 lg:[&>*:last-child:nth-child(3n+1)]:mx-auto lg:[&>*:last-child:nth-child(3n+1)]:w-[calc(33.333%-1.333rem)]"
+      }
+    >
       {stats.map((stat) => (
         <div
           key={stat.id}

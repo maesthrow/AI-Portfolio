@@ -27,7 +27,7 @@ export default function TechFocusSection({ items, sectionMeta }: TechFocusSectio
       title={sectionMeta?.title || defaultTitle}
       subtitle={sectionMeta?.subtitle || defaultSubtitle}
     >
-      <div className="grid gap-8 md:grid-cols-2">
+      <div className="grid gap-8 md:grid-cols-2 md:[&>*:last-child:nth-child(odd)]:col-span-2 md:[&>*:last-child:nth-child(odd)]:mx-auto md:[&>*:last-child:nth-child(odd)]:w-[calc(50%-1rem)]">
         {items.map((item) => (
           <div
             key={item.id}

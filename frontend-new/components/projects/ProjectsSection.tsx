@@ -21,7 +21,17 @@ export default function ProjectsSection({ projects, sectionMeta }: ProjectsSecti
       title={sectionMeta?.title || defaultTitle}
       subtitle={sectionMeta?.subtitle || defaultSubtitle}
     >
-      <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
+      <div
+        className={
+          "grid gap-8 md:grid-cols-2 xl:grid-cols-3 " +
+          // 2-col: center lone last when total is odd (3, 5, 7…)
+          "md:[&>*:last-child:nth-child(odd)]:col-span-2 md:[&>*:last-child:nth-child(odd)]:mx-auto md:[&>*:last-child:nth-child(odd)]:w-[calc(50%-1rem)] " +
+          // 3-col: reset the md rule (lone-in-2-col differs from lone-in-3-col)
+          "xl:[&>*:last-child:nth-child(odd)]:col-span-1 xl:[&>*:last-child:nth-child(odd)]:mx-0 xl:[&>*:last-child:nth-child(odd)]:w-auto " +
+          // 3-col: center lone last when total = 3n+1 (4, 7, 10…)
+          "xl:[&>*:last-child:nth-child(3n+1)]:col-span-3 xl:[&>*:last-child:nth-child(3n+1)]:mx-auto xl:[&>*:last-child:nth-child(3n+1)]:w-[calc(33.333%-1.333rem)]"
+        }
+      >
         {projects.map((project) => (
           <ProjectCard key={project.id} project={project} />
         ))}

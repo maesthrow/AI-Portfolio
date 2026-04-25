@@ -38,7 +38,7 @@ export default function ContactsSection({ contacts, sectionMeta }: ContactsSecti
           <p className="text-xs text-gray-300">инициализирую модуль связи...</p>
           <p className="text-xs text-accent">✓ Загружены контакты</p>
         </div>
-        <div className="relative mt-5 grid gap-6 sm:grid-cols-2">
+        <div className="relative mt-5 grid gap-6 sm:grid-cols-2 sm:[&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:mx-auto sm:[&>*:last-child:nth-child(odd)]:w-[calc(50%-0.75rem)]">
           {uniqueContacts.map((contact) => (
             <ContactCard key={`${contact.kind}-${contact.value}`} contact={contact} />
           ))}

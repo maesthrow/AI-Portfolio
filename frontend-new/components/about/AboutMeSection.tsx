@@ -100,7 +100,7 @@ export default function AboutMeSection({ profile, stats, focusAreas = [] }: Abou
               {paragraph}
             </p>
           ))}
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-3 md:[&>*:last-child:nth-child(3n+1)]:col-span-3 md:[&>*:last-child:nth-child(3n+1)]:mx-auto md:[&>*:last-child:nth-child(3n+1)]:w-[calc(33.333%-1rem)]">
             {sections.map((section) => (
               <div
                 key={section.title}
