@@ -1,5 +1,5 @@
 import Section from "@/components/layout/Section";
-import ExperienceCard from "@/components/experience/ExperienceCard";
+import ExperienceList from "@/components/experience/ExperienceList";
 import { ExperienceItem, SectionMeta } from "@/lib/types";
 
 type ExperienceSectionProps = {
@@ -29,11 +29,7 @@ export default function ExperienceSection({ items, sectionMeta }: ExperienceSect
       title={sectionMeta?.title || defaultTitle}
       subtitle={sectionMeta?.subtitle || defaultSubtitle}
     >
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {sortedItems.map((item) => (
-          <ExperienceCard key={item.id} item={item} />
-        ))}
-      </div>
+      <ExperienceList items={sortedItems} />
     </Section>
   );
 }
