@@ -57,8 +57,8 @@ def upsert_one(session, model, identity: dict, payload: dict):
 PROFILE_DATA = {
     "id": 1,
     "full_name": "Дмитрий Каргин",
-    "title": "AI-инженер • LLM-специалист • Python-разработчик",
-    "subtitle": "AI-агенты • LLM • RAG • CV • Backend",
+    "title": "AI-инженер • Python-разработчик",
+    "subtitle": "AI-agents • LLM • RAG • CV • Python • Backend",
     "location": "Самара, Россия",
     "status": "ready_to_connect_",
     "avatar_url": "https://avatars.githubusercontent.com/u/113206960?s=400&u=3168146b785d59a77ded3353c07c1de8697abcaa&v=4",
@@ -66,9 +66,9 @@ PROFILE_DATA = {
         "AI-инженер с продуктовым подходом и опытом backend-разработки более пяти лет.\n"
         "Внедрял AI-решения в коммерческих проектах; фокус — архитектура агентных систем, качество продукта и бизнес-эффект."
     ),
-    "hero_headline": "AI Engineer • LLM Specialist • Python Developer",
+    "hero_headline": "AI Agent Engineer • Python Developer",
     "hero_description": "Строю надежные AI-системы — от идеи до запуска.",
-    "current_position": "AI-агенты для Сбера (аутстаффинг)",
+    "current_position": "Senior AI Agent Developer в Сбере",
 }
 
 CONTACTS_DATA = [
@@ -572,7 +572,7 @@ HERO_TAGS_DATA = [
     {"name": "CV", "order_index": 40},
     {"name": "MLOps", "order_index": 50},
     {"name": "Python", "order_index": 60},
-    {"name": ".NET", "order_index": 70},
+    {"name": "Backend", "order_index": 70},
     {"name": "GitHub", "url": "https://github.com/maesthrow", "icon": "github", "order_index": 80},
     {"name": "Telegram", "url": "https://t.me/kargindmitriy", "icon": "telegram", "order_index": 90},
     {"name": "LinkedIn", "url": "https://www.linkedin.com/in/dmitriy-kargin", "icon": "linkedin", "order_index": 100},
